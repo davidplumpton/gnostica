@@ -1,0 +1,16 @@
+{:source-paths ["src/main"]
+
+ :dependencies [[reagent "1.2.0"]
+                [re-frame "1.4.3"]]
+
+ :dev-http {8080 {:root "src/main/resources"}}
+
+ :builds
+ {:app
+  {:target :browser
+   :output-dir "src/main/resources/js"
+   :asset-path "/js"
+   :compiler-options {:externs ["src/main/externs/react.ext.js"
+                                "src/main/externs/react-dom.ext.js"]}
+   :modules {:main {:init-fn gnostica.app/init}}
+   :devtools {:after-load gnostica.app/reload!}}}}
