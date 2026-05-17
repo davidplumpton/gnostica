@@ -11,7 +11,7 @@
       (response/content-type "text/html; charset=utf-8")))
 
 (defn- browser-route? [{:keys [request-method uri]}]
-  (and (= :get request-method)
+  (and (#{:get :head} request-method)
        (or (= "/" uri)
            (not (re-find #"\.[^/]+$" uri)))))
 
@@ -43,4 +43,3 @@
   (let [port (port)]
     (println (str "Serving Gnostica on http://localhost:" port))
     (jetty/run-jetty #'app {:port port :join? true})))
-
