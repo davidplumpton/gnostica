@@ -48,6 +48,9 @@ jj status
 jj diff
 jj describe -m "Describe the current change"
 jj commit -m "Commit message"
+jj new
 ```
+
+When starting work, set a Jujutsu change description with `jj describe -m "..."` before editing. At the end of the work, run `jj new` so the completed described change is left behind and the working copy moves to a fresh change.
 
 Do not use git-only workflows unless the user asks for them or a tool requires them.
