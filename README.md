@@ -10,7 +10,7 @@ Install Java, the Clojure CLI, and Node.js, then run:
 clojure -M:dev
 ```
 
-The shadow-cljs dev server serves the app at `http://localhost:8080`. Node.js is still required by shadow-cljs for browser builds, but the default workflow does not use npm.
+The shadow-cljs dev server serves the app at `http://localhost:8080/index.html`. Node.js is still required by shadow-cljs for browser builds, but the default workflow does not use npm.
 
 ## Commands
 

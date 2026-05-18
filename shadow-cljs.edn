@@ -11,6 +11,7 @@
    :output-dir "src/main/resources/js"
    :asset-path "/js"
    :compiler-options {:externs ["src/main/externs/react.ext.js"
-                                "src/main/externs/react-dom.ext.js"]}
+                                "src/main/externs/react-dom.ext.js"
+                                "src/main/externs/three.ext.js"]}
    :modules {:main {:init-fn gnostica.app/init}}
    :devtools {:after-load gnostica.app/reload!}}}}

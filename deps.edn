@@ -19,4 +19,4 @@
 
   :test
   {:extra-paths ["test"]
-   :main-opts ["-m" "gnostica.cards-test"]}}}
+   :main-opts ["-m" "gnostica.test-runner"]}}}
