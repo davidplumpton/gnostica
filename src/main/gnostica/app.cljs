@@ -68,6 +68,9 @@
 (def card-short 1)
 (def card-long 1.5)
 (def card-gap 0.14)
+(def selected-card-padding 0.14)
+(def pointer-click-threshold 8)
+(def board-index-user-data-key "gnosticaBoardIndex")
 (def card-step
   (+ (/ (+ card-short card-long) 2) card-gap))
 
@@ -94,8 +97,36 @@
               (/ (- 1 repeat-y) 2)))))
   texture)
 
+(defn- pointer-event->board-pointer! [pointer target event]
+  (let [rect (.getBoundingClientRect target)
+        width (.-width rect)
+        height (.-height rect)]
+    (when (and (pos? width) (pos? height))
+      (.set pointer
+            (- (* 2 (/ (- (.-clientX event) (.-left rect)) width)) 1)
+            (- 1 (* 2 (/ (- (.-clientY event) (.-top rect)) height))))
+      true)))
+
+(defn- set-three-selection! [this selected-index]
+  (let [{:keys [active? render! selection-meshes]} (r/state this)]
+    (when (and active? @active? selection-meshes)
+      (doseq [[index mesh] selection-meshes]
+        (set! (.-visible mesh) (= index selected-index)))
+      (when render!
+        (render!)))))
+
 (defn- dispose-three-board! [this]
-  (let [{:keys [renderer resize-listener controls control-change-listener active? geometries materials textures]} (r/state this)]
+  (let [{:keys [renderer
+                resize-listener
+                controls
+                control-change-listener
+                pointer-down-listener
+                pointer-up-listener
+                pointer-cancel-listener
+                active?
+                geometries
+                materials
+                textures]} (r/state this)]
     (when active?
       (reset! active? false))
     (when resize-listener
@@ -113,6 +144,12 @@
     (when renderer
       (let [canvas (.-domElement renderer)
             parent (.-parentNode canvas)]
+        (when pointer-down-listener
+          (.removeEventListener canvas "pointerdown" pointer-down-listener))
+        (when pointer-up-listener
+          (.removeEventListener canvas "pointerup" pointer-up-listener))
+        (when pointer-cancel-listener
+          (.removeEventListener canvas "pointercancel" pointer-cancel-listener))
         (when parent
           (.removeChild parent canvas)))
       (.dispose renderer)))
@@ -128,19 +165,44 @@
     (swap! geometries conj geometry)
     (swap! materials conj material)))
 
-(defn- add-card-plane! [scene loader render! active? geometries materials textures {:keys [orientation card] :as cell}]
+(defn- add-card-plane!
+  [scene
+   loader
+   render!
+   active?
+   geometries
+   materials
+   textures
+   card-meshes
+   selection-meshes
+   {:keys [index orientation card] :as cell}]
   (let [{:keys [image title]} card
+        selection-geometry (js/THREE.PlaneGeometry.
+                            (+ card-short selected-card-padding)
+                            (+ card-long selected-card-padding))
+        selection-material (js/THREE.MeshBasicMaterial. #js {:color 0x9ff7e7
+                                                             :side js/THREE.DoubleSide})
+        selection-mesh (js/THREE.Mesh. selection-geometry selection-material)
         geometry (js/THREE.PlaneGeometry. card-short card-long)
         material (js/THREE.MeshBasicMaterial. #js {:color 0xffffff
                                                    :side js/THREE.DoubleSide})
         mesh (js/THREE.Mesh. geometry material)
         [x y] (card-position cell)]
+    (.set (.-position selection-mesh) x y 0.01)
+    (set! (.-visible selection-mesh) false)
     (.set (.-position mesh) x y 0.02)
     (when (= :landscape orientation)
+      (set! (.. selection-mesh -rotation -z) (/ js/Math.PI 2))
       (set! (.. mesh -rotation -z) (/ js/Math.PI 2)))
+    (.add scene selection-mesh)
     (.add scene mesh)
+    (aset (.-userData mesh) board-index-user-data-key index)
+    (swap! geometries conj selection-geometry)
+    (swap! materials conj selection-material)
+    (swap! selection-meshes assoc index selection-mesh)
     (swap! geometries conj geometry)
     (swap! materials conj material)
+    (swap! card-meshes conj mesh)
     (let [texture (.load loader
                          image
                          (fn [loaded-texture]
@@ -172,17 +234,22 @@
   (dispose-three-board! this)
   (rf/dispatch-sync [::clear-three-texture-errors])
   (when (and (three-runtime) (orbit-controls-runtime))
-    (let [[_ cells] (r/argv this)
+    (let [[_ cells selected-index] (r/argv this)
           mount-node (.-boardMountNode ^js this)]
       (when mount-node
         (let [scene (js/THREE.Scene.)
               camera (js/THREE.PerspectiveCamera. 45 1 0.1 100)
               renderer (js/THREE.WebGLRenderer. #js {:antialias true})
               loader (js/THREE.TextureLoader.)
+              raycaster (js/THREE.Raycaster.)
+              pointer (js/THREE.Vector2.)
               active? (atom true)
+              pointer-down (atom nil)
               geometries (atom [])
               materials (atom [])
-              textures (atom [])]
+              textures (atom [])
+              card-meshes (atom [])
+              selection-meshes (atom {})]
           (.setPixelRatio renderer (min 2 (or (.-devicePixelRatio js/window) 1)))
           (set! (.-outputEncoding renderer) js/THREE.sRGBEncoding)
           (.setClearColor renderer 0x45786d 1)
@@ -202,8 +269,34 @@
                         (.setSize renderer width height false)
                         (set! (.-aspect camera) (/ width height))
                         (.updateProjectionMatrix camera)
-                        (render!))))]
+                        (render!))))
+                  (select-card-at! [event]
+                    (when (pointer-event->board-pointer! pointer (.-domElement renderer) event)
+                      (.setFromCamera raycaster pointer camera)
+                      (let [intersections (.intersectObjects raycaster (to-array @card-meshes) false)
+                            intersection (aget intersections 0)
+                            picked-object (some-> intersection (aget "object"))
+                            picked-index (some-> picked-object
+                                                 (.-userData)
+                                                 (aget board-index-user-data-key))]
+                        (when (number? picked-index)
+                          (rf/dispatch [::select-board-card picked-index])))))
+                  (pointer-down-listener [event]
+                    (reset! pointer-down {:id (.-pointerId event)
+                                          :x (.-clientX event)
+                                          :y (.-clientY event)}))
+                  (pointer-up-listener [event]
+                    (when-let [{:keys [id x y]} @pointer-down]
+                      (reset! pointer-down nil)
+                      (let [distance (js/Math.hypot (- (.-clientX event) x)
+                                                    (- (.-clientY event) y))]
+                        (when (and (= id (.-pointerId event))
+                                   (<= distance pointer-click-threshold))
+                          (select-card-at! event)))))
+                  (pointer-cancel-listener [_]
+                    (reset! pointer-down nil))]
             (let [controls (js/THREE.OrbitControls. camera (.-domElement renderer))
+                  canvas (.-domElement renderer)
                   control-change-listener (fn [_] (render!))]
               (.set (.-target controls) 0 0 0)
               (set! (.-enableDamping controls) false)
@@ -219,19 +312,37 @@
               (.update controls)
               (.saveState controls)
               (.addEventListener controls "change" control-change-listener)
+              (.addEventListener canvas "pointerdown" pointer-down-listener)
+              (.addEventListener canvas "pointerup" pointer-up-listener)
+              (.addEventListener canvas "pointercancel" pointer-cancel-listener)
               (add-table-plane! scene geometries materials)
               (doseq [cell cells]
-                (add-card-plane! scene loader render! active? geometries materials textures cell))
+                (add-card-plane! scene
+                                 loader
+                                 render!
+                                 active?
+                                 geometries
+                                 materials
+                                 textures
+                                 card-meshes
+                                 selection-meshes
+                                 cell))
               (.addEventListener js/window "resize" resize!)
               (resize!)
               (r/replace-state this {:renderer renderer
                                      :resize-listener resize!
                                      :controls controls
                                      :control-change-listener control-change-listener
+                                     :pointer-down-listener pointer-down-listener
+                                     :pointer-up-listener pointer-up-listener
+                                     :pointer-cancel-listener pointer-cancel-listener
                                      :active? active?
+                                     :render! render!
                                      :geometries @geometries
                                      :materials @materials
-                                     :textures @textures}))))))))
+                                     :textures @textures
+                                     :selection-meshes @selection-meshes})
+              (set-three-selection! this selected-index))))))))
 
 (def three-board-scene
   (r/create-class
@@ -239,13 +350,15 @@
     :component-did-mount mount-three-board!
     :component-did-update
     (fn [this old-argv _ _]
-      (let [old-cells (second old-argv)
-            new-cells (second (r/argv this))]
-        (when (not= old-cells new-cells)
-          (mount-three-board! this))))
+      (let [[_ old-cells old-selected-index] old-argv
+            [_ new-cells new-selected-index] (r/argv this)]
+        (if (not= old-cells new-cells)
+          (mount-three-board! this)
+          (when (not= old-selected-index new-selected-index)
+            (set-three-selection! this new-selected-index)))))
     :component-will-unmount dispose-three-board!
     :reagent-render
-    (fn [_cells texture-errors]
+    (fn [_cells _selected-index texture-errors]
       (let [component (r/current-component)]
         [:div.board-three
          {:role "img"
@@ -286,7 +399,7 @@
     [:section.board-area
      {:data-three-revision (or (three-revision) "unavailable")}
      (if (and (three-runtime) (orbit-controls-runtime))
-       [three-board-scene cells texture-errors]
+       [three-board-scene cells selected-index texture-errors]
        [:div.board-fallback
         [:p.board-3d-status.is-error
          (if (three-runtime)

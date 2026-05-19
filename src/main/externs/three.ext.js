@@ -101,6 +101,23 @@ THREE.WebGLRenderer.prototype.render = function(scene, camera) {};
 /** @return {void} */
 THREE.WebGLRenderer.prototype.dispose = function() {};
 
+/** @constructor */
+THREE.Raycaster = function() {};
+
+/**
+ * @param {!THREE.Vector2} coords
+ * @param {!THREE.PerspectiveCamera} camera
+ * @return {void}
+ */
+THREE.Raycaster.prototype.setFromCamera = function(coords, camera) {};
+
+/**
+ * @param {!Array<!Object>} objects
+ * @param {boolean=} recursive
+ * @return {!Array<!Object>}
+ */
+THREE.Raycaster.prototype.intersectObjects = function(objects, recursive) {};
+
 /**
  * @constructor
  * @param {!THREE.PerspectiveCamera} camera
@@ -207,6 +224,12 @@ THREE.Mesh.prototype.position;
 
 /** @type {!THREE.Euler} */
 THREE.Mesh.prototype.rotation;
+
+/** @type {!Object} */
+THREE.Mesh.prototype.userData;
+
+/** @type {boolean} */
+THREE.Mesh.prototype.visible;
 
 /** @constructor */
 THREE.TextureLoader = function() {};
