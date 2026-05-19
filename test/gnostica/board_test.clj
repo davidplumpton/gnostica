@@ -12,14 +12,20 @@
    cells))
 
 (deftest initial-board-has-nine-face-up-cards
-  (let [cells (board/initial-board cards/deck)]
+  (let [cells (board/initial-board cards/deck identity)]
     (is (= board/board-card-count (count cells)))
-    (is (every? #(= :up (:face %)) cells))
-    (is (= (map :id (take board/board-card-count cards/deck))
-           (map (comp :id :card) cells)))))
+    (is (every? #(= :up (:face %)) cells))))
+
+(deftest initial-board-shuffles-before-dealing
+  (let [cells (board/initial-board cards/deck reverse)
+        dealt-card-ids (map (comp :id :card) cells)]
+    (is (= (map :id (take board/board-card-count (reverse cards/deck)))
+           dealt-card-ids))
+    (is (not= (map :id (take board/board-card-count cards/deck))
+              dealt-card-ids))))
 
 (deftest adjacent-cards-have-opposite-orientations
-  (let [cells (board/initial-board cards/deck)]
+  (let [cells (board/initial-board cards/deck identity)]
     (doseq [{:keys [row col orientation]} cells
             [dr dc] [[1 0] [0 1]]
             :let [neighbor (cell-at cells (+ row dr) (+ col dc))]

@@ -16,10 +16,10 @@
 
 [7] **Rules Source** - `docs/rules.txt` is the current rules reference. The first implemented rule slice is board setup: nine tarot cards are dealt face up into a 3x3 territory grid, and adjacent territory cards alternate between portrait and landscape orientation with no touching edges [8][9].
 
-[8] **Board Model** - `src/main/gnostica/board.cljc` defines the initial 3x3 board. It takes the first nine cards from the deck, records each cell's row, column, `:face :up`, and assigns checkerboard orientation with top-left portrait so every orthogonal neighbor is opposite [7][10].
+[8] **Board Model** - `src/main/gnostica/board.cljc` defines the initial 3x3 board. It shuffles the tarot deck before taking nine table cards, records each cell's row, column, `:face :up`, and assigns checkerboard orientation with top-left portrait so every orthogonal neighbor is opposite [7][10]. `initial-board` also accepts an injectable shuffle function so tests can use deterministic deck order [10].
 
 [9] **Board Rendering** - `src/main/gnostica/app.cljs` renders the board as the first screen, using selected board-cell state for the side territory panel [8]. `src/main/resources/css/app.css` positions cards with row/column classes and shared card dimensions, so portrait-landscape neighbors have a small explicit CSS gap while landscape cards show the same face-up image rotated 90 degrees [7]. The board area probes the `THREE` global at runtime through the CDN setup documented in [11].
 
-[10] **Test Runner** - `clojure -M:test` now runs `gnostica.test-runner`, which loads the card tests plus `gnostica.board-test` [8]. Board tests verify there are nine face-up cards and that every horizontal or vertical neighbor has the opposite orientation [7].
+[10] **Test Runner** - `clojure -M:test` now runs `gnostica.test-runner`, which loads the card tests plus `gnostica.board-test` [8]. Board tests verify there are nine face-up cards, that the board deal uses the injected shuffle before selecting territory cards, and that every horizontal or vertical neighbor has the opposite orientation [7].
 
 [11] **Three.js CDN Runtime** - `src/main/resources/index.html` loads Three.js from `https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js` before `/js/main.js`, preserving the npm-free shadow-cljs workflow [6]. `src/main/externs/three.ext.js` declares the global `THREE`, and `gnostica.app/three-runtime` plus `gnostica.app/three-revision` provide the current ClojureScript interop point for runtime access [9].

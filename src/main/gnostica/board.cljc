@@ -14,16 +14,20 @@
     :portrait
     :landscape))
 
-(defn initial-board [deck]
-  (->> deck
-       (take board-card-count)
-       (map-indexed
-        (fn [index card]
-          (let [{:keys [row col]} (position-for-index index)]
-            {:index index
-             :row row
-             :col col
-             :orientation (orientation-for row col)
-             :face :up
-             :card card})))
-       vec))
+(defn initial-board
+  ([deck]
+   (initial-board deck shuffle))
+  ([deck shuffle-deck]
+   (->> deck
+        shuffle-deck
+        (take board-card-count)
+        (map-indexed
+         (fn [index card]
+           (let [{:keys [row col]} (position-for-index index)]
+             {:index index
+              :row row
+              :col col
+              :orientation (orientation-for row col)
+              :face :up
+              :card card})))
+        vec)))
