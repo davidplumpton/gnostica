@@ -120,7 +120,7 @@
 
 (defn- add-table-plane! [scene geometries materials]
   (let [geometry (js/THREE.PlaneGeometry. board-plane-size board-plane-size)
-        material (js/THREE.MeshBasicMaterial. #js {:color 0x163a31
+        material (js/THREE.MeshBasicMaterial. #js {:color 0x4d9a87
                                                    :side js/THREE.DoubleSide})
         mesh (js/THREE.Mesh. geometry material)]
     (set! (.. mesh -position -z) -0.03)
@@ -131,7 +131,7 @@
 (defn- add-card-plane! [scene loader render! active? geometries materials textures {:keys [orientation card] :as cell}]
   (let [{:keys [image title]} card
         geometry (js/THREE.PlaneGeometry. card-short card-long)
-        material (js/THREE.MeshBasicMaterial. #js {:color 0x202b31
+        material (js/THREE.MeshBasicMaterial. #js {:color 0xffffff
                                                    :side js/THREE.DoubleSide})
         mesh (js/THREE.Mesh. geometry material)
         [x y] (card-position cell)]
@@ -146,6 +146,7 @@
                          (fn [loaded-texture]
                            (when @active?
                              (texture-cover! loaded-texture)
+                             (set! (.-encoding loaded-texture) js/THREE.sRGBEncoding)
                              (set! (.-minFilter loaded-texture) js/THREE.LinearFilter)
                              (set! (.-magFilter loaded-texture) js/THREE.LinearFilter)
                              (set! (.-needsUpdate loaded-texture) true)
@@ -156,7 +157,7 @@
                          (fn [error]
                            (when @active?
                              (js/console.error (str "Failed to load tarot texture for " title ": " image) error)
-                             (.set (.-color material) 0xc65a54)
+                             (.set (.-color material) 0xff8a7a)
                              (set! (.-needsUpdate material) true)
                              (rf/dispatch [::three-texture-error image])
                              (render!))))]
@@ -183,7 +184,8 @@
               materials (atom [])
               textures (atom [])]
           (.setPixelRatio renderer (min 2 (or (.-devicePixelRatio js/window) 1)))
-          (.setClearColor renderer 0x0e2622 1)
+          (set! (.-outputEncoding renderer) js/THREE.sRGBEncoding)
+          (.setClearColor renderer 0x45786d 1)
           (set! (.. renderer -domElement -className) "board-three__canvas")
           (.appendChild mount-node (.-domElement renderer))
           (.set (.-up camera) 0 0 1)

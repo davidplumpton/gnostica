@@ -67,6 +67,9 @@ THREE.WebGLRenderer = function(parameters) {};
 /** @type {!Element} */
 THREE.WebGLRenderer.prototype.domElement;
 
+/** @type {*} */
+THREE.WebGLRenderer.prototype.outputEncoding;
+
 /**
  * @param {number} value
  * @return {void}
@@ -230,6 +233,9 @@ THREE.Texture.prototype.repeat;
 THREE.Texture.prototype.offset;
 
 /** @type {*} */
+THREE.Texture.prototype.encoding;
+
+/** @type {*} */
 THREE.Texture.prototype.minFilter;
 
 /** @type {*} */
@@ -285,3 +291,6 @@ THREE.DoubleSide;
 
 /** @const {*} */
 THREE.LinearFilter;
+
+/** @const {*} */
+THREE.sRGBEncoding;
