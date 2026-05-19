@@ -41,6 +41,9 @@ THREE.PerspectiveCamera = function(fov, aspect, near, far) {};
 /** @type {!Object} */
 THREE.PerspectiveCamera.prototype.position;
 
+/** @type {!THREE.Vector3} */
+THREE.PerspectiveCamera.prototype.up;
+
 /** @type {number} */
 THREE.PerspectiveCamera.prototype.aspect;
 
@@ -94,6 +97,72 @@ THREE.WebGLRenderer.prototype.render = function(scene, camera) {};
 
 /** @return {void} */
 THREE.WebGLRenderer.prototype.dispose = function() {};
+
+/**
+ * @constructor
+ * @param {!THREE.PerspectiveCamera} camera
+ * @param {!Element} domElement
+ */
+THREE.OrbitControls = function(camera, domElement) {};
+
+/** @type {!THREE.Vector3} */
+THREE.OrbitControls.prototype.target;
+
+/** @type {boolean} */
+THREE.OrbitControls.prototype.enableDamping;
+
+/** @type {boolean} */
+THREE.OrbitControls.prototype.enablePan;
+
+/** @type {boolean} */
+THREE.OrbitControls.prototype.enableRotate;
+
+/** @type {boolean} */
+THREE.OrbitControls.prototype.enableZoom;
+
+/** @type {number} */
+THREE.OrbitControls.prototype.minDistance;
+
+/** @type {number} */
+THREE.OrbitControls.prototype.maxDistance;
+
+/** @type {number} */
+THREE.OrbitControls.prototype.minPolarAngle;
+
+/** @type {number} */
+THREE.OrbitControls.prototype.maxPolarAngle;
+
+/** @type {number} */
+THREE.OrbitControls.prototype.zoomSpeed;
+
+/** @type {number} */
+THREE.OrbitControls.prototype.rotateSpeed;
+
+/**
+ * @param {string} type
+ * @param {function(*):void} listener
+ * @return {void}
+ */
+THREE.OrbitControls.prototype.addEventListener = function(type, listener) {};
+
+/**
+ * @param {string} type
+ * @param {function(*):void} listener
+ * @return {void}
+ */
+THREE.OrbitControls.prototype.removeEventListener = function(type, listener) {};
+
+/** @return {boolean} */
+THREE.OrbitControls.prototype.update = function() {};
+
+/** @return {void} */
+THREE.OrbitControls.prototype.saveState = function() {};
+
+/** @return {void} */
+THREE.OrbitControls.prototype.reset = function() {};
+
+/** @return {void} */
+THREE.OrbitControls.prototype.dispose = function() {};
 
 /**
  * @constructor

@@ -61,6 +61,10 @@
 (defn three-revision []
   (some-> (three-runtime) (.-REVISION)))
 
+(defn orbit-controls-runtime []
+  (when-let [three (three-runtime)]
+    (.-OrbitControls three)))
+
 (def card-short 1)
 (def card-long 1.5)
 (def card-gap 0.14)
@@ -91,11 +95,15 @@
   texture)
 
 (defn- dispose-three-board! [this]
-  (let [{:keys [renderer resize-listener active? geometries materials textures]} (r/state this)]
+  (let [{:keys [renderer resize-listener controls control-change-listener active? geometries materials textures]} (r/state this)]
     (when active?
       (reset! active? false))
     (when resize-listener
       (.removeEventListener js/window "resize" resize-listener))
+    (when (and controls control-change-listener)
+      (.removeEventListener controls "change" control-change-listener))
+    (when controls
+      (.dispose controls))
     (doseq [texture textures]
       (.dispose texture))
     (doseq [material materials]
@@ -154,10 +162,15 @@
                              (render!))))]
       (swap! textures conj texture))))
 
+(defn- reset-three-board-view! [this]
+  (when-let [controls (:controls (r/state this))]
+    (.reset controls)
+    (.update controls)))
+
 (defn- mount-three-board! [this]
   (dispose-three-board! this)
   (rf/dispatch-sync [::clear-three-texture-errors])
-  (when (three-runtime)
+  (when (and (three-runtime) (orbit-controls-runtime))
     (let [[_ cells] (r/argv this)
           mount-node (.-boardMountNode ^js this)]
       (when mount-node
@@ -173,7 +186,8 @@
           (.setClearColor renderer 0x0e2622 1)
           (set! (.. renderer -domElement -className) "board-three__canvas")
           (.appendChild mount-node (.-domElement renderer))
-          (.set (.-position camera) 0 -4.4 5.8)
+          (.set (.-up camera) 0 0 1)
+          (.set (.-position camera) 0 -4.8 5.9)
           (.lookAt camera 0 0 0)
           (letfn [(render! []
                     (when @active?
@@ -187,17 +201,35 @@
                         (set! (.-aspect camera) (/ width height))
                         (.updateProjectionMatrix camera)
                         (render!))))]
-            (add-table-plane! scene geometries materials)
-            (doseq [cell cells]
-              (add-card-plane! scene loader render! active? geometries materials textures cell))
-            (.addEventListener js/window "resize" resize!)
-            (resize!)
-            (r/replace-state this {:renderer renderer
-                                   :resize-listener resize!
-                                   :active? active?
-                                   :geometries @geometries
-                                   :materials @materials
-                                   :textures @textures})))))))
+            (let [controls (js/THREE.OrbitControls. camera (.-domElement renderer))
+                  control-change-listener (fn [_] (render!))]
+              (.set (.-target controls) 0 0 0)
+              (set! (.-enableDamping controls) false)
+              (set! (.-enablePan controls) false)
+              (set! (.-enableRotate controls) true)
+              (set! (.-enableZoom controls) true)
+              (set! (.-minDistance controls) 5.2)
+              (set! (.-maxDistance controls) 10)
+              (set! (.-minPolarAngle controls) 0.28)
+              (set! (.-maxPolarAngle controls) 1.34)
+              (set! (.-zoomSpeed controls) 0.78)
+              (set! (.-rotateSpeed controls) 0.62)
+              (.update controls)
+              (.saveState controls)
+              (.addEventListener controls "change" control-change-listener)
+              (add-table-plane! scene geometries materials)
+              (doseq [cell cells]
+                (add-card-plane! scene loader render! active? geometries materials textures cell))
+              (.addEventListener js/window "resize" resize!)
+              (resize!)
+              (r/replace-state this {:renderer renderer
+                                     :resize-listener resize!
+                                     :controls controls
+                                     :control-change-listener control-change-listener
+                                     :active? active?
+                                     :geometries @geometries
+                                     :materials @materials
+                                     :textures @textures}))))))))
 
 (def three-board-scene
   (r/create-class
@@ -219,6 +251,10 @@
          [:div.board-three__mount
           {:aria-hidden "true"
            :ref #(set! (.-boardMountNode ^js component) %)}]
+         [:button.board-three__reset
+          {:type "button"
+           :on-click #(reset-three-board-view! component)}
+          "Reset view"]
          (when (seq texture-errors)
            [:p.board-3d-status.is-error
             (str "Texture load failed for "
@@ -247,11 +283,13 @@
         texture-errors @(rf/subscribe [::three-texture-errors])]
     [:section.board-area
      {:data-three-revision (or (three-revision) "unavailable")}
-     (if (three-runtime)
+     (if (and (three-runtime) (orbit-controls-runtime))
        [three-board-scene cells texture-errors]
        [:div.board-fallback
         [:p.board-3d-status.is-error
-         "Three.js is unavailable; check the pinned CDN script before /js/main.js."]
+         (if (three-runtime)
+           "Three.js OrbitControls are unavailable; check the pinned CDN control script before /js/main.js."
+           "Three.js is unavailable; check the pinned CDN script before /js/main.js.")]
         [:div.board-stage
          {:role "group"
           :aria-label "Gnostica board"}

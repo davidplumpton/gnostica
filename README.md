@@ -12,6 +12,8 @@ clojure -M:dev
 
 The shadow-cljs dev server serves the app at `http://localhost:8080/index.html`. Node.js is still required by shadow-cljs for browser builds, but the default workflow does not use npm.
 
+The browser runtime loads Three.js and OrbitControls from pinned `three@0.128.0` CDN scripts before the compiled ClojureScript bundle.
+
 ## Commands
 
 ```sh

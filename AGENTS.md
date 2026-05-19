@@ -17,9 +17,9 @@ The shadow-cljs dev server serves the app at `http://localhost:8080/index.html`.
 
 ## Browser JavaScript Globals
 
-`src/main/resources/index.html` loads Three.js from the pinned CDN URL `https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js` before `/js/main.js`. This keeps the default workflow npm-free while exposing the browser global `THREE` to ClojureScript.
+`src/main/resources/index.html` loads Three.js and OrbitControls from pinned `three@0.128.0` CDN URLs before `/js/main.js`. This keeps the default workflow npm-free while exposing the browser globals `THREE` and `THREE.OrbitControls` to ClojureScript.
 
-`src/main/externs/three.ext.js` declares the current `THREE` global for advanced compilation. If future work adds OrbitControls, keep it on the same `three@0.128.0` release line and use a CDN script compatible with the global build.
+`src/main/externs/three.ext.js` declares the current `THREE` global, OrbitControls, and the Three.js APIs used by the app for advanced compilation. Keep any future Three.js add-ons on the same `three@0.128.0` release line and use CDN scripts compatible with the global build.
 
 ## Issue Tracking: br (beads_rust)
 
