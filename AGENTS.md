@@ -21,6 +21,12 @@ The shadow-cljs dev server serves the app at `http://localhost:8080/index.html`.
 
 `src/main/externs/three.ext.js` declares the current `THREE` global, OrbitControls, and the Three.js APIs used by the app for advanced compilation. Keep any future Three.js add-ons on the same `three@0.128.0` release line and use CDN scripts compatible with the global build.
 
+## 3D Board Verification
+
+The primary board renderer is `gnostica.app/three-board-scene` in `src/main/gnostica/app.cljs`. It mounts a Three.js renderer into Reagent lifecycle hooks, creates textured card planes from the shared board cells, applies alternating portrait/landscape rotation, leaves small gaps between territories, wires `OrbitControls`, and raycasts pointer releases to dispatch `::select-board-card`.
+
+For the 3D board docs/verification ticket, run both `clojure -M:test` and `clojure -M:release`. If browser automation is available, smoke the released app at desktop and mobile viewport widths and record whether the canvas is nonblank, nine cards are visible, orientation alternates, gaps are present, camera orbit/zoom/reset works, and 3D card selection updates the territory panel.
+
 ## Issue Tracking: br (beads_rust)
 
 **Note:** `br` is non-invasive and never executes git commands. After `br sync --flush-only`, manually commit `.beads/` changes with Jujutsu.
