@@ -24,7 +24,9 @@ If either CDN global is missing, or if the browser cannot create a WebGL rendere
 
 ## Shared Game State
 
-The authoritative gameplay state contract starts in `gnostica.game-state`. It is a shared `.cljc` namespace with no browser dependencies, so it can be used from `clojure.test`, future Cucumber steps, and re-frame events. `create-game` accepts explicit player specs plus either an injected `:deck-order` or deterministic `:shuffle-fn`, enforces two to six players, reuses `gnostica.board` for the nine-card territory grid, and models phase, players, turn order, pieces/stashes, draw pile, discard pile, setup/bid metadata, and compact history events.
+The authoritative gameplay state contract starts in `gnostica.game-state`. It is a shared `.cljc` namespace with no browser dependencies, so it can be used from `clojure.test`, future Cucumber steps, and re-frame events. `create-game` accepts explicit player specs plus either an injected `:deck-order` or deterministic `:shuffle-fn`, enforces two to six known players, reuses `gnostica.board` for the nine-card territory grid, and models phase, players, turn order, pieces/stashes, draw pile, discard pile, setup/bid metadata, and compact history events.
+
+Player ids must reference the six metadata-backed entries in `gnostica.pieces/players` so every legal setup has a display name, Three.js color, and CSS color. Injected decks are validated before board setup: cards must be ordered maps with unique string `:id` values plus nonblank `:title` and `:image` fields needed by rendering and territory details.
 
 The browser app initializes through `gnostica.app-state/initialize`, which stores the `create-game` result under app-db `:game`. Board, piece, selected-territory, and current-player subscriptions read through that shared game value instead of maintaining a second top-level board or piece setup path. The visible demo pieces are kept in the game state's `[:pieces :on-board]` slot so renderer smoke checks still exercise piece layout.
 

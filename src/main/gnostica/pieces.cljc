@@ -30,7 +30,15 @@
    {:id :teal
     :name "Teal"
     :color 0x2fc3b0
-    :css-color "#2fc3b0"}])
+    :css-color "#2fc3b0"}
+   {:id :violet
+    :name "Violet"
+    :color 0x9b5de5
+    :css-color "#9b5de5"}
+   {:id :slate
+    :name "Slate"
+    :color 0x6b7280
+    :css-color "#6b7280"}])
 
 (def players-by-id
   (into {} (map (juxt :id identity) players)))
