@@ -1,9 +1,11 @@
 (ns gnostica.test-runner
   (:require [clojure.test :refer [run-tests]]
             [gnostica.board-test]
-            [gnostica.cards-test]))
+            [gnostica.cards-test]
+            [gnostica.pieces-test]))
 
 (defn -main [& _]
   (let [{:keys [fail error]} (run-tests 'gnostica.cards-test
-                                        'gnostica.board-test)]
+                                        'gnostica.board-test
+                                        'gnostica.pieces-test)]
     (System/exit (if (zero? (+ fail error)) 0 1))))

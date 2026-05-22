@@ -186,6 +186,23 @@ THREE.OrbitControls.prototype.dispose = function() {};
 
 /**
  * @constructor
+ * @param {number} color
+ * @param {number=} intensity
+ */
+THREE.AmbientLight = function(color, intensity) {};
+
+/**
+ * @constructor
+ * @param {number} color
+ * @param {number=} intensity
+ */
+THREE.DirectionalLight = function(color, intensity) {};
+
+/** @type {!THREE.Vector3} */
+THREE.DirectionalLight.prototype.position;
+
+/**
+ * @constructor
  * @param {number} width
  * @param {number} height
  */
@@ -193,6 +210,17 @@ THREE.PlaneGeometry = function(width, height) {};
 
 /** @return {void} */
 THREE.PlaneGeometry.prototype.dispose = function() {};
+
+/**
+ * @constructor
+ * @param {number} radius
+ * @param {number} height
+ * @param {number=} radialSegments
+ */
+THREE.ConeGeometry = function(radius, height, radialSegments) {};
+
+/** @return {void} */
+THREE.ConeGeometry.prototype.dispose = function() {};
 
 /**
  * @constructor
@@ -214,8 +242,20 @@ THREE.MeshBasicMaterial.prototype.dispose = function() {};
 
 /**
  * @constructor
- * @param {!THREE.PlaneGeometry} geometry
- * @param {!THREE.MeshBasicMaterial} material
+ * @param {!Object=} parameters
+ */
+THREE.MeshLambertMaterial = function(parameters) {};
+
+/** @type {!THREE.Color} */
+THREE.MeshLambertMaterial.prototype.color;
+
+/** @return {void} */
+THREE.MeshLambertMaterial.prototype.dispose = function() {};
+
+/**
+ * @constructor
+ * @param {!Object} geometry
+ * @param {!Object} material
  */
 THREE.Mesh = function(geometry, material) {};
 
@@ -296,6 +336,9 @@ THREE.Vector3.prototype.set = function(x, y, z) {};
 
 /** @constructor */
 THREE.Euler = function() {};
+
+/** @type {number} */
+THREE.Euler.prototype.x;
 
 /** @type {number} */
 THREE.Euler.prototype.z;

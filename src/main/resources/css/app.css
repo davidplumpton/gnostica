@@ -272,6 +272,7 @@ img {
   position: absolute;
   top: 50%;
   left: 50%;
+  z-index: 0;
   width: 100%;
   height: 100%;
   max-width: none;
@@ -284,6 +285,87 @@ img {
   width: var(--card-short);
   height: var(--card-long);
   transform: translate(-50%, -50%) rotate(90deg);
+}
+
+.board-card__pieces {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.board-piece {
+  --piece-footprint: 1.35rem;
+  position: absolute;
+  display: block;
+  width: var(--piece-footprint);
+  height: var(--piece-footprint);
+  filter: drop-shadow(0 0.12rem 0.18rem rgba(0, 0, 0, 0.42));
+}
+
+.board-piece.is-medium {
+  --piece-footprint: 1.65rem;
+}
+
+.board-piece.is-large {
+  --piece-footprint: 1.95rem;
+}
+
+.board-piece.is-slot-0 {
+  left: 24%;
+  top: 64%;
+}
+
+.board-piece.is-slot-1 {
+  left: 76%;
+  top: 64%;
+}
+
+.board-piece.is-slot-2 {
+  left: 50%;
+  top: 32%;
+}
+
+.board-piece__body {
+  position: absolute;
+  inset: 0;
+  border: 1px solid rgba(255, 250, 240, 0.78);
+  background: var(--piece-color);
+  clip-path: polygon(50% 0, 100% 100%, 0 100%);
+}
+
+.board-piece.is-up .board-piece__body {
+  clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%);
+}
+
+.board-piece.is-east .board-piece__body {
+  transform: rotate(90deg);
+}
+
+.board-piece.is-south .board-piece__body {
+  transform: rotate(180deg);
+}
+
+.board-piece.is-west .board-piece__body {
+  transform: rotate(270deg);
+}
+
+.board-piece__pips {
+  position: absolute;
+  right: 0.18rem;
+  bottom: 0.18rem;
+  left: 0.18rem;
+  display: flex;
+  justify-content: center;
+  gap: 0.1rem;
+}
+
+.board-piece__pip {
+  width: 0.22rem;
+  height: 0.22rem;
+  border-radius: 50%;
+  background: rgba(255, 250, 240, 0.92);
+  box-shadow: 0 0 0 1px rgba(38, 49, 47, 0.48);
 }
 
 .territory-panel {
@@ -344,6 +426,30 @@ h1 {
   margin: 0;
   color: var(--ink);
   overflow-wrap: anywhere;
+}
+
+.territory-pieces {
+  display: grid;
+  gap: 0.35rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.territory-pieces li {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-width: 0;
+}
+
+.territory-piece-swatch {
+  flex: 0 0 auto;
+  width: 0.8rem;
+  height: 0.8rem;
+  border: 1px solid rgba(255, 250, 240, 0.74);
+  border-radius: 50%;
+  background: var(--piece-color);
 }
 
 @media (max-width: 820px) {
