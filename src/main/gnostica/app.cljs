@@ -1,6 +1,5 @@
 (ns gnostica.app
-  (:require [gnostica.board :as board]
-            [gnostica.cards :as cards]
+  (:require [gnostica.app-state :as app-state]
             [gnostica.pieces :as pieces]
             [re-frame.core :as rf]
             [reagent.core :as r]
@@ -8,15 +7,13 @@
 
 (rf/reg-event-db
  ::initialize
- (fn [_ _]
-   {:board (board/initial-board cards/deck)
-    :pieces pieces/initial-pieces
-    :selected-board-index 0}))
+ (fn [_ [_ opts]]
+   (app-state/initialize opts)))
 
 (rf/reg-event-db
  ::select-board-card
  (fn [db [_ index]]
-   (assoc db :selected-board-index index)))
+   (app-state/select-board-card db index)))
 
 (rf/reg-event-db
  ::clear-three-texture-errors
@@ -34,19 +31,34 @@
    (assoc db :three-renderer-error message)))
 
 (rf/reg-sub
+ ::game
+ (fn [db _]
+   (app-state/game db)))
+
+(rf/reg-sub
+ ::setup-error
+ (fn [db _]
+   (app-state/setup-error db)))
+
+(rf/reg-sub
  ::board
  (fn [db _]
-   (:board db)))
+   (app-state/board db)))
 
 (rf/reg-sub
  ::pieces
  (fn [db _]
-   (:pieces db)))
+   (app-state/board-pieces db)))
 
 (rf/reg-sub
  ::selected-board-index
  (fn [db _]
-   (:selected-board-index db)))
+   (app-state/selected-board-index db)))
+
+(rf/reg-sub
+ ::current-player
+ (fn [db _]
+   (app-state/current-player db)))
 
 (rf/reg-sub
  ::three-texture-errors
@@ -60,17 +72,13 @@
 
 (rf/reg-sub
  ::selected-board-cell
- :<- [::board]
- :<- [::selected-board-index]
- (fn [[board selected-index] _]
-   (get board selected-index)))
+ (fn [db _]
+   (app-state/selected-board-cell db)))
 
 (rf/reg-sub
  ::selected-board-pieces
- :<- [::pieces]
- :<- [::selected-board-index]
- (fn [[pieces selected-index] _]
-   (pieces/pieces-for-space pieces selected-index)))
+ (fn [db _]
+   (app-state/selected-board-pieces db)))
 
 (defn orientation-label [orientation]
   (case orientation
@@ -612,15 +620,36 @@
                 [:span (piece-summary piece)]]))]
           "None")]]]]))
 
+(defn app-header []
+  (let [current-player @(rf/subscribe [::current-player])]
+    [:header.app-header
+     [:div.brand
+      [:span.brand__mark "G"]
+      [:span.brand__name "Gnostica"]]
+     (when current-player
+       [:div.app-status
+        [:span "Current player"]
+        [:strong (:name current-player)]])]))
+
+(defn setup-error-panel [error]
+  [:main.app-shell.is-setup-error
+   [:section.setup-error
+    {:role "alert"}
+    [:p.eyebrow "Setup error"]
+    [:h1 "Game setup failed"]
+    [:p.setup-error__message (:message error)]
+    (when (seq (:data error))
+      [:pre.setup-error__data (pr-str (:data error))])]])
+
 (defn app []
-  [:<>
-   [:header.app-header
-    [:div.brand
-     [:span.brand__mark "G"]
-     [:span.brand__name "Gnostica"]]]
-   [:main.app-shell
-    [board-stage]
-    [territory-panel]]])
+  (let [setup-error @(rf/subscribe [::setup-error])]
+    [:<>
+     [app-header]
+     (if setup-error
+       [setup-error-panel setup-error]
+       [:main.app-shell
+        [board-stage]
+        [territory-panel]])]))
 
 (defn mount! []
   (rdom/render [app] (.getElementById js/document "app")))
