@@ -1,5 +1,6 @@
 (ns gnostica.cards-test
-  (:require [clojure.string :as str]
+  (:require [clojure.java.io :as io]
+            [clojure.string :as str]
             [clojure.test :refer [deftest is run-tests]]
             [gnostica.cards :as cards]))
 
@@ -9,6 +10,12 @@
   (is (every? :id cards/deck))
   (is (every? :title cards/deck))
   (is (every? #(str/starts-with? (:image %) "/images/") cards/deck)))
+
+(deftest deck-image-files-match-resources
+  (is (= 78 (count cards/image-files)))
+  (is (= (count cards/image-files)
+         (count (set cards/image-files))))
+  (is (empty? (remove #(io/resource (str "images/" %)) cards/image-files))))
 
 (deftest known-cards-are-labelled
   (is (= "The High Priestess" (:title (cards/card-by-id "high-priestess"))))

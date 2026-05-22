@@ -11,14 +11,13 @@
    "coins7.png"
    "coins8.png"
    "coins9.png"
+   "coins10.png"
    "coinsace.png"
    "coinsking.png"
    "coinsknight.png"
    "coinspage.png"
    "coinsqueen.png"
-   "cups1.png"
    "cups10.png"
-   "cups11.png"
    "cups2.png"
    "cups3.png"
    "cups4.png"
@@ -57,6 +56,7 @@
    "swords7.png"
    "swords8.png"
    "swords9.png"
+   "swords10.png"
    "swordsace.png"
    "swordsking.png"
    "swordsknight.png"
@@ -72,6 +72,7 @@
    "wands7.png"
    "wands8.png"
    "wands9.png"
+   "wands10.png"
    "wandsace.png"
    "wandsking.png"
    "wandsknight.png"
@@ -170,4 +171,3 @@
 
 (defn card-by-id [id]
   (get cards-by-id id))
-
