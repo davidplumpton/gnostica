@@ -96,6 +96,8 @@
 (def pointer-click-threshold 8)
 (def board-index-user-data-key "gnosticaBoardIndex")
 (def piece-surface-z 0.07)
+;; Cardinal pyramids lie on one triangular side face rather than balancing on an edge.
+(def piece-side-face-roll (/ js/Math.PI 4))
 (def card-step
   (+ (/ (+ card-short card-long) 2) card-gap))
 
@@ -114,13 +116,42 @@
        slot
        [0 0]))
 
-(defn- set-piece-rotation! [mesh orientation]
+(defn- piece-compass-z-rotation [orientation]
   (case orientation
-    :up (set! (.. mesh -rotation -x) (/ js/Math.PI 2))
-    :east (set! (.. mesh -rotation -z) (- (/ js/Math.PI 2)))
-    :south (set! (.. mesh -rotation -z) js/Math.PI)
-    :west (set! (.. mesh -rotation -z) (/ js/Math.PI 2))
-    nil)
+    :north 0
+    :east (- (/ js/Math.PI 2))
+    :south js/Math.PI
+    :west (/ js/Math.PI 2)
+    nil))
+
+(defn- piece-tilt-axis [orientation]
+  (let [axis (js/THREE.Vector3.)]
+    (case orientation
+      :north (.set axis -1 0 0)
+      :east (.set axis 0 1 0)
+      :south (.set axis 1 0 0)
+      :west (.set axis 0 -1 0)
+      nil)
+    axis))
+
+(defn- piece-center-z [piece-size orientation]
+  (+ piece-surface-z
+     (if (= :up orientation)
+       (/ (:height piece-size) 2)
+       (pieces/lying-center-height-above-surface piece-size))))
+
+(defn- set-piece-rotation! [mesh orientation piece-size]
+  (cond
+    (= :up orientation)
+    (set! (.. mesh -rotation -x) (/ js/Math.PI 2))
+
+    (contains? pieces/cardinal-orientations orientation)
+    (do
+      (.rotateZ mesh (piece-compass-z-rotation orientation))
+      (.rotateY mesh piece-side-face-roll)
+      (.rotateOnWorldAxis mesh
+                          (piece-tilt-axis orientation)
+                          (pieces/lying-correction-angle piece-size))))
   mesh)
 
 (defn- texture-cover! [texture]
@@ -217,7 +248,8 @@
 (defn- add-piece-mesh!
   [scene geometries materials cells slot piece-count piece]
   (when-let [cell (get cells (:space-index piece))]
-    (let [{:keys [radius height]} (pieces/size-data piece)
+    (let [piece-size (pieces/size-data piece)
+          {:keys [radius height]} piece-size
           player (pieces/player-for piece)
           geometry (js/THREE.ConeGeometry. radius height 4)
           material (js/THREE.MeshLambertMaterial.
@@ -225,11 +257,9 @@
           mesh (js/THREE.Mesh. geometry material)
           [card-x card-y] (card-position cell)
           [offset-x offset-y] (piece-slot-offset slot piece-count)
-          z (if (= :up (:orientation piece))
-              (+ piece-surface-z (/ height 2))
-              (+ piece-surface-z radius))]
+          z (piece-center-z piece-size (:orientation piece))]
       (.set (.-position mesh) (+ card-x offset-x) (+ card-y offset-y) z)
-      (set-piece-rotation! mesh (:orientation piece))
+      (set-piece-rotation! mesh (:orientation piece) piece-size)
       (.add scene mesh)
       (swap! geometries conj geometry)
       (swap! materials conj material))))

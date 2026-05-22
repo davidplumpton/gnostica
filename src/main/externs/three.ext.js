@@ -271,6 +271,25 @@ THREE.Mesh.prototype.userData;
 /** @type {boolean} */
 THREE.Mesh.prototype.visible;
 
+/**
+ * @param {number} angle
+ * @return {!THREE.Mesh}
+ */
+THREE.Mesh.prototype.rotateY = function(angle) {};
+
+/**
+ * @param {number} angle
+ * @return {!THREE.Mesh}
+ */
+THREE.Mesh.prototype.rotateZ = function(angle) {};
+
+/**
+ * @param {!THREE.Vector3} axis
+ * @param {number} angle
+ * @return {!THREE.Mesh}
+ */
+THREE.Mesh.prototype.rotateOnWorldAxis = function(axis, angle) {};
+
 /** @constructor */
 THREE.TextureLoader = function() {};
 
@@ -339,6 +358,9 @@ THREE.Euler = function() {};
 
 /** @type {number} */
 THREE.Euler.prototype.x;
+
+/** @type {number} */
+THREE.Euler.prototype.y;
 
 /** @type {number} */
 THREE.Euler.prototype.z;

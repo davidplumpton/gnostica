@@ -2,6 +2,18 @@
 
 (def max-pieces-per-space 3)
 
+(def ^:private sqrt-two
+  #?(:clj (Math/sqrt 2)
+     :cljs (js/Math.sqrt 2)))
+
+(defn- atan [value]
+  #?(:clj (Math/atan value)
+     :cljs (js/Math.atan value)))
+
+(defn- sin [value]
+  #?(:clj (Math/sin value)
+     :cljs (js/Math.sin value)))
+
 (def players
   [{:id :rose
     :name "Rose"
@@ -37,7 +49,9 @@
            :radius 0.165
            :height 0.58}})
 
-(def legal-orientations #{:up :north :east :south :west})
+(def cardinal-orientations #{:north :east :south :west})
+
+(def legal-orientations (conj cardinal-orientations :up))
 
 (def initial-pieces
   [{:id :rose-scout
@@ -71,6 +85,16 @@
 
 (defn size-data [piece]
   (get piece-sizes (:size piece)))
+
+(defn side-face-apothem [piece-size]
+  (/ (:radius piece-size) sqrt-two))
+
+(defn lying-correction-angle [piece-size]
+  (atan (/ (side-face-apothem piece-size) (:height piece-size))))
+
+(defn lying-center-height-above-surface [piece-size]
+  (* (/ (:height piece-size) 2)
+     (sin (lying-correction-angle piece-size))))
 
 (defn pips [piece]
   (:pips (size-data piece)))
