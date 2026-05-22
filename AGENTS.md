@@ -15,6 +15,10 @@ clojure -M:test      # run Clojure tests for shared code
 
 The shadow-cljs dev server serves the app at `http://localhost:8080/index.html`. The default workflow does not use npm.
 
+## Shared Game State
+
+`src/main/gnostica/game_state.cljc` defines the browser-free gameplay state contract. Use `gnostica.game-state/create-game` when tests, Cucumber steps, or re-frame events need an authoritative state value with deterministic deck setup and explicit success/error results. It enforces two to six players, reuses `gnostica.board` for territory setup, and stores phase, players, turn order, pieces/stashes, draw/discard piles, setup/bid metadata, and history events.
+
 ## Browser JavaScript Globals
 
 `src/main/resources/index.html` loads Three.js and OrbitControls from pinned `three@0.128.0` CDN URLs before `/js/main.js`. This keeps the default workflow npm-free while exposing the browser globals `THREE` and `THREE.OrbitControls` to ClojureScript.
