@@ -1,5 +1,7 @@
 (ns gnostica.app-state
-  (:require [gnostica.game-state :as game-state]
+  (:require [gnostica.board-layout :as layout]
+            [gnostica.cards :as cards]
+            [gnostica.game-state :as game-state]
             [gnostica.pieces :as pieces]))
 
 (def default-player-specs
@@ -29,12 +31,12 @@
    {:id :activate-territory
     :label "Activate territory"
     :summary "Use a board card through one of your pieces."
-    :requirements [:source-board-index :piece-id :target-board-index :orientation]}
+    :requirements [:source-board-index :piece-id :target-space :target-resolution]}
    :play-hand-card
    {:id :play-hand-card
     :label "Play hand card"
     :summary "Discard a hand card and use its power through a piece."
-    :requirements [:hand-card-id :piece-id :target-board-index :orientation]}
+    :requirements [:hand-card-id :piece-id :target-space :target-resolution]}
    :draw-cards
    {:id :draw-cards
     :label "Draw cards"
@@ -56,6 +58,8 @@
    :hand-card-id "Choose a card from the current player's hand."
    :piece-id "Choose a minion."
    :target-board-index "Choose a target territory."
+   :target-space "Choose a target territory or wasteland."
+   :one-point-card-id "Choose a one-point card from the current player's hand."
    :orientation "Choose an orientation."
    :draw-count "Choose how many cards to draw."})
 
@@ -193,8 +197,56 @@
   (some #(when (= card-id (:id %)) %)
         (current-player-hand db)))
 
+(defn- cup-move-source? [source]
+  (contains? #{:activate-territory :play-hand-card} source))
+
+(defn- source-hand-card-id [source-id params]
+  (when (= :play-hand-card source-id)
+    (:hand-card-id params)))
+
+(defn- one-point-card-options-for [db source-id params]
+  (let [source-card-id (source-hand-card-id source-id params)]
+    (->> (current-player-hand db)
+         (filter #(and (cards/one-point-card? %)
+                       (not= source-card-id (:id %))))
+         vec)))
+
+(defn- one-point-card-by-id [db source-id params card-id]
+  (some #(when (= card-id (:id %)) %)
+        (one-point-card-options-for db source-id params)))
+
 (defn valid-board-index? [db index]
   (contains? (board db) index))
+
+(defn move-target-wasteland-options [db]
+  (layout/wasteland-spaces (board db)))
+
+(defn- wasteland-space-by-coordinate [db row col]
+  (some #(when (and (= row (:row %))
+                    (= col (:col %)))
+           %)
+        (move-target-wasteland-options db)))
+
+(defn- valid-wasteland-target? [db target]
+  (and (= :wasteland (:kind target))
+       (int? (:row target))
+       (int? (:col target))
+       (some? (wasteland-space-by-coordinate db (:row target) (:col target)))))
+
+(defn- target-space-complete? [db params]
+  (or (valid-board-index? db (:target-board-index params))
+      (valid-wasteland-target? db (:target-wasteland params))))
+
+(defn- target-resolution-complete? [db source-id params]
+  (cond
+    (valid-board-index? db (:target-board-index params))
+    (contains? pieces/legal-orientations (:orientation params))
+
+    (valid-wasteland-target? db (:target-wasteland params))
+    (some? (one-point-card-by-id db source-id params (:one-point-card-id params)))
+
+    :else
+    false))
 
 (defn max-draw-count [db]
   (let [hand-slots (- game-state/starting-hand-size
@@ -291,6 +343,14 @@
     :target-board-index
     (valid-board-index? db (:target-board-index params))
 
+    :target-space
+    (and (cup-move-source? source-id)
+         (target-space-complete? db params))
+
+    :target-resolution
+    (and (cup-move-source? source-id)
+         (target-resolution-complete? db source-id params))
+
     :orientation
     (contains? pieces/legal-orientations (:orientation params))
 
@@ -308,12 +368,17 @@
             requirement))
         (:requirements (get move-source-definitions source-id))))
 
-(defn- stage-for-requirement [requirement]
+(defn- stage-for-requirement [db source-id params requirement]
   (case requirement
     :source-board-index :source-territory
     :hand-card-id :hand-card
     :piece-id :piece
     :target-board-index :target
+    :target-space :target
+    :target-resolution (if (valid-wasteland-target? db (:target-wasteland params))
+                         :one-point-card
+                         :orientation)
+    :one-point-card-id :one-point-card
     :orientation :orientation
     :draw-count :draw-count
     :confirm))
@@ -325,7 +390,7 @@
              (let [missing (first-missing-requirement db source params)]
                (assoc selection
                       :stage (if missing
-                               (stage-for-requirement missing)
+                               (stage-for-requirement db source params missing)
                                :confirm)))
              (assoc selection :stage :source)))))
 
@@ -354,16 +419,16 @@
       (nil? source) "Choose a move source."
       (= :confirm stage) "Confirm the selected move."
       (= :rejected stage) "Review or cancel the rejected move."
-      :else (get requirement-prompts
-                 (some (fn [[requirement requirement-stage]]
-                         (when (= stage requirement-stage)
-                           requirement))
-                       {:source-board-index :source-territory
-                        :hand-card-id :hand-card
-                        :piece-id :piece
-                        :target-board-index :target
-                        :orientation :orientation
-                        :draw-count :draw-count})
+      (= :target stage) (if (cup-move-source? source)
+                          (:target-space requirement-prompts)
+                          (:target-board-index requirement-prompts))
+      (= :one-point-card stage) (:one-point-card-id requirement-prompts)
+      :else (get {:source-territory (:source-board-index requirement-prompts)
+                  :hand-card (:hand-card-id requirement-prompts)
+                  :piece (:piece-id requirement-prompts)
+                  :orientation (:orientation requirement-prompts)
+                  :draw-count (:draw-count requirement-prompts)}
+                 stage
                  "Complete the move selection."))))
 
 (defn select-move-source [db source-id]
@@ -403,6 +468,16 @@
       next-params
       (dissoc next-params :piece-id))))
 
+(defn- set-territory-target [params board-index]
+  (-> params
+      (assoc :target-board-index board-index)
+      (dissoc :target-wasteland :one-point-card-id)))
+
+(defn- set-wasteland-target [params space]
+  (-> params
+      (assoc :target-wasteland (select-keys space [:kind :row :col]))
+      (dissoc :target-board-index :orientation :one-point-card-id)))
+
 (defn select-board-for-active-move [db index]
   (if-not (valid-board-index? db index)
     db
@@ -414,7 +489,7 @@
               current-pieces (current-player-pieces-on-space db index)]
           (cond
             (and has-source? has-piece?)
-            (update-move-selection-success db assoc-in [:params :target-board-index] index)
+            (update-move-selection-success db update :params set-territory-target index)
 
             (seq current-pieces)
             (update-move-selection-success db update :params clear-piece-when-source-changes index)
@@ -427,7 +502,7 @@
                                                {:board-index index}))))
 
         :play-hand-card
-        (update-move-selection-success db assoc-in [:params :target-board-index] index)
+        (update-move-selection-success db update :params set-territory-target index)
 
         :place-initial-small
         (update-move-selection-success db assoc-in [:params :target-board-index] index)
@@ -438,6 +513,30 @@
   (if (contains? (board db) index)
     (select-board-for-active-move (assoc db :selected-board-index index) index)
     db))
+
+(defn select-move-wasteland-target [db row col]
+  (let [source (move-source db)
+        space (wasteland-space-by-coordinate db row col)]
+    (cond
+      (not (cup-move-source? source))
+      (update-move-selection db assoc
+                             :error
+                             (move-error :invalid-wasteland-target
+                                         "Wasteland targets are only available for Cup moves."
+                                         {:row row
+                                          :col col
+                                          :source source}))
+
+      (nil? space)
+      (update-move-selection db assoc
+                             :error
+                             (move-error :invalid-wasteland-target
+                                         "Choose an available wasteland space."
+                                         {:row row
+                                          :col col}))
+
+      :else
+      (update-move-selection-success db update :params set-wasteland-target space))))
 
 (defn select-move-piece [db piece-id]
   (let [{:keys [source params]} (move-selection db)
@@ -488,6 +587,17 @@
                                        "Choose a card from the current player's hand."
                                        {:card-id card-id}))))
 
+(defn select-move-one-point-card [db card-id]
+  (let [{:keys [source params]} (move-selection db)]
+    (if (and (cup-move-source? source)
+             (one-point-card-by-id db source params card-id))
+      (update-move-selection-success db assoc-in [:params :one-point-card-id] card-id)
+      (update-move-selection db assoc
+                             :error
+                             (move-error :invalid-one-point-card
+                                         "Choose a one-point card from the current player's hand."
+                                         {:card-id card-id})))))
+
 (defn set-move-orientation [db orientation]
   (if (contains? pieces/legal-orientations orientation)
     (update-move-selection-success db assoc-in [:params :orientation] orientation)
@@ -533,40 +643,47 @@
 (defn move-target-board-options [db]
   (board db))
 
+(defn move-one-point-card-options [db]
+  (let [{:keys [source params]} (move-selection db)]
+    (if (cup-move-source? source)
+      (one-point-card-options-for db source params)
+      [])))
+
 (defn move-orientation-options [_db]
   (mapv (fn [orientation]
           {:id orientation
            :label (pieces/orientation-label orientation)})
         [:up :north :east :south :west]))
 
+(defn- cup-target-command [params]
+  (if-let [target-wasteland (:target-wasteland params)]
+    {:target (select-keys target-wasteland [:kind :row :col])
+     :one-point-card-id (:one-point-card-id params)}
+    {:target {:kind :territory
+              :board-index (:target-board-index params)}
+     :orientation (:orientation params)}))
+
 (defn move-command [db]
   (let [{:keys [source params]} (move-selection db)]
     (when source
       (case source
         :activate-territory
-        {:player-id (current-player-id db)
-         :source {:kind :territory
-                  :board-index (:source-board-index params)
-                  :piece-id (:piece-id params)}
-         :target {:kind :territory
-                  :board-index (:target-board-index params)}
-         :orientation (:orientation params)}
+        (merge {:player-id (current-player-id db)
+                :source {:kind :territory
+                         :board-index (:source-board-index params)
+                         :piece-id (:piece-id params)}}
+               (cup-target-command params))
 
         :play-hand-card
-        {:player-id (current-player-id db)
-         :source {:kind :hand-card
-                  :card-id (:hand-card-id params)
-                  :piece-id (:piece-id params)}
-         :target {:kind :territory
-                  :board-index (:target-board-index params)}
-         :orientation (:orientation params)}
+        (merge {:player-id (current-player-id db)
+                :source {:kind :hand-card
+                         :card-id (:hand-card-id params)
+                         :piece-id (:piece-id params)}}
+               (cup-target-command params))
 
         {:source source
          :player-id (current-player-id db)
          :params params}))))
-
-(defn- cup-move-source? [source]
-  (contains? #{:activate-territory :play-hand-card} source))
 
 (defn- confirmed-move-result [db command]
   (if (cup-move-source? (move-source db))

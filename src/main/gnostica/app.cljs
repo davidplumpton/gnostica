@@ -37,6 +37,16 @@
    (app-state/select-move-hand-card db card-id)))
 
 (rf/reg-event-db
+ ::select-move-wasteland-target
+ (fn [db [_ row col]]
+   (app-state/select-move-wasteland-target db row col)))
+
+(rf/reg-event-db
+ ::select-move-one-point-card
+ (fn [db [_ card-id]]
+   (app-state/select-move-one-point-card db card-id)))
+
+(rf/reg-event-db
  ::set-move-orientation
  (fn [db [_ orientation]]
    (app-state/set-move-orientation db orientation)))
@@ -180,6 +190,16 @@
  ::move-target-board-options
  (fn [db _]
    (app-state/move-target-board-options db)))
+
+(rf/reg-sub
+ ::move-target-wasteland-options
+ (fn [db _]
+   (app-state/move-target-wasteland-options db)))
+
+(rf/reg-sub
+ ::move-one-point-card-options
+ (fn [db _]
+   (app-state/move-one-point-card-options db)))
 
 (rf/reg-sub
  ::move-orientation-options
@@ -512,6 +532,12 @@
        ", column "
        (inc col)))
 
+(defn- wasteland-label [{:keys [row col]}]
+  (str "Wasteland row "
+       (inc row)
+       ", column "
+       (inc col)))
+
 (defn- board-choice-grid [label cells selected-index]
   [:div.move-step
    [:div.move-step__header
@@ -530,6 +556,39 @@
         :on-click #(rf/dispatch [::select-board-card (:index cell)])}
        (board-cell-label cell)])]])
 
+(defn- same-wasteland? [selected-space space]
+  (and selected-space
+       (= (:row selected-space) (:row space))
+       (= (:col selected-space) (:col space))))
+
+(defn- target-choice-grid [cells wastelands selected-index selected-wasteland]
+  [:div.move-step
+   [:div.move-step__header
+    [:span "Target"]
+    [:strong
+     (if-let [selected-cell (some #(when (= selected-index (:index %)) %) cells)]
+       (:title (:card selected-cell))
+       (if selected-wasteland
+         (wasteland-label selected-wasteland)
+         "None"))]]
+   [:div.move-board-choice-grid
+    (for [cell cells]
+      ^{:key (str "territory-" (:index cell))}
+      [:button.move-chip
+       {:type "button"
+        :class (when (= selected-index (:index cell)) "is-selected")
+        :aria-pressed (= selected-index (:index cell))
+        :on-click #(rf/dispatch [::select-board-card (:index cell)])}
+       (str "Territory: " (board-cell-label cell))])
+    (for [space wastelands]
+      ^{:key (:id space)}
+      [:button.move-chip
+       {:type "button"
+        :class (when (same-wasteland? selected-wasteland space) "is-selected")
+        :aria-pressed (same-wasteland? selected-wasteland space)
+        :on-click #(rf/dispatch [::select-move-wasteland-target (:row space) (:col space)])}
+       (wasteland-label space)])]])
+
 (defn- hand-card-choices [cards selected-card-id]
   [:div.move-step
    [:div.move-step__header
@@ -546,6 +605,25 @@
         :aria-pressed (= selected-card-id (:id card))
         :on-click #(rf/dispatch [::select-move-hand-card (:id card)])}
        (:title card)])]])
+
+(defn- one-point-card-choices [cards selected-card-id]
+  [:div.move-step
+   [:div.move-step__header
+    [:span "One-point card"]
+    [:strong
+     (or (:title (some #(when (= selected-card-id (:id %)) %) cards))
+         "None")]]
+   (if (seq cards)
+     [:div.move-choice-list
+      (for [card cards]
+        ^{:key (:id card)}
+        [:button.move-chip
+         {:type "button"
+          :class (when (= selected-card-id (:id card)) "is-selected")
+          :aria-pressed (= selected-card-id (:id card))
+          :on-click #(rf/dispatch [::select-move-one-point-card (:id card)])}
+         (:title card)])]
+     [:p.move-step__empty "No one-point cards available."])])
 
 (defn- piece-choice-label [board piece]
   (let [cell (get board (:space-index piece))]
@@ -610,6 +688,8 @@
         hand-options @(rf/subscribe [::move-hand-card-options])
         source-board-options @(rf/subscribe [::move-source-board-options])
         target-board-options @(rf/subscribe [::move-target-board-options])
+        target-wasteland-options @(rf/subscribe [::move-target-wasteland-options])
+        one-point-card-options @(rf/subscribe [::move-one-point-card-options])
         orientation-options @(rf/subscribe [::move-orientation-options])
         draw-options @(rf/subscribe [::draw-count-options])]
     (case source
@@ -619,9 +699,14 @@
        (when (:source-board-index params)
          [piece-choices board piece-options (:piece-id params)])
        (when (:piece-id params)
-         [board-choice-grid "Target territory" target-board-options (:target-board-index params)])
+         [target-choice-grid target-board-options
+          target-wasteland-options
+          (:target-board-index params)
+          (:target-wasteland params)])
        (when (:target-board-index params)
-         [orientation-choices orientation-options (:orientation params)])]
+         [orientation-choices orientation-options (:orientation params)])
+       (when (:target-wasteland params)
+         [one-point-card-choices one-point-card-options (:one-point-card-id params)])]
 
       :play-hand-card
       [:<>
@@ -629,9 +714,14 @@
        (when (:hand-card-id params)
          [piece-choices board piece-options (:piece-id params)])
        (when (:piece-id params)
-         [board-choice-grid "Target territory" target-board-options (:target-board-index params)])
+         [target-choice-grid target-board-options
+          target-wasteland-options
+          (:target-board-index params)
+          (:target-wasteland params)])
        (when (:target-board-index params)
-         [orientation-choices orientation-options (:orientation params)])]
+         [orientation-choices orientation-options (:orientation params)])
+       (when (:target-wasteland params)
+         [one-point-card-choices one-point-card-options (:one-point-card-id params)])]
 
       :draw-cards
       [draw-count-choices draw-options (:draw-count params)]

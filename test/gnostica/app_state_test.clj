@@ -228,6 +228,52 @@
             :orientation :west}
            created-piece))))
 
+(deftest playing-a-cup-hand-card-can-create-a_wasteland_territory
+  (let [db (app-state/initialize {:player-specs test-player-specs
+                                  :game-options {:deck-order (deck-starting-with ["cups2" "coins2"])}
+                                  :demo-board-pieces [rose-hand-piece]})
+        source-db (app-state/select-move-source db :play-hand-card)
+        card-db (app-state/select-move-hand-card source-db "cups2")
+        piece-db (app-state/select-move-piece card-db :rose-striker)
+        wasteland-db (app-state/select-move-wasteland-target piece-db 0 3)
+        one-point-db (app-state/select-move-one-point-card wasteland-db "coins2")
+        confirmed-db (app-state/confirm-move one-point-db)
+        zones (app-state/card-zones confirmed-db)
+        created-cell (last (app-state/board confirmed-db))]
+    (is (= 12 (count (app-state/move-target-wasteland-options piece-db))))
+    (is (= :one-point-card (:stage (app-state/move-selection wasteland-db))))
+    (is (= {:hand-card-id "cups2"
+            :piece-id :rose-striker
+            :target-wasteland {:kind :wasteland
+                               :row 0
+                               :col 3}}
+           (app-state/move-params wasteland-db)))
+    (is (some #{"coins2"}
+              (mapv :id (app-state/move-one-point-card-options wasteland-db))))
+    (is (not (some #{"cups2"}
+                   (mapv :id (app-state/move-one-point-card-options wasteland-db)))))
+    (is (= {:player-id :rose
+            :source {:kind :hand-card
+                     :card-id "cups2"
+                     :piece-id :rose-striker}
+            :target {:kind :wasteland
+                     :row 0
+                     :col 3}
+            :one-point-card-id "coins2"}
+           (app-state/move-command one-point-db)))
+    (is (= :confirm (:stage (app-state/move-selection one-point-db))))
+    (is (:ok? (get-in confirmed-db [:move-selection :last-result])))
+    (is (= ["cups2"] (mapv :id (:discard-pile zones))))
+    (is (= 4 (count (:hand zones))))
+    (is (not (some #{"cups2" "coins2"} (map :id (:hand zones)))))
+    (is (= {:index 9
+            :row 0
+            :col 3
+            :orientation :landscape
+            :face :up
+            :card (cards/card-by-id "coins2")}
+           created-cell))))
+
 (deftest rejected-cup-confirmation-keeps-staged-selection
   (let [db (app-state/initialize {:player-specs test-player-specs
                                   :game-options {:shuffle-fn identity}
