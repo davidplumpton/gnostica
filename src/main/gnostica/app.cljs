@@ -143,7 +143,8 @@
         pieces-by-space (pieces/pieces-by-space board-pieces)
         selected-index @(rf/subscribe [::selected-board-index])
         texture-errors @(rf/subscribe [::three-texture-errors])
-        renderer-error @(rf/subscribe [::three-renderer-error])]
+        renderer-error @(rf/subscribe [::three-renderer-error])
+        runtime-status (three-board/runtime-status)]
     [:section.board-area
      {:data-three-revision (or (three-board/three-revision) "unavailable")}
      (if (and (three-board/available?) (not renderer-error))
@@ -158,15 +159,9 @@
          :on-texture-error #(rf/dispatch [::three-texture-error %])}]
        [:div.board-fallback
         [:p.board-3d-status.is-error
-         (cond
-           renderer-error
+         (if renderer-error
            (str "Three.js WebGL rendering is unavailable; using the CSS board. " renderer-error)
-
-           (three-board/three-runtime)
-           "Three.js OrbitControls are unavailable; check the pinned CDN control script before /js/main.js."
-
-           :else
-           "Three.js is unavailable; check the pinned CDN script before /js/main.js.")]
+           (:message runtime-status))]
         [:div.board-stage
          {:role "group"
           :aria-label "Gnostica board"}

@@ -24,9 +24,9 @@ The shadow-cljs dev server serves the app at `http://localhost:8080/index.html`.
 
 ## Browser JavaScript Globals
 
-`src/main/resources/index.html` loads Three.js and OrbitControls from pinned `three@0.128.0` CDN URLs before `/js/main.js`. This keeps the default workflow npm-free while exposing the browser globals `THREE` and `THREE.OrbitControls` to `gnostica.three-board`.
+`src/main/resources/index.html` loads Three.js and OrbitControls from pinned `three@0.128.0` CDN URLs before `/js/main.js`. The script tags carry SRI hashes and `crossorigin="anonymous"`. This keeps the default workflow npm-free while exposing the browser globals `THREE` and `THREE.OrbitControls` to `gnostica.three-board`, which only enables the 3D renderer when `THREE.REVISION` is `"128"` and OrbitControls is present.
 
-`src/main/externs/three.ext.js` declares the current `THREE` global, OrbitControls, and the Three.js APIs used by the app for advanced compilation. Keep any future Three.js add-ons on the same `three@0.128.0` release line and use CDN scripts compatible with the global build.
+`src/main/externs/three.ext.js` declares the current `THREE` global, OrbitControls, and the Three.js APIs used by the app for advanced compilation. Keep any future Three.js add-ons on the same `three@0.128.0` release line and use CDN scripts compatible with the global build. If the CDN URLs change, update the SRI hashes, the runtime revision gate in `src/main/gnostica/three_board.cljs`, and the smoke checks together.
 
 ## 3D Board Verification
 
@@ -34,7 +34,7 @@ The primary board renderer is `gnostica.three-board/scene` in `src/main/gnostica
 
 Browser-free board renderer math lives in `src/main/gnostica/board_layout.cljc`. Keep card positioning, board-index lookup, visible piece slot limits, compass rotations, and piece height math there when the behavior can be tested without WebGL.
 
-For 3D board verification, run `clojure -M:test`, `clojure -M:release`, and `clojure -M:smoke`. The smoke command starts the released Ring app unless `SMOKE_URL` points at an existing dev or release server, uses a local headless Chrome/Chromium through the DevTools protocol without npm, and accepts `SMOKE_CHROME` for a nonstandard browser path. It checks desktop and mobile viewports, r128 Three.js/OrbitControls globals, a nonblank canvas screenshot with visible board content, nine card texture loads, absence of happy-path texture/fallback status messages, reset control presence, 3D center-card selection updating the territory panel, and the CSS fallback path when the pinned CDN scripts are blocked.
+For 3D board verification, run `clojure -M:test`, `clojure -M:release`, and `clojure -M:smoke`. The smoke command starts the released Ring app unless `SMOKE_URL` points at an existing dev or release server, uses a local headless Chrome/Chromium through the DevTools protocol without npm, and accepts `SMOKE_CHROME` for a nonstandard browser path. It checks desktop and mobile viewports, r128 Three.js/OrbitControls globals, a nonblank canvas screenshot with visible board content, nine card texture loads, absence of happy-path texture/fallback status messages, reset control presence, 3D center-card selection updating the territory panel, and both CSS fallback paths: blocked pinned CDN scripts and an injected mismatched Three.js revision.
 
 ## Issue Tracking: br (beads_rust)
 

@@ -271,20 +271,27 @@
               (Thread/sleep 250)
               (recur last-value error))))))))
 
-(defn- prepare-page! [client {:keys [width height mobile]} blocked-urls]
-  (cdp-command! client "Page.enable")
-  (cdp-command! client "Runtime.enable")
-  (cdp-command! client "Log.enable")
-  (cdp-command! client "Network.enable")
-  (cdp-command! client "Network.setCacheDisabled" {"cacheDisabled" (boolean (seq blocked-urls))})
-  (when (seq blocked-urls)
-    (cdp-command! client "Network.setBlockedURLs" {"urls" blocked-urls}))
-  (cdp-command! client
-                "Emulation.setDeviceMetricsOverride"
-                {"width" width
-                 "height" height
-                 "deviceScaleFactor" 1
-                 "mobile" (boolean mobile)}))
+(defn- prepare-page!
+  ([client viewport blocked-urls]
+   (prepare-page! client viewport blocked-urls nil))
+  ([client {:keys [width height mobile]} blocked-urls init-script]
+   (cdp-command! client "Page.enable")
+   (cdp-command! client "Runtime.enable")
+   (cdp-command! client "Log.enable")
+   (cdp-command! client "Network.enable")
+   (cdp-command! client "Network.setCacheDisabled" {"cacheDisabled" (boolean (seq blocked-urls))})
+   (when (seq blocked-urls)
+     (cdp-command! client "Network.setBlockedURLs" {"urls" blocked-urls}))
+   (when init-script
+     (cdp-command! client
+                   "Page.addScriptToEvaluateOnNewDocument"
+                   {"source" init-script}))
+   (cdp-command! client
+                 "Emulation.setDeviceMetricsOverride"
+                 {"width" width
+                  "height" height
+                  "deviceScaleFactor" 1
+                  "mobile" (boolean mobile)})))
 
 (def app-ready-js
   "Boolean(document.querySelector('.app-shell') || document.querySelector('.setup-error'))")
@@ -356,6 +363,9 @@
      };
    })()")
 
+(def mismatched-three-js
+  "window.THREE = {REVISION: '999', OrbitControls: function OrbitControls() {}};")
+
 (defn- pixel-ok? [stats]
   (and (true? (get stats "ok"))
        (>= (long (or (get stats "sampledPixels") 0)) 100)
@@ -380,6 +390,14 @@
        (false? (get stats "canvas"))
        (= 9 (get stats "cssCards"))
        (str/includes? (or (get stats "statusText") "") "Three.js is unavailable")))
+
+(defn- mismatch-ready? [stats]
+  (and (= "999" (get stats "threeRevision"))
+       (true? (get stats "orbitControls"))
+       (true? (get stats "fallback"))
+       (false? (get stats "canvas"))
+       (= 9 (get stats "cssCards"))
+       (str/includes? (or (get stats "statusText") "") "revision 999 is incompatible")))
 
 (defn- browser-diagnostics [client]
   (->> @(:events client)
@@ -423,13 +441,16 @@
          "sampledPixels" @sampled
          "distinctColors" (count (persistent! @colors))}))))
 
-(defn- open-page! [http-client chrome viewport url blocked-urls]
-  (let [websocket-url (new-page-websocket! http-client (:port chrome))
-        client (connect-cdp! http-client websocket-url)]
-    (prepare-page! client viewport blocked-urls)
-    (cdp-command! client "Page.navigate" {"url" url})
-    (wait-for! client "the Gnostica app shell" app-ready-js true?)
-    client))
+(defn- open-page!
+  ([http-client chrome viewport url blocked-urls]
+   (open-page! http-client chrome viewport url blocked-urls nil))
+  ([http-client chrome viewport url blocked-urls init-script]
+   (let [websocket-url (new-page-websocket! http-client (:port chrome))
+         client (connect-cdp! http-client websocket-url)]
+     (prepare-page! client viewport blocked-urls init-script)
+     (cdp-command! client "Page.navigate" {"url" url})
+     (wait-for! client "the Gnostica app shell" app-ready-js true?)
+     client)))
 
 (defn- dispatch-click! [client {:strs [x y]}]
   (doseq [event-type ["mouseMoved" "mousePressed" "mouseReleased"]]
@@ -512,6 +533,29 @@
       (finally
         (close-cdp! client)))))
 
+(defn- run-mismatched-three-fallback! [http-client chrome url]
+  (println "Smoke checking mismatched-Three.js fallback path.")
+  (let [client (open-page! http-client
+                           chrome
+                           (first viewports)
+                           url
+                           ["*cdn.jsdelivr.net/npm/three@0.128.0*"]
+                           mismatched-three-js)]
+    (try
+      (wait-for! client
+                 "CSS fallback after mismatched Three.js globals"
+                 fallback-stats-js
+                 mismatch-ready?)
+      (catch Exception error
+        (throw (ex-info "3D board fallback smoke failed when mismatched Three.js globals were present."
+                        {:url url
+                         :browser-diagnostics (browser-diagnostics client)
+                         :cause (ex-message error)
+                         :data (ex-data error)}
+                        error)))
+      (finally
+        (close-cdp! client)))))
+
 (defn- start-local-server! []
   (let [port (free-port)
         server (jetty/run-jetty #'app-server/app {:port port :join? false})]
@@ -537,6 +581,7 @@
           (doseq [viewport viewports]
             (run-happy-viewport! http-client chrome (:url target) viewport))
           (run-missing-three-fallback! http-client chrome (:url target))
+          (run-mismatched-three-fallback! http-client chrome (:url target))
           (println "3D board smoke passed.")
           (finally
             (stop-chrome! chrome))))
