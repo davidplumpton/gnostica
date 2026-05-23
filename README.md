@@ -1,6 +1,6 @@
 # Gnostica
 
-A Clojure and ClojureScript tarot app using re-frame and shadow-cljs. The game allows multiple people connected to a common server to play together, or for the game state to be exported and send to somebody to import so a slower, turn-based form of the game can be played.
+A Clojure and ClojureScript tarot app using re-frame and shadow-cljs. The current app is a local browser implementation focused on board rendering, shared pure game state, and early move-selection flows. The Ring server only serves the released app assets; multiplayer sync and state import/export workflows are not implemented yet.
 
 Rules are available here https://www.looneylabs.com/sites/default/files/pyramid_rules/Gnostica.pdf
 
