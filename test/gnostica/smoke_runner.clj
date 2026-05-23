@@ -304,6 +304,14 @@
      const board = document.querySelector('.board-three');
      const canvas = document.querySelector('.board-three__canvas');
      const rect = canvas ? canvas.getBoundingClientRect() : null;
+     const antialiasSupported = (() => {
+       const probe = document.createElement('canvas');
+       const context = probe.getContext('webgl2', {antialias: true})
+         || probe.getContext('webgl', {antialias: true})
+         || probe.getContext('experimental-webgl', {antialias: true});
+       const attributes = context && context.getContextAttributes ? context.getContextAttributes() : null;
+       return Boolean(attributes && attributes.antialias);
+     })();
      const cardZones = document.querySelector('.card-zones');
      const cardZonesRect = cardZones ? cardZones.getBoundingClientRect() : null;
      const status = Array.from(document.querySelectorAll('.board-3d-status.is-error')).map((node) => node.textContent.trim());
@@ -328,6 +336,9 @@
        canvasHeight: canvas ? canvas.height : 0,
        canvasClientWidth: rect ? Math.round(rect.width) : 0,
        canvasClientHeight: rect ? Math.round(rect.height) : 0,
+       antialiasRequested: board ? board.dataset.antialiasRequested === 'true' : false,
+       antialiasEnabled: board ? board.dataset.antialiasEnabled === 'true' : false,
+       antialiasSupported,
        reset: Boolean(document.querySelector('.board-three__reset')),
        cardZones: Boolean(cardZones),
        cardZonesVisible: Boolean(cardZonesRect && cardZonesRect.width > 0 && cardZonesRect.height > 0),
@@ -411,6 +422,11 @@
        (>= (long (or (get stats "distinctColors") 0)) 16)
        (>= (long (or (get stats "velvetPixels") 0)) min-velvet-pixels)))
 
+(defn- antialias-ready? [stats]
+  (and (true? (get stats "antialiasRequested"))
+       (or (false? (get stats "antialiasSupported"))
+           (true? (get stats "antialiasEnabled")))))
+
 (defn- happy-ready? [stats]
   (let [visible-piece-count (long (or (get stats "visiblePieceCount") -1))
         piece-edge-outline-count (long (or (get stats "pieceEdgeOutlineCount") -1))]
@@ -426,6 +442,7 @@
          (true? (get stats "canvas"))
          (pos? (long (or (get stats "canvasClientWidth") 0)))
          (pos? (long (or (get stats "canvasClientHeight") 0)))
+         (antialias-ready? stats)
          (true? (get stats "reset"))
          (true? (get stats "cardZones"))
          (true? (get stats "cardZonesVisible"))

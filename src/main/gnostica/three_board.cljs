@@ -18,6 +18,7 @@
 (def wasteland-outline-z -0.005)
 (def wasteland-outline-dash-size 0.035)
 (def wasteland-outline-gap-size 0.055)
+(def renderer-antialias-requested? true)
 
 (defn three-runtime []
   (when (exists? js/THREE)
@@ -274,11 +275,20 @@
 
 (defn- create-renderer [callbacks]
   (try
-    (js/THREE.WebGLRenderer. #js {:antialias true})
+    (js/THREE.WebGLRenderer. #js {:antialias renderer-antialias-requested?})
     (catch js/Error error
       (js/console.error "Three.js WebGL renderer is unavailable." error)
       (invoke-callback callbacks :on-renderer-error (.-message error))
       nil)))
+
+(defn- renderer-antialias-enabled? [renderer]
+  (try
+    (let [context (.getContext renderer)
+          attributes (when context
+                       (.getContextAttributes context))]
+      (boolean (and attributes (.-antialias attributes))))
+    (catch :default _
+      false)))
 
 (defn- add-card-plane!
   [scene
@@ -453,7 +463,8 @@
                                                                       geometries
                                                                       materials
                                                                       cells
-                                                                      board-pieces)]
+                                                                      board-pieces)
+                        antialias-enabled? (renderer-antialias-enabled? renderer)]
                     (.addEventListener js/window "resize" resize!)
                     (resize!)
                     (r/replace-state this {:renderer renderer
@@ -469,7 +480,8 @@
                                            :materials @materials
                                            :textures @textures
                                            :selection-meshes @selection-meshes
-                                           :piece-edge-outline-count piece-edge-outline-count})
+                                           :piece-edge-outline-count piece-edge-outline-count
+                                           :antialias-enabled? antialias-enabled?})
                     (set-selection! this selected-index)))))))))))
 
 (def scene
@@ -488,14 +500,17 @@
     :component-will-unmount dispose!
     :reagent-render
     (fn [_cells _pieces _selected-index texture-errors _callbacks]
-      (let [component (r/current-component)]
+      (let [component (r/current-component)
+            state (r/state component)]
         [:div.board-three
          {:role "img"
           :aria-label "Three-dimensional Gnostica board with nine face-up tarot territory cards and Icehouse pieces"
           :data-board-card-count (count _cells)
           :data-wasteland-count (count (layout/wasteland-spaces _cells))
           :data-visible-piece-count (visible-piece-count _pieces)
-          :data-piece-edge-outline-count (or (:piece-edge-outline-count (r/state component)) 0)
+          :data-piece-edge-outline-count (or (:piece-edge-outline-count state) 0)
+          :data-antialias-requested renderer-antialias-requested?
+          :data-antialias-enabled (true? (:antialias-enabled? state))
           :data-selected-board-index _selected-index
           :data-table-surface-color table-surface-css-color
           :data-table-clear-color table-clear-css-color

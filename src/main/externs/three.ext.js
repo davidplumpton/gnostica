@@ -70,6 +70,9 @@ THREE.WebGLRenderer.prototype.domElement;
 /** @type {*} */
 THREE.WebGLRenderer.prototype.outputEncoding;
 
+/** @return {!Object} */
+THREE.WebGLRenderer.prototype.getContext = function() {};
+
 /**
  * @param {number} value
  * @return {void}
