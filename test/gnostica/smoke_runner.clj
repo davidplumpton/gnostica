@@ -502,6 +502,34 @@
      };
    })()")
 
+(def hotkey-help-js
+  "(() => {
+     const visible = (node) => {
+       if (!node) return false;
+       const rect = node.getBoundingClientRect();
+       const style = getComputedStyle(node);
+       return rect.width > 0
+         && rect.height > 0
+         && style.visibility !== 'hidden'
+         && style.display !== 'none'
+         && Number(style.opacity || 1) > 0.8;
+     };
+     const dialog = document.querySelector('.hotkey-help-dialog');
+     const overlay = document.querySelector('.hotkey-help-overlay');
+     const keyLabels = Array.from(document.querySelectorAll('.hotkey-command kbd'))
+       .map((node) => node.textContent.trim());
+     return {
+       overlayVisible: visible(overlay),
+       dialogVisible: visible(dialog),
+       role: dialog ? dialog.getAttribute('role') : null,
+       ariaModal: dialog ? dialog.getAttribute('aria-modal') : null,
+       title: (document.querySelector('#hotkey-help-title') || {}).textContent || '',
+       commandCount: document.querySelectorAll('.hotkey-command').length,
+       keyLabels,
+       text: dialog ? dialog.textContent : ''
+     };
+   })()")
+
 (def mismatched-three-js
   "window.THREE = {REVISION: '999', OrbitControls: function OrbitControls() {}};")
 
@@ -653,6 +681,24 @@
                   (str/includes? (or (get board-three "text") "")
                                  "Orient a target piece"))))))
 
+(defn- hotkey-help-open-ready? [stats]
+  (let [labels (set (get stats "keyLabels"))]
+    (and (true? (get stats "overlayVisible"))
+         (true? (get stats "dialogVisible"))
+         (= "dialog" (get stats "role"))
+         (= "true" (get stats "ariaModal"))
+         (str/includes? (get stats "title") "Keyboard Commands")
+         (= 3 (long (or (get stats "commandCount") -1)))
+         (contains? labels "?")
+         (contains? labels "I")
+         (contains? labels "Esc")
+         (str/includes? (or (get stats "text") "") "Toggle card icon overlays"))))
+
+(defn- hotkey-help-closed-ready? [stats]
+  (and (false? (get stats "overlayVisible"))
+       (false? (get stats "dialogVisible"))
+       (zero? (long (or (get stats "commandCount") -1)))))
+
 (defn- browser-diagnostics [client]
   (->> @(:events client)
        (filter (fn [event]
@@ -731,15 +777,33 @@
   (dispatch-click! client {"x" centerX
                            "y" centerY}))
 
-(defn- dispatch-i-key! [client]
+(defn- dispatch-key! [client {:keys [key code key-code modifiers]}]
   (doseq [event-type ["keyDown" "keyUp"]]
     (cdp-command! client
                   "Input.dispatchKeyEvent"
-                  {"type" event-type
-                   "key" "i"
-                   "code" "KeyI"
-                   "windowsVirtualKeyCode" 73
-                   "nativeVirtualKeyCode" 73})))
+                  (cond-> {"type" event-type
+                           "key" key
+                           "code" code
+                           "windowsVirtualKeyCode" key-code
+                           "nativeVirtualKeyCode" key-code}
+                    modifiers
+                    (assoc "modifiers" modifiers)))))
+
+(defn- dispatch-i-key! [client]
+  (dispatch-key! client {:key "i"
+                         :code "KeyI"
+                         :key-code 73}))
+
+(defn- dispatch-question-mark-key! [client]
+  (dispatch-key! client {:key "?"
+                         :code "Slash"
+                         :key-code 191
+                         :modifiers 8}))
+
+(defn- dispatch-escape-key! [client]
+  (dispatch-key! client {:key "Escape"
+                         :code "Escape"
+                         :key-code 27}))
 
 (defn- run-happy-viewport! [http-client chrome url viewport]
   (println (format "Smoke checking %s viewport at %dx%d."
@@ -764,28 +828,39 @@
                           {:viewport viewport
                            :stats stats
                            :pixel-stats pixel-stats})))
-        (dispatch-i-key! client)
-        (let [popup-stats (wait-for! client
-                                      (str (:name viewport) " popup icon mode")
-                                      popup-mode-js
-                                      popup-mode-ready?)
-              updated-rect (evaluate! client canvas-rect-js)]
-          (when-not updated-rect
-            (throw (ex-info "Three.js canvas bounds could not be remeasured after popup mode."
-                            {:viewport viewport
-                             :stats stats
-                             :popup-stats popup-stats})))
-          (dispatch-center-click! client updated-rect)
-          (let [selection (wait-for! client
-                                     (str (:name viewport) " center-card selection")
-                                     selection-js
-                                     #(str/includes? (or (get % "panelText") "")
-                                                    "Row 2, Column 2"))]
-            {:viewport (:name viewport)
-             :stats stats
-             :popup-stats popup-stats
-             :pixel-stats pixel-stats
-             :selection selection})))
+        (dispatch-question-mark-key! client)
+        (let [hotkey-help (wait-for! client
+                                      (str (:name viewport) " hotkey help dialog")
+                                      hotkey-help-js
+                                      hotkey-help-open-ready?)]
+          (dispatch-escape-key! client)
+          (wait-for! client
+                     (str (:name viewport) " hotkey help close")
+                     hotkey-help-js
+                     hotkey-help-closed-ready?)
+          (dispatch-i-key! client)
+          (let [popup-stats (wait-for! client
+                                        (str (:name viewport) " popup icon mode")
+                                        popup-mode-js
+                                        popup-mode-ready?)
+                updated-rect (evaluate! client canvas-rect-js)]
+            (when-not updated-rect
+              (throw (ex-info "Three.js canvas bounds could not be remeasured after popup mode."
+                              {:viewport viewport
+                               :stats stats
+                               :popup-stats popup-stats})))
+            (dispatch-center-click! client updated-rect)
+            (let [selection (wait-for! client
+                                       (str (:name viewport) " center-card selection")
+                                       selection-js
+                                       #(str/includes? (or (get % "panelText") "")
+                                                      "Row 2, Column 2"))]
+              {:viewport (:name viewport)
+               :stats stats
+               :hotkey-help hotkey-help
+               :popup-stats popup-stats
+               :pixel-stats pixel-stats
+               :selection selection}))))
       (catch Exception error
         (throw (ex-info (str "3D board smoke failed in the " (:name viewport) " viewport.")
                         {:viewport viewport

@@ -9,6 +9,8 @@
 
 (def default-card-icon-mode :always)
 
+(def default-hotkey-help-open? false)
+
 (def card-icon-modes
   #{:always :popup})
 
@@ -85,6 +87,7 @@
    (let [result (game-state/create-game player-specs game-options)
          base-db {:selected-board-index selected-board-index
                   :card-icon-mode (normalize-card-icon-mode card-icon-mode)
+                  :hotkey-help-open? default-hotkey-help-open?
                   :move-selection (empty-move-selection)
                   :three-texture-errors []}]
      (if (:ok? result)
@@ -124,6 +127,18 @@
                       (if (= :always (card-icon-mode db))
                         :popup
                         :always)))
+
+(defn hotkey-help-open? [db]
+  (true? (:hotkey-help-open? db)))
+
+(defn set-hotkey-help-open [db open?]
+  (assoc db :hotkey-help-open? (true? open?)))
+
+(defn open-hotkey-help [db]
+  (set-hotkey-help-open db true))
+
+(defn close-hotkey-help [db]
+  (set-hotkey-help-open db false))
 
 (defn current-player [db]
   (some-> (game db) game-state/current-player))

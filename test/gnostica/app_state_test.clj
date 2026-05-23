@@ -62,7 +62,8 @@
     (is (= app-state/default-selected-board-index
            (app-state/selected-board-index db)))
     (is (= :always
-           (app-state/card-icon-mode db)))))
+           (app-state/card-icon-mode db)))
+    (is (false? (app-state/hotkey-help-open? db)))))
 
 (deftest card-icon-mode-can-be-initialized-and-toggled
   (let [db (app-state/initialize {:game-options {:shuffle-fn identity}
@@ -73,6 +74,17 @@
     (is (= :always
            (app-state/card-icon-mode
             (app-state/set-card-icon-mode db :unknown))))))
+
+(deftest hotkey-help-visibility-can-be-controlled
+  (let [db (app-state/initialize {:game-options {:shuffle-fn identity}})]
+    (is (false? (app-state/hotkey-help-open? db)))
+    (is (true? (app-state/hotkey-help-open?
+                (app-state/open-hotkey-help db))))
+    (is (false? (app-state/hotkey-help-open?
+                 (app-state/close-hotkey-help
+                  (app-state/open-hotkey-help db)))))
+    (is (false? (app-state/hotkey-help-open?
+                 (app-state/set-hotkey-help-open db nil))))))
 
 (deftest initialize-records-explicit-setup-errors
   (let [db (app-state/initialize {:player-specs [{:id :solo}]})]

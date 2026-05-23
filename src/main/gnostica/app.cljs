@@ -62,6 +62,16 @@
    (app-state/toggle-card-icon-mode db)))
 
 (rf/reg-event-db
+ ::open-hotkey-help
+ (fn [db _]
+   (app-state/open-hotkey-help db)))
+
+(rf/reg-event-db
+ ::close-hotkey-help
+ (fn [db _]
+   (app-state/close-hotkey-help db)))
+
+(rf/reg-event-db
  ::clear-three-texture-errors
  (fn [db _]
    (assoc db :three-texture-errors [])))
@@ -185,6 +195,19 @@
  ::card-icon-mode
  (fn [db _]
    (app-state/card-icon-mode db)))
+
+(rf/reg-sub
+ ::hotkey-help-open?
+ (fn [db _]
+   (app-state/hotkey-help-open? db)))
+
+(def hotkey-commands
+  [{:keys ["?"]
+    :command "Show keyboard commands"}
+   {:keys ["I"]
+    :command "Toggle card icon overlays"}
+   {:keys ["Esc"]
+    :command "Close keyboard commands"}])
 
 (defn orientation-label [orientation]
   (case orientation
@@ -675,6 +698,16 @@
     "i"]
    [:span.card-icon-mode-toggle__label "Icons"]])
 
+(defn- hotkey-help-toggle []
+  [:button.hotkey-help-toggle
+   {:type "button"
+    :aria-label "Show keyboard commands"
+    :title "Keyboard commands (?)"
+    :on-click #(rf/dispatch [::open-hotkey-help])}
+   [:span.hotkey-help-toggle__mark
+    {:aria-hidden "true"}
+    "?"]])
+
 (defn app-header []
   (let [current-player @(rf/subscribe [::current-player])
         card-icon-mode @(rf/subscribe [::card-icon-mode])]
@@ -683,11 +716,39 @@
       [:span.brand__mark "G"]
       [:span.brand__name "Gnostica"]]
      [:div.app-header__actions
+      [hotkey-help-toggle]
       [card-icon-mode-toggle card-icon-mode]
       (when current-player
         [:div.app-status
          [:span "Current player"]
          [:strong (:name current-player)]])]]))
+
+(defn- hotkey-help-dialog []
+  (when @(rf/subscribe [::hotkey-help-open?])
+    [:div.hotkey-help-overlay
+     {:role "presentation"
+      :on-click #(rf/dispatch [::close-hotkey-help])}
+     [:section.hotkey-help-dialog
+      {:role "dialog"
+       :aria-modal "true"
+       :aria-labelledby "hotkey-help-title"
+       :on-click #(.stopPropagation %)}
+      [:div.hotkey-help-dialog__header
+       [:h2#hotkey-help-title "Keyboard Commands"]
+       [:button.hotkey-help-dialog__close
+        {:type "button"
+         :aria-label "Close keyboard commands"
+         :on-click #(rf/dispatch [::close-hotkey-help])}
+        "Close"]]
+      [:dl.hotkey-command-list
+       (for [{:keys [keys command]} hotkey-commands]
+         ^{:key command}
+         [:div.hotkey-command
+          [:dt
+           (for [key-label keys]
+             ^{:key key-label}
+             [:kbd key-label])]
+          [:dd command]])]]]))
 
 (defn setup-error-panel [error]
   [:main.app-shell.is-setup-error
@@ -713,7 +774,8 @@
          [card-zones]]
         [:div.side-stack
          [move-panel]
-         [territory-panel]]])]))
+         [territory-panel]]])
+     [hotkey-help-dialog]]))
 
 (defonce keyboard-shortcut-listener
   (atom nil))
@@ -723,17 +785,39 @@
     (or (and target (.-isContentEditable target))
         (#{"input" "select" "textarea"} tag-name))))
 
+(defn- modified-shortcut? [event]
+  (or (.-altKey event)
+      (.-ctrlKey event)
+      (.-metaKey event)))
+
+(defn- question-mark-key? [event key]
+  (or (= "?" key)
+      (and (= "Slash" (.-code event))
+           (.-shiftKey event))))
+
 (defn- install-keyboard-shortcuts! []
   (when-let [listener @keyboard-shortcut-listener]
     (.removeEventListener js/window "keydown" listener))
   (let [listener (fn [event]
-                   (when (and (= "i" (str/lower-case (.-key event)))
-                              (not (.-altKey event))
-                              (not (.-ctrlKey event))
-                              (not (.-metaKey event))
-                              (not (editable-target? (.-target event))))
-                     (.preventDefault event)
-                     (rf/dispatch [::toggle-card-icon-mode])))]
+                   (let [key (.-key event)
+                         lower-key (str/lower-case key)]
+                     (when (and (not (modified-shortcut? event))
+                                (not (editable-target? (.-target event))))
+                       (cond
+                         (question-mark-key? event key)
+                         (do
+                           (.preventDefault event)
+                           (rf/dispatch [::open-hotkey-help]))
+
+                         (= "escape" lower-key)
+                         (do
+                           (.preventDefault event)
+                           (rf/dispatch [::close-hotkey-help]))
+
+                         (= "i" lower-key)
+                         (do
+                           (.preventDefault event)
+                           (rf/dispatch [::toggle-card-icon-mode]))))))]
     (reset! keyboard-shortcut-listener listener)
     (.addEventListener js/window "keydown" listener)))
 

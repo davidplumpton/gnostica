@@ -48,6 +48,10 @@ The browser app includes a current-player move panel driven from shared app-db s
 
 The current flow lets the player choose a move source, then stage the required source territory, hand card, minion, target territory, draw count, or orientation. Three.js card picking and the CSS fallback board both dispatch through the same board-selection event, so active move flows stay synchronized with the territory inspection panel. Confirming a completed territory or hand-card Cup move now builds the `apply-cup-move` command, replaces app-db `:game` on success, and keeps the staged selection with the structured gameplay error on rejection. Move sources without a pure transition still return an explicit `:move-transition-unavailable` result instead of mutating game state.
 
+## Keyboard Shortcuts
+
+The app header exposes a `?` control, and pressing `?` opens a keyboard command dialog. The dialog lists the currently supported browser shortcuts: `?` opens the dialog, `I` toggles Gnostica card icon overlays between always-visible and hover/focus popup modes, and `Esc` closes the dialog.
+
 `gnostica.game-schema` provides Malli schemas for the pure gameplay data contract: card references, board cells, player state, six-card hand limits, Icehouse pieces, draw/discard piles, temporary wasteland piece coordinates, post-setup board growth, and top-level game state invariants including piece space references. Use `valid-game?`, `explain-game`, and `assert-valid-game` in tests, future Cucumber steps, and other pure-data boundaries where a readable state-shape failure is more useful than renderer or re-frame behavior.
 
 Gameplay rule examples live in Cucumber/Gherkin-style `.feature` files under `features/`. Step definitions and reusable test-world helpers live under `test/gnostica/feature_steps.clj` and `test/gnostica/feature_world.clj`; they create deterministic games, apply pure actions, inspect state paths, and include Malli explanations in failing step output. `clojure -M:test` runs these feature scenarios alongside the existing `clojure.test` namespaces.
