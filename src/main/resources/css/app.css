@@ -6,8 +6,8 @@
   --page: #26312f;
   --panel: #364440;
   --panel-soft: #4a5954;
-  --table: #4d9a87;
-  --table-deep: #45786d;
+  --table: #5a1f36;
+  --table-deep: #2b101b;
   --line: #8bb9ab;
   --accent: #ffe08a;
   --accent-red: #ff8a7a;
@@ -160,7 +160,7 @@ img {
   border-radius: 8px;
   background:
     radial-gradient(circle at center, rgba(255, 224, 138, 0.16), transparent 66%),
-    var(--table-deep);
+    var(--table);
   box-shadow: var(--shadow);
 }
 
@@ -243,7 +243,7 @@ img {
   border-radius: 8px;
   background:
     radial-gradient(circle at center, rgba(255, 224, 138, 0.16), transparent 66%),
-    var(--table-deep);
+    var(--table);
   box-shadow: var(--shadow);
 }
 

@@ -20,6 +20,9 @@
 
 (def cdp-timeout-ms 10000)
 (def wait-timeout-ms 20000)
+(def expected-table-surface-color "#5a1f36")
+(def expected-table-clear-color "#2b101b")
+(def min-velvet-pixels 120)
 
 (def viewports
   [{:name "desktop" :width 1280 :height 900 :mobile false}
@@ -314,6 +317,8 @@
        visiblePieceCount: board ? Number(board.dataset.visiblePieceCount || -1) : -1,
        pieceEdgeOutlineCount: board ? Number(board.dataset.pieceEdgeOutlineCount || -1) : -1,
        selectedIndex: board ? Number(board.dataset.selectedBoardIndex || -1) : -1,
+       tableSurfaceColor: board ? board.dataset.tableSurfaceColor : null,
+       tableClearColor: board ? board.dataset.tableClearColor : null,
        textureErrorCount: board ? Number(board.dataset.textureErrorCount || -1) : -1,
        fallback: Boolean(document.querySelector('.board-fallback')),
        canvas: Boolean(canvas),
@@ -355,6 +360,7 @@
 (def fallback-stats-js
   "(() => {
      const status = document.querySelector('.board-3d-status');
+     const stage = document.querySelector('.board-fallback .board-stage');
      return {
        threeRevision: window.THREE ? window.THREE.REVISION : null,
        orbitControls: Boolean(window.THREE && window.THREE.OrbitControls),
@@ -362,6 +368,8 @@
        cssCards: document.querySelectorAll('.board-fallback .board-card').length,
        cssWastelands: document.querySelectorAll('.board-fallback .board-wasteland').length,
        canvas: Boolean(document.querySelector('.board-three__canvas')),
+       tableSurfaceColor: stage ? stage.dataset.tableSurfaceColor : null,
+       tableClearColor: stage ? stage.dataset.tableClearColor : null,
        statusText: status ? status.textContent.trim() : '',
        panelText: (document.querySelector('.territory-panel') || {}).innerText || ''
      };
@@ -370,10 +378,24 @@
 (def mismatched-three-js
   "window.THREE = {REVISION: '999', OrbitControls: function OrbitControls() {}};")
 
+(defn- velvet-pixel? [argb]
+  (let [r (bit-and (bit-shift-right argb 16) 0xff)
+        g (bit-and (bit-shift-right argb 8) 0xff)
+        b (bit-and argb 0xff)]
+    (and (>= r 65)
+         (>= b 35)
+         (<= g 115)
+         (<= b 170)
+         (> r g)
+         (> b g)
+         (>= (- r g) 24)
+         (>= (- b g) 4))))
+
 (defn- pixel-ok? [stats]
   (and (true? (get stats "ok"))
        (>= (long (or (get stats "sampledPixels") 0)) 100)
-       (>= (long (or (get stats "distinctColors") 0)) 16)))
+       (>= (long (or (get stats "distinctColors") 0)) 16)
+       (>= (long (or (get stats "velvetPixels") 0)) min-velvet-pixels)))
 
 (defn- happy-ready? [stats]
   (let [visible-piece-count (long (or (get stats "visiblePieceCount") -1))
@@ -384,6 +406,8 @@
          (= 12 (get stats "wastelandCount"))
          (pos? visible-piece-count)
          (= visible-piece-count piece-edge-outline-count)
+         (= expected-table-surface-color (get stats "tableSurfaceColor"))
+         (= expected-table-clear-color (get stats "tableClearColor"))
          (false? (get stats "fallback"))
          (true? (get stats "canvas"))
          (pos? (long (or (get stats "canvasClientWidth") 0)))
@@ -397,6 +421,8 @@
        (false? (get stats "orbitControls"))
        (true? (get stats "fallback"))
        (false? (get stats "canvas"))
+       (= expected-table-surface-color (get stats "tableSurfaceColor"))
+       (= expected-table-clear-color (get stats "tableClearColor"))
        (= 9 (get stats "cssCards"))
        (= 12 (get stats "cssWastelands"))
        (str/includes? (or (get stats "statusText") "") "Three.js is unavailable")))
@@ -406,6 +432,8 @@
        (true? (get stats "orbitControls"))
        (true? (get stats "fallback"))
        (false? (get stats "canvas"))
+       (= expected-table-surface-color (get stats "tableSurfaceColor"))
+       (= expected-table-clear-color (get stats "tableClearColor"))
        (= 9 (get stats "cssCards"))
        (= 12 (get stats "cssWastelands"))
        (str/includes? (or (get stats "statusText") "") "revision 999 is incompatible")))
@@ -441,15 +469,20 @@
             step-x (max 1 (quot image-width 80))
             step-y (max 1 (quot image-height 80))
             colors (volatile! (transient #{}))
+            velvet-pixels (volatile! 0)
             sampled (volatile! 0)]
         (doseq [sample-x (range 0 image-width step-x)
                 sample-y (range 0 image-height step-y)]
           (vswap! sampled inc)
-          (vswap! colors conj! (.getRGB image sample-x sample-y)))
+          (let [argb (.getRGB image sample-x sample-y)]
+            (when (velvet-pixel? argb)
+              (vswap! velvet-pixels inc))
+            (vswap! colors conj! argb)))
         {"ok" true
          "width" image-width
          "height" image-height
          "sampledPixels" @sampled
+         "velvetPixels" @velvet-pixels
          "distinctColors" (count (persistent! @colors))}))))
 
 (defn- open-page!

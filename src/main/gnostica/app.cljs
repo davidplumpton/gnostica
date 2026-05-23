@@ -284,6 +284,8 @@
          {:role "group"
           :aria-label "Gnostica board"
           :data-wasteland-count (count wastelands)
+          :data-table-surface-color three-board/table-surface-css-color
+          :data-table-clear-color three-board/table-clear-css-color
           :style (board-stage-style space-bounds)}
          (for [space wastelands]
            (board-wasteland space-bounds space))

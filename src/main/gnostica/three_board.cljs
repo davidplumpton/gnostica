@@ -6,6 +6,10 @@
 (def pointer-click-threshold 8)
 (def board-index-user-data-key "gnosticaBoardIndex")
 (def expected-three-revision "128")
+(def table-surface-color 0x5a1f36)
+(def table-surface-css-color "#5a1f36")
+(def table-clear-color 0x2b101b)
+(def table-clear-css-color "#2b101b")
 (def pip-marker-color 0xfff4d3)
 (def piece-edge-outline-color 0x050505)
 (def piece-edge-outline-opacity 0.9)
@@ -161,7 +165,7 @@
   (let [{:keys [width height center]} (layout/board-plane spaces)
         [center-x center-y] center
         geometry (js/THREE.PlaneGeometry. width height)
-        material (js/THREE.MeshBasicMaterial. #js {:color 0x4d9a87
+        material (js/THREE.MeshBasicMaterial. #js {:color table-surface-color
                                                    :side js/THREE.DoubleSide})
         mesh (js/THREE.Mesh. geometry material)]
     (.set (.-position mesh) center-x center-y -0.03)
@@ -357,7 +361,7 @@
             (when renderer
               (.setPixelRatio renderer (min 2 (or (.-devicePixelRatio js/window) 1)))
               (set! (.-outputEncoding renderer) js/THREE.sRGBEncoding)
-              (.setClearColor renderer 0x45786d 1)
+              (.setClearColor renderer table-clear-color 1)
               (set! (.. renderer -domElement -className) "board-three__canvas")
               (.appendChild mount-node (.-domElement renderer))
               (.set (.-up camera) 0 0 1)
@@ -485,6 +489,8 @@
           :data-visible-piece-count (visible-piece-count _pieces)
           :data-piece-edge-outline-count (or (:piece-edge-outline-count (r/state component)) 0)
           :data-selected-board-index _selected-index
+          :data-table-surface-color table-surface-css-color
+          :data-table-clear-color table-clear-css-color
           :data-texture-error-count (count texture-errors)}
          [:div.board-three__mount
           {:aria-hidden "true"
