@@ -36,6 +36,8 @@ Rule helpers return explicit result maps: successful transitions use `{:ok? true
 
 `gnostica.game-schema` provides Malli schemas for the pure gameplay data contract: card references, board cells, player state, six-card hand limits, Icehouse pieces, draw/discard piles, and top-level game state invariants. Use `valid-game?`, `explain-game`, and `assert-valid-game` in tests, future Cucumber steps, and other pure-data boundaries where a readable state-shape failure is more useful than renderer or re-frame behavior.
 
+Gameplay rule examples live in Cucumber/Gherkin-style `.feature` files under `features/`. Step definitions and reusable test-world helpers live under `test/gnostica/feature_steps.clj` and `test/gnostica/feature_world.clj`; they create deterministic games, apply pure actions, inspect state paths, and include Malli explanations in failing step output. `clojure -M:test` runs these feature scenarios alongside the existing `clojure.test` namespaces.
+
 ### Verification
 
 For the 3D board slice, run:
@@ -56,7 +58,7 @@ The smoke checks desktop and mobile viewport widths, verifies the r128 Three.js 
 clojure -M:dev       # start the ClojureScript watcher
 clojure -M:release   # compile an optimized browser build
 clojure -M:server    # serve the released app with Clojure/Ring
-clojure -M:test      # run Clojure tests for shared code
+clojure -M:test      # run Clojure tests and gameplay feature scenarios
 clojure -M:smoke     # run the headless Chrome 3D board smoke check
 ```
 

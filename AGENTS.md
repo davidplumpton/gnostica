@@ -24,6 +24,10 @@ The shadow-cljs dev server serves the app at `http://localhost:8080/index.html`.
 
 `src/main/gnostica/game_schema.cljc` defines Malli schemas for the pure gameplay data contract. Keep schema coverage focused on browser-free state values: card references, board cells, player maps and six-card hand limits, Icehouse pieces, draw/discard piles, and whole-game invariants such as player counts, turn membership, piece ownership, stash ownership, and unique card ids. Use `gnostica.game-schema/valid-game?`, `explain-game`, and `assert-valid-game` in tests, future Cucumber steps, and other pure-data boundaries; do not couple these schemas to Three.js or re-frame view state.
 
+## Gameplay Feature Tests
+
+Gherkin-style gameplay scenarios live under `features/` and run through `clojure -M:test` with the normal Clojure unit tests. Keep step definitions in `test/gnostica/feature_steps.clj` and reusable world helpers in `test/gnostica/feature_world.clj`; those helpers are the shared place for deterministic deck order, player setup, pure action application, state lookup, and Malli validation checks. Failing steps should return `gnostica.feature-runner/fail` with enough state summary or schema explanation for the scenario and step text to identify the broken rule.
+
 ## Browser JavaScript Globals
 
 `src/main/resources/index.html` loads Three.js and OrbitControls from pinned `three@0.128.0` CDN URLs before `/js/main.js`. The script tags carry SRI hashes and `crossorigin="anonymous"`. This keeps the default workflow npm-free while exposing the browser globals `THREE` and `THREE.OrbitControls` to `gnostica.three-board`, which only enables the 3D renderer when `THREE.REVISION` is `"128"` and OrbitControls is present.

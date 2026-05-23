@@ -4,6 +4,7 @@
             [gnostica.board-layout-test]
             [gnostica.board-test]
             [gnostica.cards-test]
+            [gnostica.gameplay-feature-test]
             [gnostica.game-schema-test]
             [gnostica.game-state-test]
             [gnostica.pieces-test]))
@@ -15,5 +16,6 @@
                                         'gnostica.app-state-test
                                         'gnostica.pieces-test
                                         'gnostica.game-schema-test
-                                        'gnostica.game-state-test)]
+                                        'gnostica.game-state-test
+                                        'gnostica.gameplay-feature-test)]
     (System/exit (if (zero? (+ fail error)) 0 1))))
