@@ -1,5 +1,6 @@
 (ns gnostica.board-layout
-  (:require [gnostica.pieces :as pieces]))
+  (:require [gnostica.board :as board]
+            [gnostica.pieces :as pieces]))
 
 (def pi
   #?(:clj Math/PI
@@ -27,6 +28,70 @@
 (defn card-position [{:keys [row col]}]
   [(* (- col 1) card-step)
    (* (- 1 row) card-step)])
+
+(def orthogonal-neighbor-offsets
+  [[-1 0] [0 1] [1 0] [0 -1]])
+
+(defn- space-key [{:keys [row col]}]
+  [row col])
+
+(defn space-dimensions [{:keys [orientation]}]
+  (if (= :landscape orientation)
+    [card-long card-short]
+    [card-short card-long]))
+
+(defn space-extents [space]
+  (let [[x y] (card-position space)
+        [width height] (space-dimensions space)
+        half-width (/ width 2)
+        half-height (/ height 2)]
+    {:left (- x half-width)
+     :right (+ x half-width)
+     :bottom (- y half-height)
+     :top (+ y half-height)}))
+
+(defn space-outline-segments [space]
+  (let [{:keys [left right bottom top]} (space-extents space)]
+    [[[left bottom] [right bottom]]
+     [[right bottom] [right top]]
+     [[right top] [left top]]
+     [[left top] [left bottom]]]))
+
+(defn wasteland-spaces [cells]
+  (let [occupied (set (map space-key cells))]
+    (->> cells
+         (mapcat (fn [{:keys [row col]}]
+                   (map (fn [[row-offset col-offset]]
+                          [(+ row row-offset) (+ col col-offset)])
+                        orthogonal-neighbor-offsets)))
+         (remove occupied)
+         set
+         sort
+         (mapv (fn [[row col]]
+                 {:kind :wasteland
+                  :id (str "wasteland-" row "-" col)
+                  :row row
+                  :col col
+                  :orientation (board/orientation-for row col)})))))
+
+(defn board-spaces [cells]
+  (vec (concat cells (wasteland-spaces cells))))
+
+(defn space-bounds [spaces]
+  (when (seq spaces)
+    {:min-row (apply min (map :row spaces))
+     :max-row (apply max (map :row spaces))
+     :min-col (apply min (map :col spaces))
+     :max-col (apply max (map :col spaces))}))
+
+(defn board-plane [spaces]
+  (let [{:keys [min-row max-row min-col max-col]} (space-bounds spaces)
+        center-col (/ (+ min-col max-col) 2)
+        center-row (/ (+ min-row max-row) 2)]
+    {:width (+ (* (- max-col min-col) card-step) card-long (* 2 card-gap))
+     :height (+ (* (- max-row min-row) card-step) card-long (* 2 card-gap))
+     :center [(* (- center-col 1) card-step)
+              (* (- 1 center-row) card-step)]}))
 
 (defn cells-by-index [cells]
   (into {} (map (juxt :index identity) cells)))

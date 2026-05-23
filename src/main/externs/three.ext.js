@@ -211,6 +211,18 @@ THREE.PlaneGeometry = function(width, height) {};
 /** @return {void} */
 THREE.PlaneGeometry.prototype.dispose = function() {};
 
+/** @constructor */
+THREE.BufferGeometry = function() {};
+
+/**
+ * @param {!Array<!THREE.Vector3>} points
+ * @return {!THREE.BufferGeometry}
+ */
+THREE.BufferGeometry.prototype.setFromPoints = function(points) {};
+
+/** @return {void} */
+THREE.BufferGeometry.prototype.dispose = function() {};
+
 /**
  * @constructor
  * @param {number} radius
@@ -251,6 +263,15 @@ THREE.MeshBasicMaterial.prototype.needsUpdate;
 
 /** @return {void} */
 THREE.MeshBasicMaterial.prototype.dispose = function() {};
+
+/**
+ * @constructor
+ * @param {!Object=} parameters
+ */
+THREE.LineDashedMaterial = function(parameters) {};
+
+/** @return {void} */
+THREE.LineDashedMaterial.prototype.dispose = function() {};
 
 /**
  * @constructor
@@ -307,6 +328,16 @@ THREE.Mesh.prototype.rotateOnWorldAxis = function(axis, angle) {};
  * @return {!THREE.Mesh}
  */
 THREE.Mesh.prototype.add = function(object) {};
+
+/**
+ * @constructor
+ * @param {!Object} geometry
+ * @param {!Object} material
+ */
+THREE.Line = function(geometry, material) {};
+
+/** @return {void} */
+THREE.Line.prototype.computeLineDistances = function() {};
 
 /** @constructor */
 THREE.TextureLoader = function() {};

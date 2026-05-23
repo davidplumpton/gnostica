@@ -22,6 +22,39 @@
   (is (roughly= (+ (* 2 layout/card-step) layout/card-long (* 2 layout/card-gap))
                 layout/board-plane-size)))
 
+(deftest wasteland-spaces-are-empty-orthogonal-neighbors
+  (let [cells (board/initial-board cards/deck identity)
+        wastelands (layout/wasteland-spaces cells)]
+    (is (= [{:kind :wasteland :row -1 :col 0 :orientation :landscape}
+            {:kind :wasteland :row -1 :col 1 :orientation :portrait}
+            {:kind :wasteland :row -1 :col 2 :orientation :landscape}
+            {:kind :wasteland :row 0 :col -1 :orientation :landscape}
+            {:kind :wasteland :row 0 :col 3 :orientation :landscape}
+            {:kind :wasteland :row 1 :col -1 :orientation :portrait}
+            {:kind :wasteland :row 1 :col 3 :orientation :portrait}
+            {:kind :wasteland :row 2 :col -1 :orientation :landscape}
+            {:kind :wasteland :row 2 :col 3 :orientation :landscape}
+            {:kind :wasteland :row 3 :col 0 :orientation :landscape}
+            {:kind :wasteland :row 3 :col 1 :orientation :portrait}
+            {:kind :wasteland :row 3 :col 2 :orientation :landscape}]
+           (mapv #(select-keys % [:kind :row :col :orientation]) wastelands)))
+    (is (empty? (filter (set (map (juxt :row :col) cells))
+                        (map (juxt :row :col) wastelands))))
+    (is (= {:min-row -1 :max-row 3 :min-col -1 :max-col 3}
+           (layout/space-bounds (layout/board-spaces cells))))
+    (is (roughly= (+ (* 4 layout/card-step) layout/card-long (* 2 layout/card-gap))
+                  (:width (layout/board-plane (layout/board-spaces cells)))))
+    (is (roughly= (+ (* 4 layout/card-step) layout/card-long (* 2 layout/card-gap))
+                  (:height (layout/board-plane (layout/board-spaces cells)))))))
+
+(deftest wasteland-detection-fills-internal-empty-spaces
+  (let [cells [{:row 0 :col 0 :orientation :portrait}
+               {:row 0 :col 2 :orientation :portrait}]
+        wastelands (layout/wasteland-spaces cells)]
+    (is (some #(= {:row 0 :col 1} (select-keys % [:row :col])) wastelands))
+    (is (not-any? #(= {:row 0 :col 0} (select-keys % [:row :col])) wastelands))
+    (is (not-any? #(= {:row 0 :col 2} (select-keys % [:row :col])) wastelands))))
+
 (deftest cells-can-be-addressed-by-board-index
   (let [cells (board/initial-board cards/deck identity)
         cells-by-index (layout/cells-by-index cells)]

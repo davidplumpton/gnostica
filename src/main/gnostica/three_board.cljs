@@ -7,6 +7,11 @@
 (def board-index-user-data-key "gnosticaBoardIndex")
 (def expected-three-revision "128")
 (def pip-marker-color 0xfff4d3)
+(def wasteland-outline-color 0xd8fff3)
+(def wasteland-outline-opacity 0.42)
+(def wasteland-outline-z -0.005)
+(def wasteland-outline-dash-size 0.035)
+(def wasteland-outline-gap-size 0.055)
 
 (defn three-runtime []
   (when (exists? js/THREE)
@@ -150,14 +155,43 @@
       (.dispose renderer)))
   (r/replace-state this {}))
 
-(defn- add-table-plane! [scene geometries materials]
-  (let [geometry (js/THREE.PlaneGeometry. layout/board-plane-size layout/board-plane-size)
+(defn- add-table-plane! [scene geometries materials spaces]
+  (let [{:keys [width height center]} (layout/board-plane spaces)
+        [center-x center-y] center
+        geometry (js/THREE.PlaneGeometry. width height)
         material (js/THREE.MeshBasicMaterial. #js {:color 0x4d9a87
                                                    :side js/THREE.DoubleSide})
         mesh (js/THREE.Mesh. geometry material)]
-    (set! (.. mesh -position -z) -0.03)
+    (.set (.-position mesh) center-x center-y -0.03)
     (.add scene mesh)
     (swap! geometries conj geometry)
+    (swap! materials conj material)))
+
+(defn- vector3 [x y z]
+  (let [point (js/THREE.Vector3.)]
+    (.set point x y z)
+    point))
+
+(defn- add-wasteland-line! [scene geometries material [[start-x start-y] [end-x end-y]]]
+  (let [geometry (js/THREE.BufferGeometry.)
+        line (js/THREE.Line. geometry material)]
+    (.setFromPoints geometry
+                    (to-array [(vector3 start-x start-y wasteland-outline-z)
+                               (vector3 end-x end-y wasteland-outline-z)]))
+    (.computeLineDistances line)
+    (.add scene line)
+    (swap! geometries conj geometry)))
+
+(defn- add-wasteland-outlines! [scene geometries materials spaces]
+  (let [material (js/THREE.LineDashedMaterial.
+                  #js {:color wasteland-outline-color
+                       :transparent true
+                       :opacity wasteland-outline-opacity
+                       :dashSize wasteland-outline-dash-size
+                       :gapSize wasteland-outline-gap-size})]
+    (doseq [space spaces
+            segment (layout/space-outline-segments space)]
+      (add-wasteland-line! scene geometries material segment))
     (swap! materials conj material)))
 
 (defn- add-piece-lights! [scene]
@@ -363,7 +397,10 @@
                   (.addEventListener canvas "pointerup" pointer-up-listener)
                   (.addEventListener canvas "pointercancel" pointer-cancel-listener)
                   (add-piece-lights! scene)
-                  (add-table-plane! scene geometries materials)
+                  (let [wastelands (layout/wasteland-spaces cells)
+                        board-spaces (vec (concat cells wastelands))]
+                    (add-table-plane! scene geometries materials board-spaces)
+                    (add-wasteland-outlines! scene geometries materials wastelands))
                   (doseq [cell cells]
                     (add-card-plane! scene
                                      loader
@@ -415,6 +452,7 @@
          {:role "img"
           :aria-label "Three-dimensional Gnostica board with nine face-up tarot territory cards and Icehouse pieces"
           :data-board-card-count (count _cells)
+          :data-wasteland-count (count (layout/wasteland-spaces _cells))
           :data-selected-board-index _selected-index
           :data-texture-error-count (count texture-errors)}
          [:div.board-three__mount

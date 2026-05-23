@@ -310,6 +310,7 @@
        orbitControls: Boolean(window.THREE && window.THREE.OrbitControls),
        board: Boolean(board),
        boardCardCount: board ? Number(board.dataset.boardCardCount || -1) : -1,
+       wastelandCount: board ? Number(board.dataset.wastelandCount || -1) : -1,
        selectedIndex: board ? Number(board.dataset.selectedBoardIndex || -1) : -1,
        textureErrorCount: board ? Number(board.dataset.textureErrorCount || -1) : -1,
        fallback: Boolean(document.querySelector('.board-fallback')),
@@ -357,6 +358,7 @@
        orbitControls: Boolean(window.THREE && window.THREE.OrbitControls),
        fallback: Boolean(document.querySelector('.board-fallback')),
        cssCards: document.querySelectorAll('.board-fallback .board-card').length,
+       cssWastelands: document.querySelectorAll('.board-fallback .board-wasteland').length,
        canvas: Boolean(document.querySelector('.board-three__canvas')),
        statusText: status ? status.textContent.trim() : '',
        panelText: (document.querySelector('.territory-panel') || {}).innerText || ''
@@ -375,6 +377,7 @@
   (and (= "128" (get stats "threeRevision"))
        (true? (get stats "orbitControls"))
        (true? (get stats "board"))
+       (= 12 (get stats "wastelandCount"))
        (false? (get stats "fallback"))
        (true? (get stats "canvas"))
        (pos? (long (or (get stats "canvasClientWidth") 0)))
@@ -389,6 +392,7 @@
        (true? (get stats "fallback"))
        (false? (get stats "canvas"))
        (= 9 (get stats "cssCards"))
+       (= 12 (get stats "cssWastelands"))
        (str/includes? (or (get stats "statusText") "") "Three.js is unavailable")))
 
 (defn- mismatch-ready? [stats]
@@ -397,6 +401,7 @@
        (true? (get stats "fallback"))
        (false? (get stats "canvas"))
        (= 9 (get stats "cssCards"))
+       (= 12 (get stats "cssWastelands"))
        (str/includes? (or (get stats "statusText") "") "revision 999 is incompatible")))
 
 (defn- browser-diagnostics [client]

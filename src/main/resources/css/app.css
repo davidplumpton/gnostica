@@ -231,11 +231,11 @@ img {
 }
 
 .board-stage {
-  --card-short: clamp(4.25rem, 15vw, 7.5rem);
-  --card-long: clamp(6.8rem, 24vw, 12rem);
-  --card-gap: clamp(0.18rem, 0.6vw, 0.34rem);
-  --card-half-sum: clamp(5.525rem, 19.5vw, 9.75rem);
-  --card-offset: clamp(1.275rem, 4.5vw, 2.25rem);
+  --card-short: clamp(2.8rem, 9vw, 5.4rem);
+  --card-long: clamp(4.48rem, 14.4vw, 8.64rem);
+  --card-gap: clamp(0.14rem, 0.35vw, 0.28rem);
+  --card-half-sum: clamp(3.64rem, 11.7vw, 7.02rem);
+  --card-offset: clamp(0.84rem, 2.7vw, 1.62rem);
   --card-step: calc(var(--card-half-sum) + var(--card-gap));
   position: relative;
   width: calc(var(--card-step) + var(--card-step) + var(--card-long));
@@ -249,6 +249,7 @@ img {
 
 .board-card {
   position: absolute;
+  z-index: 1;
   width: var(--card-short);
   height: var(--card-long);
   padding: 0;
@@ -258,6 +259,22 @@ img {
   background: #efe5d0;
   box-shadow: 0 0.35rem 1.2rem rgba(0, 0, 0, 0.24);
   cursor: pointer;
+}
+
+.board-wasteland {
+  position: absolute;
+  z-index: 0;
+  width: var(--card-short);
+  height: var(--card-long);
+  border: 1px dotted rgba(216, 255, 243, 0.44);
+  border-radius: 6px;
+  box-shadow: inset 0 0 0.65rem rgba(216, 255, 243, 0.08);
+  pointer-events: none;
+}
+
+.board-wasteland.is-landscape {
+  width: var(--card-long);
+  height: var(--card-short);
 }
 
 .board-card.is-landscape {

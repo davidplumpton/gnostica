@@ -1,5 +1,6 @@
 (ns gnostica.app
   (:require [gnostica.app-state :as app-state]
+            [gnostica.board-layout :as layout]
             [gnostica.pieces :as pieces]
             [gnostica.three-board :as three-board]
             [re-frame.core :as rf]
@@ -171,6 +172,28 @@
     :landscape "Landscape"
     "Unknown"))
 
+(defn- css-space-offset [step-count edge-offset]
+  (str "calc(" step-count " * var(--card-step) + " edge-offset ")"))
+
+(defn- board-stage-length [min-value max-value]
+  (str "calc(" (- max-value min-value) " * var(--card-step) + var(--card-long))"))
+
+(defn- board-stage-style [{:keys [min-row max-row min-col max-col]}]
+  {"width" (board-stage-length min-col max-col)
+   "height" (board-stage-length min-row max-row)})
+
+(defn- board-space-style [{:keys [min-row min-col]} {:keys [row col orientation]}]
+  (let [relative-row (- row min-row)
+        relative-col (- col min-col)]
+    {"left" (css-space-offset relative-col
+                              (if (= :portrait orientation)
+                                "var(--card-offset)"
+                                "0px"))
+     "top" (css-space-offset relative-row
+                             (if (= :landscape orientation)
+                               "var(--card-offset)"
+                               "0px"))}))
+
 (defn- piece-summary [piece]
   (let [player (pieces/player-for piece)]
     (str (:name player)
@@ -194,7 +217,14 @@
          ^{:key pip}
          [:span.board-piece__pip])]]]))
 
-(defn board-card [{:keys [index row col orientation card]} selected? board-pieces]
+(defn- board-wasteland [bounds {:keys [id orientation] :as space}]
+  ^{:key id}
+  [:div.board-wasteland
+   {:class (str "is-" (name orientation))
+    :style (board-space-style bounds space)
+    :aria-hidden "true"}])
+
+(defn board-card [bounds {:keys [index row col orientation card] :as cell} selected? board-pieces]
   (let [{:keys [image title]} card]
     [:button.board-card
      {:type "button"
@@ -202,6 +232,7 @@
                   " is-row-" row
                   " is-col-" col
                   (when selected? " is-selected"))
+      :style (board-space-style bounds cell)
       :aria-label (str title
                        ", "
                        (orientation-label orientation)
@@ -226,6 +257,8 @@
   (let [cells @(rf/subscribe [::board])
         board-pieces @(rf/subscribe [::pieces])
         pieces-by-space (pieces/pieces-by-space board-pieces)
+        wastelands (layout/wasteland-spaces cells)
+        space-bounds (layout/space-bounds (concat cells wastelands))
         selected-index @(rf/subscribe [::selected-board-index])
         texture-errors @(rf/subscribe [::three-texture-errors])
         renderer-error @(rf/subscribe [::three-renderer-error])
@@ -249,10 +282,15 @@
            (:message runtime-status))]
         [:div.board-stage
          {:role "group"
-          :aria-label "Gnostica board"}
+          :aria-label "Gnostica board"
+          :data-wasteland-count (count wastelands)
+          :style (board-stage-style space-bounds)}
+         (for [space wastelands]
+           (board-wasteland space-bounds space))
          (for [cell cells]
            ^{:key (:index cell)}
            [board-card
+            space-bounds
             cell
             (= selected-index (:index cell))
             (get pieces-by-space (:index cell))])]])]))
