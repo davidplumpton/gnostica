@@ -54,6 +54,8 @@ The app header exposes a `?` control, and pressing `?` opens a keyboard command 
 
 The `I` shortcut should preserve the current 3D OrbitControls camera view; only the `Reset view` control should reset the board camera.
 
+## Gameplay Schema and Feature Tests
+
 `gnostica.game-schema` provides Malli schemas for the pure gameplay data contract: card references, board cells, player state, six-card hand limits, Icehouse pieces, draw/discard piles, temporary wasteland piece coordinates, post-setup board growth, and top-level game state invariants including piece space references. Use `valid-game?`, `explain-game`, and `assert-valid-game` in tests, Gherkin-style feature steps, and other pure-data boundaries where a readable state-shape failure is more useful than renderer or re-frame behavior.
 
 Gameplay rule examples live in Gherkin-style `.feature` files under `features/` and run through the custom `gnostica.feature-runner`. Step definitions and reusable test-world helpers live under `test/gnostica/feature_steps.clj` and `test/gnostica/feature_world.clj`; they create deterministic games, apply pure actions, inspect state paths, and include Malli explanations in failing step output. `clojure -M:test` runs these feature scenarios alongside the existing `clojure.test` namespaces.
