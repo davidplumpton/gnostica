@@ -1,6 +1,10 @@
 # Gnostica
 
-A Clojure and ClojureScript tarot app using re-frame and shadow-cljs.
+A Clojure and ClojureScript tarot app using re-frame and shadow-cljs. The game allows multiple people connected to a common server to play together, or for the game state to be exported and send to somebody to import so a slower, turn-based form of the game can be played.
+
+Rules are available here https://www.looneylabs.com/sites/default/files/pyramid_rules/Gnostica.pdf
+
+The game was designed by John Cooper, Kory Heath, Kristin Matherly, and Jacob Davenport. It makes use of a deck of Tarot cards and Looney Pyramids (https://www.looneylabs.com/pyramids-home).
 
 ## Development
 
