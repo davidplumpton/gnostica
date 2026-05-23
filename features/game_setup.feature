@@ -1,6 +1,6 @@
 Feature: Initial game setup
   Gameplay rules need deterministic setup scenarios that can be read as
-  Cucumber/Gherkin examples while still exercising the browser-free game state.
+  Gherkin-style examples while still exercising the browser-free game state.
 
   Scenario Outline: Create a deterministic setup for <player-count> players
     Given a deterministic game with <player-count> players

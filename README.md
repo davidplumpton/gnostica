@@ -30,7 +30,7 @@ If either CDN global is missing, if the loaded Three.js revision is not r128, or
 
 ## Shared Game State
 
-The authoritative gameplay state contract starts in `gnostica.game-state`. It is a shared `.cljc` namespace with no browser dependencies, so it can be used from `clojure.test`, future Cucumber steps, and re-frame events. `create-game` accepts explicit player specs plus either an injected `:deck-order` or deterministic `:shuffle-fn`, enforces two to six known players, deals each player a six-card starting hand before the territory board, reuses `gnostica.board` for the nine-card territory grid, and models phase, players, turn order, pieces/stashes, draw pile, discard pile, setup/bid metadata, and compact history events.
+The authoritative gameplay state contract starts in `gnostica.game-state`. It is a shared `.cljc` namespace with no browser dependencies, so it can be used from `clojure.test`, the custom Gherkin-style feature harness, and re-frame events. `create-game` accepts explicit player specs plus either an injected `:deck-order` or deterministic `:shuffle-fn`, enforces two to six known players, deals each player a six-card starting hand before the territory board, reuses `gnostica.board` for the nine-card territory grid, and models phase, players, turn order, pieces/stashes, draw pile, discard pile, setup/bid metadata, and compact history events.
 
 Player ids must reference the six metadata-backed entries in `gnostica.pieces/players` so every legal setup has a display name, Three.js color, and CSS color. Injected decks are validated before board setup: cards must be ordered maps with unique string `:id` values plus nonblank `:title` and `:image` fields needed by rendering and territory details.
 
@@ -54,9 +54,9 @@ The app header exposes a `?` control, and pressing `?` opens a keyboard command 
 
 The `I` shortcut should preserve the current 3D OrbitControls camera view; only the `Reset view` control should reset the board camera.
 
-`gnostica.game-schema` provides Malli schemas for the pure gameplay data contract: card references, board cells, player state, six-card hand limits, Icehouse pieces, draw/discard piles, temporary wasteland piece coordinates, post-setup board growth, and top-level game state invariants including piece space references. Use `valid-game?`, `explain-game`, and `assert-valid-game` in tests, future Cucumber steps, and other pure-data boundaries where a readable state-shape failure is more useful than renderer or re-frame behavior.
+`gnostica.game-schema` provides Malli schemas for the pure gameplay data contract: card references, board cells, player state, six-card hand limits, Icehouse pieces, draw/discard piles, temporary wasteland piece coordinates, post-setup board growth, and top-level game state invariants including piece space references. Use `valid-game?`, `explain-game`, and `assert-valid-game` in tests, Gherkin-style feature steps, and other pure-data boundaries where a readable state-shape failure is more useful than renderer or re-frame behavior.
 
-Gameplay rule examples live in Cucumber/Gherkin-style `.feature` files under `features/`. Step definitions and reusable test-world helpers live under `test/gnostica/feature_steps.clj` and `test/gnostica/feature_world.clj`; they create deterministic games, apply pure actions, inspect state paths, and include Malli explanations in failing step output. `clojure -M:test` runs these feature scenarios alongside the existing `clojure.test` namespaces.
+Gameplay rule examples live in Gherkin-style `.feature` files under `features/` and run through the custom `gnostica.feature-runner`. Step definitions and reusable test-world helpers live under `test/gnostica/feature_steps.clj` and `test/gnostica/feature_world.clj`; they create deterministic games, apply pure actions, inspect state paths, and include Malli explanations in failing step output. `clojure -M:test` runs these feature scenarios alongside the existing `clojure.test` namespaces.
 
 ### Verification
 
