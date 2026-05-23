@@ -13,6 +13,8 @@
 
 (def default-hotkey-help-open? false)
 
+(def default-icon-help-open? false)
+
 (def card-icon-modes
   #{:always :popup})
 
@@ -92,6 +94,7 @@
          base-db {:selected-board-index selected-board-index
                   :card-icon-mode (normalize-card-icon-mode card-icon-mode)
                   :hotkey-help-open? default-hotkey-help-open?
+                  :icon-help-open? default-icon-help-open?
                   :move-selection (empty-move-selection)
                   :three-texture-errors []}]
      (if (:ok? result)
@@ -138,11 +141,32 @@
 (defn set-hotkey-help-open [db open?]
   (assoc db :hotkey-help-open? (true? open?)))
 
+(defn icon-help-open? [db]
+  (true? (:icon-help-open? db)))
+
+(defn set-icon-help-open [db open?]
+  (assoc db :icon-help-open? (true? open?)))
+
 (defn open-hotkey-help [db]
-  (set-hotkey-help-open db true))
+  (-> db
+      (set-icon-help-open false)
+      (set-hotkey-help-open true)))
 
 (defn close-hotkey-help [db]
   (set-hotkey-help-open db false))
+
+(defn open-icon-help [db]
+  (-> db
+      (set-hotkey-help-open false)
+      (set-icon-help-open true)))
+
+(defn close-icon-help [db]
+  (set-icon-help-open db false))
+
+(defn close-help-dialogs [db]
+  (-> db
+      close-hotkey-help
+      close-icon-help))
 
 (defn current-player [db]
   (some-> (game db) game-state/current-player))

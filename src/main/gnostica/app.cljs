@@ -82,6 +82,21 @@
    (app-state/close-hotkey-help db)))
 
 (rf/reg-event-db
+ ::open-icon-help
+ (fn [db _]
+   (app-state/open-icon-help db)))
+
+(rf/reg-event-db
+ ::close-icon-help
+ (fn [db _]
+   (app-state/close-icon-help db)))
+
+(rf/reg-event-db
+ ::close-help-dialogs
+ (fn [db _]
+   (app-state/close-help-dialogs db)))
+
+(rf/reg-event-db
  ::clear-three-texture-errors
  (fn [db _]
    (assoc db :three-texture-errors [])))
@@ -221,15 +236,22 @@
  (fn [db _]
    (app-state/hotkey-help-open? db)))
 
+(rf/reg-sub
+ ::icon-help-open?
+ (fn [db _]
+   (app-state/icon-help-open? db)))
+
 (def hotkey-commands
   [{:keys ["?"]
     :command "Show keyboard commands"}
+   {:keys ["G"]
+    :command "Show special move icon guide"}
    {:keys ["I"]
     :command "Toggle card icon overlays"}
    {:keys ["W/A/S/D" "Arrow keys"]
     :command "Move the 3D board view when the board is focused"}
    {:keys ["Esc"]
-    :command "Close keyboard commands"}])
+    :command "Close open help dialogs"}])
 
 (defn orientation-label [orientation]
   (case orientation
@@ -802,6 +824,16 @@
     {:aria-hidden "true"}
     "?"]])
 
+(defn- icon-help-toggle []
+  [:button.icon-help-toggle
+   {:type "button"
+    :aria-label "Show special move icon guide"
+    :title "Special move icons (G)"
+    :on-click #(rf/dispatch [::open-icon-help])}
+   [:span.icon-help-toggle__mark
+    {:aria-hidden "true"}
+    [icon-view/gnostica-icon :world]]])
+
 (defn app-header []
   (let [current-player @(rf/subscribe [::current-player])
         card-icon-mode @(rf/subscribe [::card-icon-mode])]
@@ -811,6 +843,7 @@
       [:span.brand__name "Gnostica"]]
      [:div.app-header__actions
       [hotkey-help-toggle]
+      [icon-help-toggle]
       [card-icon-mode-toggle card-icon-mode]
       (when current-player
         [:div.app-status
@@ -844,6 +877,44 @@
              [:kbd key-label])]
           [:dd command]])]]]))
 
+(defn- card-titles-for-icon [icon-id]
+  (->> cards/deck
+       (filter #(some #{icon-id} (:gnostica-icons %)))
+       (map :title)
+       vec))
+
+(defn- icon-help-dialog []
+  (when @(rf/subscribe [::icon-help-open?])
+    [:div.icon-help-overlay
+     {:role "presentation"
+      :on-click #(rf/dispatch [::close-icon-help])}
+     [:section.icon-help-dialog
+      {:role "dialog"
+       :aria-modal "true"
+       :aria-labelledby "icon-help-title"
+       :on-click #(.stopPropagation %)}
+      [:div.icon-help-dialog__header
+       [:h2#icon-help-title "Special Move Icons"]
+       [:button.icon-help-dialog__close
+        {:type "button"
+         :aria-label "Close special move icon guide"
+         :on-click #(rf/dispatch [::close-icon-help])}
+        "Close"]]
+      [:div.icon-help-list
+       (for [{:keys [id label description]} (icons/icon-glossary-items)]
+         (let [card-titles (card-titles-for-icon id)]
+           ^{:key (name id)}
+           [:div.icon-help-item
+            [:span.icon-help-item__icon
+             [icon-view/gnostica-icon id]]
+            [:div.icon-help-item__body
+             [:h3 label]
+             [:p.icon-help-item__description description]
+             (when (seq card-titles)
+               [:p.icon-help-item__cards
+                [:span "Cards"]
+                (str " " (str/join ", " card-titles))])]]))]]]))
+
 (defn setup-error-panel [error]
   [:main.app-shell.is-setup-error
    [:section.setup-error
@@ -866,10 +937,11 @@
         [:div.play-stack
          [board-stage]
          [card-zones]]
-        [:div.side-stack
-         [move-panel]
-         [territory-panel]]])
-     [hotkey-help-dialog]]))
+       [:div.side-stack
+        [move-panel]
+        [territory-panel]]])
+     [hotkey-help-dialog]
+     [icon-help-dialog]]))
 
 (defonce keyboard-shortcut-listener
   (atom nil))
@@ -906,12 +978,17 @@
                          (= "escape" lower-key)
                          (do
                            (.preventDefault event)
-                           (rf/dispatch [::close-hotkey-help]))
+                           (rf/dispatch [::close-help-dialogs]))
 
                          (= "i" lower-key)
                          (do
                            (.preventDefault event)
-                           (rf/dispatch [::toggle-card-icon-mode]))))))]
+                           (rf/dispatch [::toggle-card-icon-mode]))
+
+                         (= "g" lower-key)
+                         (do
+                           (.preventDefault event)
+                           (rf/dispatch [::open-icon-help]))))))]
     (reset! keyboard-shortcut-listener listener)
     (.addEventListener js/window "keydown" listener)))
 

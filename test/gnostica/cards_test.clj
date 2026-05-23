@@ -52,6 +52,14 @@
            (icons/present-icon-ids [:cup :disc :empty nil])))
     (is (= "Cup, Disc"
            (icons/icon-stack-label [:cup :disc])))
+    (is (= icons/icon-ids
+           (set icons/icon-definition-order)))
+    (is (= (count icons/icon-ids)
+           (count (icons/icon-glossary-items))))
+    (doseq [{:keys [id label description]} (icons/icon-glossary-items)]
+      (is (contains? icons/icon-ids id))
+      (is (not (str/blank? label)))
+      (is (not (str/blank? description))))
     (is (str/includes? icons/stickas-reference "GnosticaStickas.pdf"))))
 
 (deftest cup-and-one-point-card-helpers-identify-move-cards

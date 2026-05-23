@@ -63,7 +63,8 @@
            (app-state/selected-board-index db)))
     (is (= :always
            (app-state/card-icon-mode db)))
-    (is (false? (app-state/hotkey-help-open? db)))))
+    (is (false? (app-state/hotkey-help-open? db)))
+    (is (false? (app-state/icon-help-open? db)))))
 
 (deftest card-icon-mode-can-be-initialized-and-toggled
   (let [db (app-state/initialize {:game-options {:shuffle-fn identity}
@@ -85,6 +86,23 @@
                   (app-state/open-hotkey-help db)))))
     (is (false? (app-state/hotkey-help-open?
                  (app-state/set-hotkey-help-open db nil))))))
+
+(deftest icon-help-visibility-can-be-controlled
+  (let [db (app-state/initialize {:game-options {:shuffle-fn identity}})
+        icon-db (app-state/open-icon-help db)
+        hotkey-db (app-state/open-hotkey-help icon-db)
+        closed-db (app-state/close-help-dialogs icon-db)]
+    (is (false? (app-state/icon-help-open? db)))
+    (is (true? (app-state/icon-help-open? icon-db)))
+    (is (false? (app-state/hotkey-help-open? icon-db)))
+    (is (true? (app-state/hotkey-help-open? hotkey-db)))
+    (is (false? (app-state/icon-help-open? hotkey-db)))
+    (is (false? (app-state/icon-help-open?
+                 (app-state/close-icon-help icon-db))))
+    (is (false? (app-state/icon-help-open?
+                 (app-state/set-icon-help-open db nil))))
+    (is (false? (app-state/icon-help-open? closed-db)))
+    (is (false? (app-state/hotkey-help-open? closed-db)))))
 
 (deftest initialize-records-explicit-setup-errors
   (let [db (app-state/initialize {:player-specs [{:id :solo}]})]

@@ -3,6 +3,7 @@
             [clojure.java.io :as io]
             [clojure.string :as str]
             [gnostica.icon-layout :as icon-layout]
+            [gnostica.icons :as icons]
             [gnostica.server :as app-server]
             [ring.adapter.jetty :as jetty])
   (:import [java.io ByteArrayInputStream File]
@@ -536,6 +537,32 @@
      };
    })()")
 
+(def icon-help-js
+  "(() => {
+     const visible = (node) => {
+       if (!node) return false;
+       const rect = node.getBoundingClientRect();
+       const style = getComputedStyle(node);
+       return rect.width > 0
+         && rect.height > 0
+         && style.visibility !== 'hidden'
+         && style.display !== 'none'
+         && Number(style.opacity || 1) > 0.8;
+     };
+     const dialog = document.querySelector('.icon-help-dialog');
+     const overlay = document.querySelector('.icon-help-overlay');
+     return {
+       overlayVisible: visible(overlay),
+       dialogVisible: visible(dialog),
+       role: dialog ? dialog.getAttribute('role') : null,
+       ariaModal: dialog ? dialog.getAttribute('aria-modal') : null,
+       title: (document.querySelector('#icon-help-title') || {}).textContent || '',
+       itemCount: document.querySelectorAll('.icon-help-item').length,
+       iconCount: document.querySelectorAll('.icon-help-item .gnostica-icon').length,
+       text: dialog ? dialog.textContent : ''
+     };
+   })()")
+
 (def mismatched-three-js
   "window.THREE = {REVISION: '999', OrbitControls: function OrbitControls() {}};")
 
@@ -723,13 +750,30 @@
          (= "dialog" (get stats "role"))
          (= "true" (get stats "ariaModal"))
          (str/includes? (get stats "title") "Keyboard Commands")
-         (= 4 (long (or (get stats "commandCount") -1)))
+         (= 5 (long (or (get stats "commandCount") -1)))
          (contains? labels "?")
+         (contains? labels "G")
          (contains? labels "I")
          (contains? labels "W/A/S/D")
          (contains? labels "Arrow keys")
          (contains? labels "Esc")
          (str/includes? (or (get stats "text") "") "Move the 3D board view"))))
+
+(defn- icon-help-open-ready? [stats]
+  (and (true? (get stats "overlayVisible"))
+       (true? (get stats "dialogVisible"))
+       (= "dialog" (get stats "role"))
+       (= "true" (get stats "ariaModal"))
+       (str/includes? (get stats "title") "Special Move Icons")
+       (= (count icons/icon-ids) (long (or (get stats "itemCount") -1)))
+       (= (count icons/icon-ids) (long (or (get stats "iconCount") -1)))
+       (str/includes? (or (get stats "text") "") "Create a small piece")
+       (str/includes? (or (get stats "text") "") "Any major arcana power")))
+
+(defn- icon-help-closed-ready? [stats]
+  (and (false? (get stats "overlayVisible"))
+       (false? (get stats "dialogVisible"))
+       (zero? (long (or (get stats "itemCount") -1)))))
 
 (defn- hotkey-help-closed-ready? [stats]
   (and (false? (get stats "overlayVisible"))
@@ -845,6 +889,11 @@
                          :code "KeyI"
                          :key-code 73}))
 
+(defn- dispatch-g-key! [client]
+  (dispatch-key! client {:key "g"
+                         :code "KeyG"
+                         :key-code 71}))
+
 (defn- dispatch-w-key! [client]
   (dispatch-key! client {:key "w"
                          :code "KeyW"
@@ -924,41 +973,52 @@
                                          (str (:name viewport) " hotkey help dialog")
                                          hotkey-help-js
                                          hotkey-help-open-ready?)]
-            (dispatch-escape-key! client)
-            (wait-for! client
-                       (str (:name viewport) " hotkey help close")
-                       hotkey-help-js
-                       hotkey-help-closed-ready?)
-            (dispatch-i-key! client)
-            (let [popup-stats (wait-for! client
-                                          (str (:name viewport) " popup icon mode")
-                                          popup-mode-js
-                                          popup-mode-ready?)
-                  updated-rect (evaluate! client canvas-rect-js)]
-              (when-not (camera-distance-preserved? zoomed-stats popup-stats)
-                (throw (ex-info "The I hotkey reset the 3D camera view."
-                                {:viewport viewport
-                                 :zoomed-stats zoomed-stats
-                                 :popup-stats popup-stats})))
-              (when-not updated-rect
-                (throw (ex-info "Three.js canvas bounds could not be remeasured after popup mode."
-                                {:viewport viewport
-                                 :stats stats
-                                 :popup-stats popup-stats})))
-              (dispatch-center-click! client updated-rect)
-              (let [selection (wait-for! client
-                                         (str (:name viewport) " center-card selection")
-                                         selection-js
-                                         #(str/includes? (or (get % "panelText") "")
-                                                        "Row 2, Column 2"))]
-                {:viewport (:name viewport)
-                 :stats stats
-                 :keyboard-stats keyboard-stats
-                 :zoomed-stats zoomed-stats
-                 :hotkey-help hotkey-help
-                 :popup-stats popup-stats
-                 :pixel-stats pixel-stats
-                 :selection selection}))))))
+              (dispatch-escape-key! client)
+              (wait-for! client
+                         (str (:name viewport) " hotkey help close")
+                         hotkey-help-js
+                         hotkey-help-closed-ready?)
+              (dispatch-g-key! client)
+              (let [icon-help (wait-for! client
+                                         (str (:name viewport) " icon help dialog")
+                                         icon-help-js
+                                         icon-help-open-ready?)]
+                (dispatch-escape-key! client)
+                (wait-for! client
+                           (str (:name viewport) " icon help close")
+                           icon-help-js
+                           icon-help-closed-ready?)
+                (dispatch-i-key! client)
+                (let [popup-stats (wait-for! client
+                                             (str (:name viewport) " popup icon mode")
+                                             popup-mode-js
+                                             popup-mode-ready?)
+                      updated-rect (evaluate! client canvas-rect-js)]
+                  (when-not (camera-distance-preserved? zoomed-stats popup-stats)
+                    (throw (ex-info "The I hotkey reset the 3D camera view."
+                                    {:viewport viewport
+                                     :zoomed-stats zoomed-stats
+                                     :popup-stats popup-stats})))
+                  (when-not updated-rect
+                    (throw (ex-info "Three.js canvas bounds could not be remeasured after popup mode."
+                                    {:viewport viewport
+                                     :stats stats
+                                     :popup-stats popup-stats})))
+                  (dispatch-center-click! client updated-rect)
+                  (let [selection (wait-for! client
+                                             (str (:name viewport) " center-card selection")
+                                             selection-js
+                                             #(str/includes? (or (get % "panelText") "")
+                                                            "Row 2, Column 2"))]
+                    {:viewport (:name viewport)
+                     :stats stats
+                     :keyboard-stats keyboard-stats
+                     :zoomed-stats zoomed-stats
+                     :hotkey-help hotkey-help
+                     :icon-help icon-help
+                     :popup-stats popup-stats
+                     :pixel-stats pixel-stats
+                     :selection selection})))))))
       (catch Exception error
         (throw (ex-info (str "3D board smoke failed in the " (:name viewport) " viewport.")
                         {:viewport viewport

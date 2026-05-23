@@ -186,7 +186,8 @@ img {
 }
 
 .card-icon-mode-toggle,
-.hotkey-help-toggle {
+.hotkey-help-toggle,
+.icon-help-toggle {
   display: inline-flex;
   align-items: center;
   gap: 0.38rem;
@@ -202,7 +203,9 @@ img {
 .card-icon-mode-toggle:hover,
 .card-icon-mode-toggle:focus-visible,
 .hotkey-help-toggle:hover,
-.hotkey-help-toggle:focus-visible {
+.hotkey-help-toggle:focus-visible,
+.icon-help-toggle:hover,
+.icon-help-toggle:focus-visible {
   border-color: var(--focus);
   outline: 2px solid rgba(159, 247, 231, 0.38);
   outline-offset: 2px;
@@ -232,10 +235,24 @@ img {
   letter-spacing: 0;
 }
 
-.hotkey-help-toggle {
+.hotkey-help-toggle,
+.icon-help-toggle {
   justify-content: center;
   width: 2.15rem;
   padding: 0.2rem;
+}
+
+.icon-help-toggle__mark {
+  display: block;
+  width: 1.18rem;
+}
+
+.icon-help-toggle .gnostica-icon {
+  filter: none;
+}
+
+.icon-help-toggle .gnostica-icon__base {
+  fill: var(--accent);
 }
 
 .hotkey-help-toggle__mark {
@@ -336,7 +353,8 @@ img {
   line-height: 1.45;
 }
 
-.hotkey-help-overlay {
+.hotkey-help-overlay,
+.icon-help-overlay {
   position: fixed;
   inset: 0;
   z-index: 30;
@@ -346,7 +364,8 @@ img {
   background: rgba(18, 7, 15, 0.64);
 }
 
-.hotkey-help-dialog {
+.hotkey-help-dialog,
+.icon-help-dialog {
   display: grid;
   gap: 1rem;
   width: min(100%, 30rem);
@@ -359,7 +378,12 @@ img {
   box-shadow: var(--shadow);
 }
 
-.hotkey-help-dialog__header {
+.icon-help-dialog {
+  width: min(100%, 44rem);
+}
+
+.hotkey-help-dialog__header,
+.icon-help-dialog__header {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -367,7 +391,8 @@ img {
   min-width: 0;
 }
 
-.hotkey-help-dialog h2 {
+.hotkey-help-dialog h2,
+.icon-help-dialog h2 {
   min-width: 0;
   margin: 0;
   font-size: 1.08rem;
@@ -376,7 +401,8 @@ img {
   overflow-wrap: anywhere;
 }
 
-.hotkey-help-dialog__close {
+.hotkey-help-dialog__close,
+.icon-help-dialog__close {
   flex: 0 0 auto;
   min-height: 2rem;
   padding: 0.25rem 0.65rem;
@@ -391,10 +417,75 @@ img {
 }
 
 .hotkey-help-dialog__close:hover,
-.hotkey-help-dialog__close:focus-visible {
+.hotkey-help-dialog__close:focus-visible,
+.icon-help-dialog__close:hover,
+.icon-help-dialog__close:focus-visible {
   border-color: var(--focus);
   outline: 2px solid rgba(159, 247, 231, 0.38);
   outline-offset: 2px;
+}
+
+.icon-help-list {
+  display: grid;
+  margin: 0;
+}
+
+.icon-help-item {
+  display: grid;
+  grid-template-columns: 2.4rem minmax(0, 1fr);
+  gap: 0.75rem;
+  align-items: start;
+  min-width: 0;
+  padding: 0.72rem 0;
+  border-top: 1px solid rgba(255, 250, 240, 0.14);
+}
+
+.icon-help-item:first-child {
+  border-top: 0;
+}
+
+.icon-help-item__icon {
+  display: block;
+  width: 2.25rem;
+}
+
+.icon-help-item__icon .gnostica-icon {
+  filter: none;
+}
+
+.icon-help-item__body {
+  display: grid;
+  gap: 0.28rem;
+  min-width: 0;
+}
+
+.icon-help-item h3 {
+  min-width: 0;
+  margin: 0;
+  color: var(--accent);
+  font-size: 0.9rem;
+  line-height: 1.18;
+  letter-spacing: 0;
+  overflow-wrap: anywhere;
+}
+
+.icon-help-item p {
+  min-width: 0;
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+  line-height: 1.34;
+  overflow-wrap: anywhere;
+}
+
+.icon-help-item__cards {
+  color: var(--dim);
+}
+
+.icon-help-item__cards span {
+  margin-right: 0.35rem;
+  color: var(--ink);
+  font-weight: 800;
 }
 
 .hotkey-command-list {
@@ -1306,6 +1397,15 @@ h1 {
   .hotkey-command {
     grid-template-columns: minmax(0, 1fr);
     gap: 0.4rem;
+  }
+
+  .icon-help-item {
+    grid-template-columns: 2rem minmax(0, 1fr);
+    gap: 0.6rem;
+  }
+
+  .icon-help-item__icon {
+    width: 1.9rem;
   }
 
   .card-icon-mode-toggle {
