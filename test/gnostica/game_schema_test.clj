@@ -1,5 +1,6 @@
 (ns gnostica.game-schema-test
   (:require [clojure.test :refer [deftest is]]
+            [gnostica.board :as board]
             [gnostica.cards :as cards]
             [gnostica.game-schema :as game-schema]
             [gnostica.game-state :as game-state]
@@ -108,6 +109,23 @@
                     :player-ids [:rose :indigo]}}]
            (:invariants explanation)))
     (is (re-find #":obsidian" (pr-str explanation)))))
+
+(deftest rejects-piece-space-indexes-without-board-cells
+  (let [state (game-for 2)
+        missing-space-piece {:id :rose-missing-space
+                             :player-id :rose
+                             :space-index 99
+                             :size :small
+                             :orientation :up}
+        invalid-state (assoc-in state [:pieces :on-board] [missing-space-piece])
+        explanation (game-schema/explain-game invalid-state)]
+    (is (false? (game-schema/valid-game? invalid-state)))
+    (is (= [{:code :piece-space-missing
+             :message "Pieces with a space index must reference an existing board cell."
+             :data {:piece-id :rose-missing-space
+                    :space-index 99
+                    :board-indexes (vec (range board/board-card-count))}}]
+           (:invariants explanation)))))
 
 (deftest assert-valid-game-throws-readable-ex-data
   (let [state (assoc-in (game-for 2) [:players 0 :hand] (vec (take 7 cards/deck)))]

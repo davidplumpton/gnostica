@@ -835,7 +835,7 @@
 (defn- init-options []
   (let [params (js/URLSearchParams. (.. js/window -location -search))]
     (when (= "major-icons" (.get params "gnostica-smoke"))
-      {:deck-order (smoke-major-icon-deck-order)})))
+      {:game-options {:deck-order (smoke-major-icon-deck-order)}})))
 
 (defn init []
   (rf/dispatch-sync [::initialize (init-options)])

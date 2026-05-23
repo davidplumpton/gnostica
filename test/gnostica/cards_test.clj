@@ -43,6 +43,22 @@
            (:gnostica-icons (cards/card-by-id "sun"))))
     (is (str/includes? icons/stickas-reference "GnosticaStickas.pdf"))))
 
+(deftest cup-and-one-point-card-helpers-identify-move-cards
+  (is (cards/cup-card? (cards/card-by-id "cups2")))
+  (is (cards/cup-card? (cards/card-by-id "sun")))
+  (is (cards/cup-card? (cards/card-by-id "magician")))
+  (is (not (cards/cup-card? (cards/card-by-id "coins2"))))
+  (is (cards/cup-card? {:id "cups3"
+                        :title "Three of Cups"
+                        :image "/images/cups3.png"}))
+  (is (cards/one-point-card? (cards/card-by-id "coins2")))
+  (is (cards/one-point-card? (cards/card-by-id "cupsace")))
+  (is (cards/one-point-card? {:id "wands10"
+                              :title "Ten of Wands"
+                              :image "/images/wands10.png"}))
+  (is (not (cards/one-point-card? (cards/card-by-id "cupsqueen"))))
+  (is (not (cards/one-point-card? (cards/card-by-id "sun")))))
+
 (defn -main [& _]
   (let [{:keys [fail error]} (run-tests 'gnostica.cards-test)]
     (System/exit (if (zero? (+ fail error)) 0 1))))

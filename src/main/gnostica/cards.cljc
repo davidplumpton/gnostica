@@ -114,6 +114,10 @@
 
 (def suit-prefixes ["coins" "cups" "swords" "wands"])
 
+(def one-point-rank-keys #{"ace" "2" "3" "4" "5" "6" "7" "8" "9" "10"})
+
+(def cup-icon-ids #{:cup :cup-unbounded :wheel-cup :wild-suits})
+
 (def rank-titles
   {"1" "One"
    "2" "Two"
@@ -148,6 +152,8 @@
              suit (get suit-titles suit-key)]
          {:arcana :minor
           :group suit
+          :suit-key suit-key
+          :rank-key rank-key
           :rank rank
           :suit suit
           :title (str rank " of " suit)})))
@@ -174,3 +180,30 @@
 
 (defn card-by-id [id]
   (get cards-by-id id))
+
+(defn- known-card [card]
+  (merge (get cards-by-id (:id card)) card))
+
+(defn- minor-parts [card]
+  (let [card (known-card card)]
+    (if (and (:suit-key card) (:rank-key card))
+      [(:suit-key card) (:rank-key card)]
+      (some
+       (fn [suit-key]
+         (when (and (string? (:id card))
+                    (starts-with? (:id card) suit-key))
+           [suit-key (subs (:id card) (count suit-key))]))
+       suit-prefixes))))
+
+(defn cup-card? [card]
+  (let [card (known-card card)
+        [suit-key] (minor-parts card)]
+    (or (= "cups" suit-key)
+        (boolean (some cup-icon-ids (:gnostica-icons card))))))
+
+(defn one-point-card? [card]
+  (let [card (known-card card)
+        [suit-key rank-key] (minor-parts card)]
+    (and (= :minor (:arcana card))
+         (contains? (set suit-prefixes) suit-key)
+         (contains? one-point-rank-keys rank-key))))

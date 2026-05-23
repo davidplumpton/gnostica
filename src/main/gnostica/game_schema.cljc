@@ -73,15 +73,14 @@
        (every?
         (fn [{:keys [index row col orientation]}]
           (and (int? index)
-               (<= 0 index (dec board/board-card-count))
                (int? row)
-               (<= 0 row (dec board/board-size))
                (int? col)
-               (<= 0 col (dec board/board-size))
-               (let [position (board/position-for-index index)]
-                 (and (= (:row position) row)
-                      (= (:col position) col)
-                      (= (board/orientation-for row col) orientation)))))
+               (if (< index board/board-card-count)
+                 (let [position (board/position-for-index index)]
+                   (and (= (:row position) row)
+                        (= (:col position) col)))
+                 true)
+               (= (board/orientation-for row col) orientation)))
         cells)))
 
 (defn- participating-player-count? [state]
@@ -155,6 +154,19 @@
                            :player-ids (player-ids state)}})))
          vec)))
 
+(defn- piece-space-errors [state]
+  (let [board-indexes (set (map :index (:board state)))]
+    (->> (get-in state [:pieces :on-board])
+         (keep (fn [{:keys [id space-index] :as piece}]
+                 (when (and (contains? piece :space-index)
+                            (not (contains? board-indexes space-index)))
+                   {:code :piece-space-missing
+                    :message "Pieces with a space index must reference an existing board cell."
+                    :data {:piece-id id
+                           :space-index space-index
+                           :board-indexes (vec (sort board-indexes))}})))
+         vec)))
+
 (defn- turn-errors [state]
   (cond-> []
     (not (turn-order-matches-players? state))
@@ -175,7 +187,11 @@
     (hand-limit-errors state)
     (duplicate-card-errors state)
     (piece-owner-errors state)
+    (piece-space-errors state)
     (turn-errors state))))
+
+(defn- piece-space-indexes-match-board? [state]
+  (empty? (piece-space-errors state)))
 
 (def PlayerId
   (enum-schema (map :id pieces/players)))
@@ -202,10 +218,10 @@
    [:image NonBlankString]])
 
 (def BoardIndex
-  [:int {:min 0 :max (dec board/board-card-count)}])
+  NonNegativeInt)
 
 (def BoardCoordinate
-  [:int {:min 0 :max (dec board/board-size)}])
+  :int)
 
 (def BoardCell
   [:map
@@ -219,7 +235,7 @@
 (def Board
   [:and
    [:vector {:min board/board-card-count
-             :max board/board-card-count}
+             :max 78}
     BoardCell]
    [:fn {:error/message "board cell indexes must be unique"} board-indexes-unique?]
    [:fn {:error/message "board cells must match their index row, column, and orientation"} board-cell-positions-match?]])
@@ -251,13 +267,30 @@
    [:stash Stash]
    [:bid [:maybe :any]]])
 
-(def Piece
+(def BoardPiece
   [:map
    [:id :keyword]
    [:player-id PlayerId]
    [:space-index BoardIndex]
    [:size (enum-schema (keys pieces/piece-sizes))]
    [:orientation (enum-schema pieces/legal-orientations)]])
+
+(def WastelandSpace
+  [:map
+   [:kind [:enum :wasteland]]
+   [:row BoardCoordinate]
+   [:col BoardCoordinate]])
+
+(def WastelandPiece
+  [:map
+   [:id :keyword]
+   [:player-id PlayerId]
+   [:space WastelandSpace]
+   [:size (enum-schema (keys pieces/piece-sizes))]
+   [:orientation (enum-schema pieces/legal-orientations)]])
+
+(def Piece
+  [:or BoardPiece WastelandPiece])
 
 (def Turn
   [:map
@@ -305,6 +338,7 @@
    [:fn {:error/message "turn order must match players"} turn-order-matches-players?]
    [:fn {:error/message "current player must match the turn index"} current-player-matches-turn-index?]
    [:fn {:error/message "piece owners must be participating players"} pieces-owned-by-players?]
+   [:fn {:error/message "piece space indexes must reference board cells"} piece-space-indexes-match-board?]
    [:fn {:error/message "piece stashes must match participating players"} stashes-match-players?]
    [:fn {:error/message "card ids must be unique across all game zones"} all-card-ids-unique?]])
 
