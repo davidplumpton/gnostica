@@ -375,7 +375,10 @@
       (let [component (r/current-component)]
         [:div.board-three
          {:role "img"
-          :aria-label "Three-dimensional Gnostica board with nine face-up tarot territory cards and Icehouse pieces"}
+          :aria-label "Three-dimensional Gnostica board with nine face-up tarot territory cards and Icehouse pieces"
+          :data-board-card-count (count _cells)
+          :data-selected-board-index _selected-index
+          :data-texture-error-count (count texture-errors)}
          [:div.board-three__mount
           {:aria-hidden "true"
            :ref #(set! (.-boardMountNode ^js component) %)}]

@@ -11,6 +11,7 @@ clojure -M:dev       # start the ClojureScript watcher
 clojure -M:release   # compile an optimized browser build
 clojure -M:server    # serve the released app with Clojure/Ring
 clojure -M:test      # run Clojure tests for shared code
+clojure -M:smoke     # run the headless Chrome 3D board smoke check
 ```
 
 The shadow-cljs dev server serves the app at `http://localhost:8080/index.html`. The default workflow does not use npm.
@@ -33,7 +34,7 @@ The primary board renderer is `gnostica.three-board/scene` in `src/main/gnostica
 
 Browser-free board renderer math lives in `src/main/gnostica/board_layout.cljc`. Keep card positioning, board-index lookup, visible piece slot limits, compass rotations, and piece height math there when the behavior can be tested without WebGL.
 
-For the 3D board docs/verification ticket, run both `clojure -M:test` and `clojure -M:release`. If browser automation is available, smoke the released app at desktop and mobile viewport widths and record whether the canvas is nonblank, nine cards are visible, orientation alternates, gaps are present, camera orbit/zoom/reset works, and 3D card selection updates the territory panel.
+For 3D board verification, run `clojure -M:test`, `clojure -M:release`, and `clojure -M:smoke`. The smoke command starts the released Ring app unless `SMOKE_URL` points at an existing dev or release server, uses a local headless Chrome/Chromium through the DevTools protocol without npm, and accepts `SMOKE_CHROME` for a nonstandard browser path. It checks desktop and mobile viewports, r128 Three.js/OrbitControls globals, a nonblank canvas screenshot with visible board content, nine card texture loads, absence of happy-path texture/fallback status messages, reset control presence, 3D center-card selection updating the territory panel, and the CSS fallback path when the pinned CDN scripts are blocked.
 
 ## Issue Tracking: br (beads_rust)
 

@@ -39,9 +39,12 @@ For the 3D board slice, run:
 ```sh
 clojure -M:test
 clojure -M:release
+clojure -M:smoke
 ```
 
-Browser smoke verification should cover desktop and mobile widths when browser automation is available: the canvas is nonblank, all nine cards are visible, adjacent cards alternate orientation with small gaps, Icehouse pieces are visible with distinct colors/sizes/orientations, the camera can orbit or zoom and reset, and clicking a 3D card changes the selected territory panel.
+`clojure -M:smoke` starts the released Ring app unless `SMOKE_URL` points at an already-running dev or release server. It drives a local headless Chrome/Chromium through the DevTools protocol, so no npm workflow is added. Set `SMOKE_CHROME` if Chrome is not in a standard location.
+
+The smoke checks desktop and mobile viewport widths, verifies the r128 Three.js and OrbitControls globals, confirms the canvas screenshot is nonblank with visible board content, waits for nine card texture loads, fails on happy-path texture/fallback status messages, verifies the reset control is present, clicks the center 3D card and checks that the territory panel updates, and blocks the pinned CDN scripts once to verify the CSS fallback path.
 
 ## Commands
 
@@ -50,6 +53,7 @@ clojure -M:dev       # start the ClojureScript watcher
 clojure -M:release   # compile an optimized browser build
 clojure -M:server    # serve the released app with Clojure/Ring
 clojure -M:test      # run Clojure tests for shared code
+clojure -M:smoke     # run the headless Chrome 3D board smoke check
 ```
 
 ## Version Control
