@@ -364,6 +364,7 @@
        antialiasSupported,
        minZoomDistance: board ? Number(board.dataset.minZoomDistance || -1) : -1,
        maxZoomDistance: board ? Number(board.dataset.maxZoomDistance || -1) : -1,
+       cameraDistance: board ? Number(board.dataset.cameraDistance || -1) : -1,
        reset: Boolean(document.querySelector('.board-three__reset')),
        cardZones: Boolean(cardZones),
        cardZonesVisible: Boolean(cardZonesRect && cardZonesRect.width > 0 && cardZonesRect.height > 0),
@@ -494,6 +495,7 @@
      return {
        appMode: shell ? shell.dataset.cardIconMode : null,
        boardMode: board ? board.dataset.cardIconMode : (fallbackFace ? fallbackFace.dataset.iconMode : null),
+       cameraDistance: board ? Number(board.dataset.cameraDistance || -1) : -1,
        fallback: Boolean(fallback),
        togglePressed: (document.querySelector('.card-icon-mode-toggle') || {}).getAttribute('aria-pressed'),
        handStackCount: document.querySelectorAll('.hand-card .gnostica-icon-stack').length,
@@ -604,6 +606,7 @@
          (antialias-ready? stats)
          (roughly= 3.2 (double (or (get stats "minZoomDistance") -1)) 0.001)
          (roughly= 10.0 (double (or (get stats "maxZoomDistance") -1)) 0.001)
+         (<= 3.2 (double (or (get stats "cameraDistance") -1)) 10.0)
          (true? (get stats "reset"))
          (true? (get stats "cardZones"))
          (true? (get stats "cardZonesVisible"))
@@ -615,6 +618,20 @@
          (zero? (long (or (get stats "discardCount") -1)))
          (empty? (get stats "status"))
          (>= (long (or (get stats "imageResourceCount") 0)) 9))))
+
+(defn- camera-distance-changed? [initial-stats stats]
+  (let [initial-distance (double (or (get initial-stats "cameraDistance") -1))
+        current-distance (double (or (get stats "cameraDistance") -1))]
+    (and (pos? initial-distance)
+         (pos? current-distance)
+         (not (roughly= initial-distance current-distance 0.05)))))
+
+(defn- camera-distance-preserved? [expected-stats stats]
+  (let [expected-distance (double (or (get expected-stats "cameraDistance") -1))
+        current-distance (double (or (get stats "cameraDistance") -1))]
+    (and (pos? expected-distance)
+         (pos? current-distance)
+         (roughly= expected-distance current-distance 0.02))))
 
 (defn- fallback-ready? [stats]
   (and (nil? (get stats "threeRevision"))
@@ -781,6 +798,20 @@
   (dispatch-click! client {"x" centerX
                            "y" centerY}))
 
+(defn- dispatch-wheel! [client {:strs [centerX centerY]} delta-y]
+  (cdp-command! client
+                "Input.dispatchMouseEvent"
+                {"type" "mouseMoved"
+                 "x" centerX
+                 "y" centerY})
+  (cdp-command! client
+                "Input.dispatchMouseEvent"
+                {"type" "mouseWheel"
+                 "x" centerX
+                 "y" centerY
+                 "deltaX" 0
+                 "deltaY" delta-y}))
+
 (defn- dispatch-key! [client {:keys [key code key-code modifiers]}]
   (doseq [event-type ["keyDown" "keyUp"]]
     (cdp-command! client
@@ -832,39 +863,51 @@
                           {:viewport viewport
                            :stats stats
                            :pixel-stats pixel-stats})))
-        (dispatch-question-mark-key! client)
-        (let [hotkey-help (wait-for! client
-                                      (str (:name viewport) " hotkey help dialog")
-                                      hotkey-help-js
-                                      hotkey-help-open-ready?)]
-          (dispatch-escape-key! client)
-          (wait-for! client
-                     (str (:name viewport) " hotkey help close")
-                     hotkey-help-js
-                     hotkey-help-closed-ready?)
-          (dispatch-i-key! client)
-          (let [popup-stats (wait-for! client
-                                        (str (:name viewport) " popup icon mode")
-                                        popup-mode-js
-                                        popup-mode-ready?)
-                updated-rect (evaluate! client canvas-rect-js)]
-            (when-not updated-rect
-              (throw (ex-info "Three.js canvas bounds could not be remeasured after popup mode."
-                              {:viewport viewport
-                               :stats stats
-                               :popup-stats popup-stats})))
-            (dispatch-center-click! client updated-rect)
-            (let [selection (wait-for! client
-                                       (str (:name viewport) " center-card selection")
-                                       selection-js
-                                       #(str/includes? (or (get % "panelText") "")
-                                                      "Row 2, Column 2"))]
-              {:viewport (:name viewport)
-               :stats stats
-               :hotkey-help hotkey-help
-               :popup-stats popup-stats
-               :pixel-stats pixel-stats
-               :selection selection}))))
+        (dispatch-wheel! client rect -720)
+        (let [zoomed-stats (wait-for! client
+                                      (str (:name viewport) " changed 3D camera distance")
+                                      happy-stats-js
+                                      #(and (happy-ready? %)
+                                            (camera-distance-changed? stats %)))]
+          (dispatch-question-mark-key! client)
+          (let [hotkey-help (wait-for! client
+                                       (str (:name viewport) " hotkey help dialog")
+                                       hotkey-help-js
+                                       hotkey-help-open-ready?)]
+            (dispatch-escape-key! client)
+            (wait-for! client
+                       (str (:name viewport) " hotkey help close")
+                       hotkey-help-js
+                       hotkey-help-closed-ready?)
+            (dispatch-i-key! client)
+            (let [popup-stats (wait-for! client
+                                          (str (:name viewport) " popup icon mode")
+                                          popup-mode-js
+                                          popup-mode-ready?)
+                  updated-rect (evaluate! client canvas-rect-js)]
+              (when-not (camera-distance-preserved? zoomed-stats popup-stats)
+                (throw (ex-info "The I hotkey reset the 3D camera view."
+                                {:viewport viewport
+                                 :zoomed-stats zoomed-stats
+                                 :popup-stats popup-stats})))
+              (when-not updated-rect
+                (throw (ex-info "Three.js canvas bounds could not be remeasured after popup mode."
+                                {:viewport viewport
+                                 :stats stats
+                                 :popup-stats popup-stats})))
+              (dispatch-center-click! client updated-rect)
+              (let [selection (wait-for! client
+                                         (str (:name viewport) " center-card selection")
+                                         selection-js
+                                         #(str/includes? (or (get % "panelText") "")
+                                                        "Row 2, Column 2"))]
+                {:viewport (:name viewport)
+                 :stats stats
+                 :zoomed-stats zoomed-stats
+                 :hotkey-help hotkey-help
+                 :popup-stats popup-stats
+                 :pixel-stats pixel-stats
+                 :selection selection})))))
       (catch Exception error
         (throw (ex-info (str "3D board smoke failed in the " (:name viewport) " viewport.")
                         {:viewport viewport

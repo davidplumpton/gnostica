@@ -34,6 +34,7 @@
 (def controls-max-polar-angle 1.34)
 (def controls-zoom-speed 0.78)
 (def controls-rotate-speed 0.62)
+(def camera-metadata-precision 1000)
 
 (defn three-runtime []
   (when (exists? js/THREE)
@@ -670,6 +671,49 @@
     (when (not= (get state key) value)
       (r/replace-state this (assoc state key value)))))
 
+(defn- round-camera-number [value]
+  (/ (.round js/Math (* value camera-metadata-precision))
+     camera-metadata-precision))
+
+(defn- vector3-coords [point]
+  [(.-x point) (.-y point) (.-z point)])
+
+(defn- camera-distance [camera controls]
+  (let [position (.-position camera)
+        target (.-target controls)
+        dx (- (.-x position) (.-x target))
+        dy (- (.-y position) (.-y target))
+        dz (- (.-z position) (.-z target))]
+    (js/Math.hypot dx dy dz)))
+
+(defn- camera-view-metadata [camera controls]
+  {:camera-distance (round-camera-number (camera-distance camera controls))})
+
+(defn- sync-camera-metadata! [this camera controls]
+  (when (and camera controls)
+    (let [metadata (camera-view-metadata camera controls)
+          state (r/state this)]
+      (when (not= (:camera-distance state) (:camera-distance metadata))
+        (r/replace-state this (merge state metadata))))))
+
+(defn- capture-view-state [this]
+  (let [{:keys [camera controls]} (r/state this)]
+    (when (and camera controls)
+      {:position (vector3-coords (.-position camera))
+       :target (vector3-coords (.-target controls))
+       :zoom (.-zoom camera)})))
+
+(defn- restore-view-state! [camera controls {:keys [position target zoom]}]
+  (when (and (seq position) (seq target))
+    (let [[position-x position-y position-z] position
+          [target-x target-y target-z] target]
+      (.set (.-position camera) position-x position-y position-z)
+      (.set (.-target controls) target-x target-y target-z)
+      (when (number? zoom)
+        (set! (.-zoom camera) zoom))
+      (.updateProjectionMatrix camera)
+      (.update controls))))
+
 (defn- add-card-plane!
   [scene
    loader
@@ -736,149 +780,160 @@
         (swap! textures conj texture)))))
 
 (defn- reset-view! [this]
-  (when-let [controls (:controls (r/state this))]
-    (.reset controls)
-    (.update controls)))
+  (let [{:keys [camera controls]} (r/state this)]
+    (when controls
+      (.reset controls)
+      (.update controls)
+      (sync-camera-metadata! this camera controls))))
 
-(defn- mount! [this]
-  (dispose! this)
-  (let [[_ cells board-pieces selected-index card-icon-mode _texture-errors callbacks] (r/argv this)]
-    (invoke-callback callbacks :on-clear-texture-errors)
-    (when (available?)
-      (let [mount-node (.-boardMountNode ^js this)]
-        (when mount-node
-          (let [scene (js/THREE.Scene.)
-                camera (js/THREE.PerspectiveCamera. 45 1 0.1 100)
-                renderer (create-renderer callbacks)
-                loader (js/THREE.TextureLoader.)
-                raycaster (js/THREE.Raycaster.)
-                pointer (js/THREE.Vector2.)
-                active? (atom true)
-                pointer-down (atom nil)
-                geometries (atom [])
-                materials (atom [])
-                textures (atom [])
-                card-meshes (atom [])
-                selection-meshes (atom {})]
-            (when renderer
-              (.setPixelRatio renderer (min 2 (or (.-devicePixelRatio js/window) 1)))
-              (set! (.-outputEncoding renderer) js/THREE.sRGBEncoding)
-              (.setClearColor renderer table-clear-color 1)
-              (set! (.. renderer -domElement -className) "board-three__canvas")
-              (.appendChild mount-node (.-domElement renderer))
-              (.set (.-up camera) 0 0 1)
-              (.set (.-position camera) 0 -4.8 5.9)
-              (.lookAt camera 0 0 0)
-              (letfn [(render! []
-                        (when @active?
-                          (.render renderer scene camera)))
-                      (resize! []
-                        (when @active?
-                          (let [rect (.getBoundingClientRect mount-node)
-                                width (max 1 (.-width rect))
-                                height (max 1 (.-height rect))]
-                            (.setSize renderer width height false)
-                            (set! (.-aspect camera) (/ width height))
-                            (.updateProjectionMatrix camera)
-                            (render!))))
-                      (board-index-at! [event]
-                        (when (pointer-event->board-pointer! pointer (.-domElement renderer) event)
-                          (.setFromCamera raycaster pointer camera)
-                          (let [intersections (.intersectObjects raycaster (to-array @card-meshes) false)
-                                intersection (aget intersections 0)
-                                picked-object (some-> intersection (aget "object"))
-                                picked-index (some-> picked-object
-                                                     (.-userData)
-                                                     (aget board-index-user-data-key))]
-                            (when (number? picked-index)
-                              picked-index))))
-                      (select-card-at! [event]
-                        (when-let [picked-index (board-index-at! event)]
-                          (invoke-callback callbacks :on-card-select picked-index)))
-                      (hover-card-at! [event]
-                        (assoc-component-state! this :hovered-index (board-index-at! event)))
-                      (pointer-down-listener [event]
-                        (reset! pointer-down {:id (.-pointerId event)
-                                              :x (.-clientX event)
-                                              :y (.-clientY event)}))
-                      (pointer-up-listener [event]
-                        (when-let [{:keys [id x y]} @pointer-down]
-                          (reset! pointer-down nil)
-                          (let [distance (js/Math.hypot (- (.-clientX event) x)
-                                                        (- (.-clientY event) y))]
-                            (when (and (= id (.-pointerId event))
-                                       (<= distance pointer-click-threshold))
-                              (select-card-at! event)))))
-                      (pointer-cancel-listener [_]
-                        (reset! pointer-down nil))
-                      (pointer-leave-listener [_]
-                        (assoc-component-state! this :hovered-index nil))]
-                (let [controls (js/THREE.OrbitControls. camera (.-domElement renderer))
-                      canvas (.-domElement renderer)
-                      control-change-listener (fn [_] (render!))]
-                  (.set (.-target controls) 0 0 0)
-                  (set! (.-enableDamping controls) false)
-                  (set! (.-enablePan controls) false)
-                  (set! (.-enableRotate controls) true)
-                  (set! (.-enableZoom controls) true)
-                  (set! (.-minDistance controls) controls-min-distance)
-                  (set! (.-maxDistance controls) controls-max-distance)
-                  (set! (.-minPolarAngle controls) controls-min-polar-angle)
-                  (set! (.-maxPolarAngle controls) controls-max-polar-angle)
-                  (set! (.-zoomSpeed controls) controls-zoom-speed)
-                  (set! (.-rotateSpeed controls) controls-rotate-speed)
-                  (.update controls)
-                  (.saveState controls)
-                  (.addEventListener controls "change" control-change-listener)
-                  (.addEventListener canvas "pointerdown" pointer-down-listener)
-                  (.addEventListener canvas "pointerup" pointer-up-listener)
-                  (.addEventListener canvas "pointercancel" pointer-cancel-listener)
-                  (.addEventListener canvas "pointermove" hover-card-at!)
-                  (.addEventListener canvas "pointerleave" pointer-leave-listener)
-                  (add-piece-lights! scene)
-                  (let [wastelands (layout/wasteland-spaces cells)
-                        board-spaces (vec (concat cells wastelands))]
-                    (add-table-plane! scene geometries materials board-spaces)
-                    (add-wasteland-outlines! scene geometries materials wastelands))
-                  (doseq [cell cells]
-                    (add-card-plane! scene
-                                     loader
-                                     render!
-                                     active?
-                                     geometries
-                                     materials
-                                     textures
-                                     card-meshes
-                                     selection-meshes
-                                     card-icon-mode
-                                     callbacks
-                                     cell))
-                  (let [piece-edge-outline-count (add-piece-meshes! scene
-                                                                      geometries
-                                                                      materials
-                                                                      cells
-                                                                      board-pieces)
-                        antialias-enabled? (renderer-antialias-enabled? renderer)]
-                    (.addEventListener js/window "resize" resize!)
-                    (resize!)
-                    (r/replace-state this {:renderer renderer
-                                           :resize-listener resize!
-                                           :controls controls
-                                           :control-change-listener control-change-listener
-                                           :pointer-down-listener pointer-down-listener
-                                           :pointer-up-listener pointer-up-listener
-                                           :pointer-cancel-listener pointer-cancel-listener
-                                           :pointer-move-listener hover-card-at!
-                                           :pointer-leave-listener pointer-leave-listener
-                                           :active? active?
-                                           :render! render!
-                                           :geometries @geometries
-                                           :materials @materials
-                                           :textures @textures
-                                           :selection-meshes @selection-meshes
-                                           :piece-edge-outline-count piece-edge-outline-count
-                                           :antialias-enabled? antialias-enabled?})
-                    (set-selection! this selected-index)))))))))))
+(defn- mount!
+  ([this]
+   (mount! this nil))
+  ([this preserved-view]
+   (dispose! this)
+   (let [[_ cells board-pieces selected-index card-icon-mode _texture-errors callbacks] (r/argv this)]
+     (invoke-callback callbacks :on-clear-texture-errors)
+     (when (available?)
+       (let [mount-node (.-boardMountNode ^js this)]
+         (when mount-node
+           (let [scene (js/THREE.Scene.)
+                 camera (js/THREE.PerspectiveCamera. 45 1 0.1 100)
+                 renderer (create-renderer callbacks)
+                 loader (js/THREE.TextureLoader.)
+                 raycaster (js/THREE.Raycaster.)
+                 pointer (js/THREE.Vector2.)
+                 active? (atom true)
+                 pointer-down (atom nil)
+                 geometries (atom [])
+                 materials (atom [])
+                 textures (atom [])
+                 card-meshes (atom [])
+                 selection-meshes (atom {})]
+             (when renderer
+               (.setPixelRatio renderer (min 2 (or (.-devicePixelRatio js/window) 1)))
+               (set! (.-outputEncoding renderer) js/THREE.sRGBEncoding)
+               (.setClearColor renderer table-clear-color 1)
+               (set! (.. renderer -domElement -className) "board-three__canvas")
+               (.appendChild mount-node (.-domElement renderer))
+               (.set (.-up camera) 0 0 1)
+               (.set (.-position camera) 0 -4.8 5.9)
+               (.lookAt camera 0 0 0)
+               (letfn [(render! []
+                         (when @active?
+                           (.render renderer scene camera)))
+                       (resize! []
+                         (when @active?
+                           (let [rect (.getBoundingClientRect mount-node)
+                                 width (max 1 (.-width rect))
+                                 height (max 1 (.-height rect))]
+                             (.setSize renderer width height false)
+                             (set! (.-aspect camera) (/ width height))
+                             (.updateProjectionMatrix camera)
+                             (render!))))
+                       (board-index-at! [event]
+                         (when (pointer-event->board-pointer! pointer (.-domElement renderer) event)
+                           (.setFromCamera raycaster pointer camera)
+                           (let [intersections (.intersectObjects raycaster (to-array @card-meshes) false)
+                                 intersection (aget intersections 0)
+                                 picked-object (some-> intersection (aget "object"))
+                                 picked-index (some-> picked-object
+                                                      (.-userData)
+                                                      (aget board-index-user-data-key))]
+                             (when (number? picked-index)
+                               picked-index))))
+                       (select-card-at! [event]
+                         (when-let [picked-index (board-index-at! event)]
+                           (invoke-callback callbacks :on-card-select picked-index)))
+                       (hover-card-at! [event]
+                         (assoc-component-state! this :hovered-index (board-index-at! event)))
+                       (pointer-down-listener [event]
+                         (reset! pointer-down {:id (.-pointerId event)
+                                               :x (.-clientX event)
+                                               :y (.-clientY event)}))
+                       (pointer-up-listener [event]
+                         (when-let [{:keys [id x y]} @pointer-down]
+                           (reset! pointer-down nil)
+                           (let [distance (js/Math.hypot (- (.-clientX event) x)
+                                                         (- (.-clientY event) y))]
+                             (when (and (= id (.-pointerId event))
+                                        (<= distance pointer-click-threshold))
+                               (select-card-at! event)))))
+                       (pointer-cancel-listener [_]
+                         (reset! pointer-down nil))
+                       (pointer-leave-listener [_]
+                         (assoc-component-state! this :hovered-index nil))]
+                 (let [controls (js/THREE.OrbitControls. camera (.-domElement renderer))
+                       canvas (.-domElement renderer)
+                       control-change-listener (fn [_]
+                                                 (sync-camera-metadata! this camera controls)
+                                                 (render!))]
+                   (.set (.-target controls) 0 0 0)
+                   (set! (.-enableDamping controls) false)
+                   (set! (.-enablePan controls) false)
+                   (set! (.-enableRotate controls) true)
+                   (set! (.-enableZoom controls) true)
+                   (set! (.-minDistance controls) controls-min-distance)
+                   (set! (.-maxDistance controls) controls-max-distance)
+                   (set! (.-minPolarAngle controls) controls-min-polar-angle)
+                   (set! (.-maxPolarAngle controls) controls-max-polar-angle)
+                   (set! (.-zoomSpeed controls) controls-zoom-speed)
+                   (set! (.-rotateSpeed controls) controls-rotate-speed)
+                   (.update controls)
+                   (.saveState controls)
+                   (when preserved-view
+                     (restore-view-state! camera controls preserved-view))
+                   (.addEventListener controls "change" control-change-listener)
+                   (.addEventListener canvas "pointerdown" pointer-down-listener)
+                   (.addEventListener canvas "pointerup" pointer-up-listener)
+                   (.addEventListener canvas "pointercancel" pointer-cancel-listener)
+                   (.addEventListener canvas "pointermove" hover-card-at!)
+                   (.addEventListener canvas "pointerleave" pointer-leave-listener)
+                   (add-piece-lights! scene)
+                   (let [wastelands (layout/wasteland-spaces cells)
+                         board-spaces (vec (concat cells wastelands))]
+                     (add-table-plane! scene geometries materials board-spaces)
+                     (add-wasteland-outlines! scene geometries materials wastelands))
+                   (doseq [cell cells]
+                     (add-card-plane! scene
+                                      loader
+                                      render!
+                                      active?
+                                      geometries
+                                      materials
+                                      textures
+                                      card-meshes
+                                      selection-meshes
+                                      card-icon-mode
+                                      callbacks
+                                      cell))
+                   (let [piece-edge-outline-count (add-piece-meshes! scene
+                                                                       geometries
+                                                                       materials
+                                                                       cells
+                                                                       board-pieces)
+                         antialias-enabled? (renderer-antialias-enabled? renderer)]
+                     (.addEventListener js/window "resize" resize!)
+                     (resize!)
+                     (r/replace-state this (merge {:renderer renderer
+                                                   :resize-listener resize!
+                                                   :camera camera
+                                                   :controls controls
+                                                   :control-change-listener control-change-listener
+                                                   :pointer-down-listener pointer-down-listener
+                                                   :pointer-up-listener pointer-up-listener
+                                                   :pointer-cancel-listener pointer-cancel-listener
+                                                   :pointer-move-listener hover-card-at!
+                                                   :pointer-leave-listener pointer-leave-listener
+                                                   :active? active?
+                                                   :render! render!
+                                                   :geometries @geometries
+                                                   :materials @materials
+                                                   :textures @textures
+                                                   :selection-meshes @selection-meshes
+                                                   :piece-edge-outline-count piece-edge-outline-count
+                                                   :antialias-enabled? antialias-enabled?}
+                                                  (camera-view-metadata camera controls)))
+                     (set-selection! this selected-index))))))))))))
 
 (def scene
   (r/create-class
@@ -888,12 +943,16 @@
     (fn [this old-argv _ _]
       (let [[_ old-cells old-pieces old-selected-index old-card-icon-mode] old-argv
             [_ new-cells new-pieces new-selected-index new-card-icon-mode] (r/argv this)]
-        (if (or (not= old-cells new-cells)
-                (not= old-pieces new-pieces)
-                (not= old-card-icon-mode new-card-icon-mode))
+        (cond
+          (or (not= old-cells new-cells)
+              (not= old-pieces new-pieces))
           (mount! this)
-          (when (not= old-selected-index new-selected-index)
-            (set-selection! this new-selected-index)))))
+
+          (not= old-card-icon-mode new-card-icon-mode)
+          (mount! this (capture-view-state this))
+
+          (not= old-selected-index new-selected-index)
+          (set-selection! this new-selected-index))))
     :component-will-unmount dispose!
     :reagent-render
     (fn [_cells _pieces _selected-index card-icon-mode texture-errors _callbacks]
@@ -932,6 +991,7 @@
           :data-antialias-enabled (true? (:antialias-enabled? state))
           :data-min-zoom-distance controls-min-distance
           :data-max-zoom-distance controls-max-distance
+          :data-camera-distance (or (:camera-distance state) "")
           :data-selected-board-index _selected-index
           :data-table-surface-color table-surface-css-color
           :data-table-clear-color table-clear-css-color

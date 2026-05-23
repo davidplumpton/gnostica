@@ -47,6 +47,9 @@ THREE.PerspectiveCamera.prototype.up;
 /** @type {number} */
 THREE.PerspectiveCamera.prototype.aspect;
 
+/** @type {number} */
+THREE.PerspectiveCamera.prototype.zoom;
+
 /**
  * @param {number} x
  * @param {number} y
@@ -422,6 +425,12 @@ THREE.Vector2.prototype.set = function(x, y) {};
 
 /** @constructor */
 THREE.Vector3 = function() {};
+
+/** @type {number} */
+THREE.Vector3.prototype.x;
+
+/** @type {number} */
+THREE.Vector3.prototype.y;
 
 /** @type {number} */
 THREE.Vector3.prototype.z;
