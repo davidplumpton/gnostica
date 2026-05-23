@@ -169,7 +169,8 @@
                 :group "Major Arcana"
                 :title title}
          (icons/major-card-id? card-stem)
-         (assoc :gnostica-icons (get icons/major-arcana-icon-triplets card-stem)))
+         (assoc :gnostica-icons (icons/present-icon-ids
+                                  (get icons/major-arcana-card-icons card-stem))))
        (minor-card card-stem)))))
 
 (def deck

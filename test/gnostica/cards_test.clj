@@ -23,24 +23,35 @@
   (is (= "Ace of Wands" (:title (cards/card-by-id "wandsace"))))
   (is (= "Queen of Cups" (:title (cards/card-by-id "cupsqueen")))))
 
-(deftest major-arcana-icon-triplets-are-complete
+(deftest major-arcana-card-icons-are-complete
   (let [major-cards (filter #(= :major (:arcana %)) cards/deck)
         minor-cards (filter #(= :minor (:arcana %)) cards/deck)]
     (is (= 22 (count major-cards)))
     (is (= (set (map :id major-cards))
            (set icons/major-arcana-card-ids)))
     (is (= (set (map :id major-cards))
-           (set (keys icons/major-arcana-icon-triplets))))
+           (set (keys icons/major-arcana-card-icons))))
+    (is (= #{1 2 3}
+           (set (map (comp count :gnostica-icons) major-cards))))
+    (is (not (contains? icons/icon-ids :empty)))
     (doseq [{:keys [id gnostica-icons]} major-cards]
-      (is (= 3 (count gnostica-icons))
-          (str id " must have exactly three Gnostica icons"))
+      (is (<= 1 (count gnostica-icons) 3)
+          (str id " must have between one and three Gnostica icons"))
+      (is (not-any? #{:empty nil} gnostica-icons)
+          (str id " must not use blank Gnostica icon placeholders"))
       (is (empty? (icons/unknown-icon-ids gnostica-icons))
           (str id " references only known Gnostica icons")))
     (is (empty? (keep :gnostica-icons minor-cards)))
-    (is (= [:rod :rod :empty]
+    (is (= [:wild-suits]
+           (:gnostica-icons (cards/card-by-id "magician"))))
+    (is (= [:rod :rod]
            (:gnostica-icons (cards/card-by-id "chariot"))))
-    (is (= [:cup :disc :empty]
-           (:gnostica-icons (cards/card-by-id "sun"))))
+    (is (= [:orient-target :orient-target :orient-target]
+           (:gnostica-icons (cards/card-by-id "devil"))))
+    (is (= [:cup :disc]
+           (icons/present-icon-ids [:cup :disc :empty nil])))
+    (is (= "Cup, Disc"
+           (icons/icon-stack-label [:cup :disc])))
     (is (str/includes? icons/stickas-reference "GnosticaStickas.pdf"))))
 
 (deftest cup-and-one-point-card-helpers-identify-move-cards

@@ -226,9 +226,6 @@
 
 (defn- draw-icon-mark! [context icon-id]
   (case icon-id
-    :empty
-    nil
-
     :question-card
     (draw-question-card! context)
 
@@ -379,8 +376,8 @@
   (draw-icon-mark! context icon-id)
   (.restore context))
 
-(defn- draw-icon-triplet! [context icon-ids]
-  (doseq [[position icon-id] (map-indexed vector icon-ids)]
+(defn- draw-icon-stack! [context icon-ids]
+  (doseq [[position icon-id] (map-indexed vector (icons/present-icon-ids icon-ids))]
     (draw-gnostica-icon! context
                          icon-id
                          card-icon-margin-x
@@ -451,7 +448,7 @@
                 (when @active?
                   (.clearRect context 0 0 card-texture-width card-texture-height)
                   (draw-card-image-cover! context card-image)
-                  (draw-icon-triplet! context gnostica-icons)
+                  (draw-icon-stack! context gnostica-icons)
                   (set! (.-needsUpdate texture) true)
                   (set! (.-needsUpdate material) true)
                   (render!))))
@@ -690,7 +687,7 @@
     (swap! geometries conj geometry)
     (swap! materials conj material)
     (swap! card-meshes conj mesh)
-    (if (seq (:gnostica-icons card))
+    (if (seq (icons/present-icon-ids (:gnostica-icons card)))
       (load-card-icon-texture! material render! active? textures callbacks card)
       (let [texture (.load loader
                            image
@@ -869,7 +866,12 @@
          {:role "img"
           :aria-label "Three-dimensional Gnostica board with nine face-up tarot territory cards and Icehouse pieces"
           :data-board-card-count (count _cells)
-          :data-major-icon-card-count (count (filter #(seq (get-in % [:card :gnostica-icons])) _cells))
+          :data-major-icon-card-count (count (filter #(seq (icons/present-icon-ids
+                                                            (get-in % [:card :gnostica-icons])))
+                                                      _cells))
+          :data-major-icon-count (reduce + (map #(count (icons/present-icon-ids
+                                                         (get-in % [:card :gnostica-icons])))
+                                                _cells))
           :data-wasteland-count (count (layout/wasteland-spaces _cells))
           :data-visible-piece-count (visible-piece-count _pieces)
           :data-piece-edge-outline-count (or (:piece-edge-outline-count state) 0)

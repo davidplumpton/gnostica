@@ -5,8 +5,7 @@
   "Gnostica Stickers PDF, Looney Labs/Wunderland: https://www.wunderland.com/icehouse/GnosticaStickas.pdf")
 
 (def icon-definitions
-  {:empty {:label "Empty power"}
-   :question-card {:label "Turn and play the next draw card"}
+  {:question-card {:label "Turn and play the next draw card"}
    :wild-suits {:label "Sword, rod, cup, or disc"}
    :draw-hand {:label "Discard and redraw hand"}
    :orient-minion {:label "Orient a minion"}
@@ -53,40 +52,44 @@
    "judgement"
    "world"])
 
-(def major-arcana-icon-triplets
-  {"fool" [:question-card :question-card :empty]
-   "magician" [:wild-suits :empty :empty]
-   "high-priestess" [:draw-hand :draw-hand :empty]
-   "empress" [:orient-minion :cup-unbounded :empty]
-   "emperor" [:orient-minion :rod-unbounded :empty]
-   "hierophant" [:convert-piece :empty :empty]
-   "lovers" [:rod :cup :empty]
-   "chariot" [:rod :rod :empty]
-   "justice" [:trade-hand :sword :empty]
-   "hermit" [:relocate :empty :empty]
-   "wheeloffortune" [:wheel-cup :empty :empty]
-   "strength" [:disc :disc :empty]
-   "hangedman" [:rod :trade-hand :empty]
-   "death" [:sword :sword :empty]
-   "temperance" [:cup :cup :empty]
+(def major-arcana-card-icons
+  {"fool" [:question-card :question-card]
+   "magician" [:wild-suits]
+   "high-priestess" [:draw-hand :draw-hand]
+   "empress" [:orient-minion :cup-unbounded]
+   "emperor" [:orient-minion :rod-unbounded]
+   "hierophant" [:convert-piece]
+   "lovers" [:rod :cup]
+   "chariot" [:rod :rod]
+   "justice" [:trade-hand :sword]
+   "hermit" [:relocate]
+   "wheeloffortune" [:wheel-cup]
+   "strength" [:disc :disc]
+   "hangedman" [:rod :trade-hand]
+   "death" [:sword :sword]
+   "temperance" [:cup :cup]
    "devil" [:orient-target :orient-target :orient-target]
-   "tower" [:orient-minion :sword-from-discard :empty]
-   "star" [:orient-minion :disc-from-discard :empty]
-   "moon" [:rod :sword :empty]
-   "sun" [:cup :disc :empty]
-   "judgement" [:judgement :empty :empty]
-   "world" [:world :empty :empty]})
+   "tower" [:orient-minion :sword-from-discard]
+   "star" [:orient-minion :disc-from-discard]
+   "moon" [:rod :sword]
+   "sun" [:cup :disc]
+   "judgement" [:judgement]
+   "world" [:world]})
 
 (defn major-card-id? [card-id]
-  (contains? major-arcana-icon-triplets card-id))
+  (contains? major-arcana-card-icons card-id))
+
+(defn present-icon-ids [ids]
+  (vec (remove #(or (nil? %) (= :empty %)) ids)))
 
 (defn icon-label [icon-id]
   (get-in icon-definitions [icon-id :label] (name icon-id)))
 
-(defn icon-triplet-label [icon-ids]
+(defn icon-stack-label [icon-ids]
   (->> icon-ids
+       present-icon-ids
        (map icon-label)
        (str/join ", ")))
 
 (defn unknown-icon-ids [ids]
-  (vec (remove icon-ids ids)))
+  (vec (remove icon-ids (present-icon-ids ids))))

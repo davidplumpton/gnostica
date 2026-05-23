@@ -233,9 +233,6 @@
 
 (defn- icon-symbol [icon-id]
   (case icon-id
-    :empty
-    nil
-
     :question-card
     [:g
      [:rect {:x 30 :y 22 :width 40 :height 56 :rx 4}]
@@ -359,13 +356,14 @@
      :stroke-linejoin "round"}
     (icon-symbol icon-id)]])
 
-(defn- card-icon-triplet [card]
-  (when-let [triplet (seq (:gnostica-icons card))]
-    [:span.gnostica-icon-triplet
+(defn- card-icon-stack [card]
+  (when-let [icon-ids (seq (icons/present-icon-ids (:gnostica-icons card)))]
+    [:span.gnostica-icon-stack
      {:aria-hidden "true"
-      :data-icon-ids (str/join "," (map name triplet))
-      :title (icons/icon-triplet-label triplet)}
-     (for [[position icon-id] (map-indexed vector triplet)]
+      :data-icon-count (count icon-ids)
+      :data-icon-ids (str/join "," (map name icon-ids))
+      :title (icons/icon-stack-label icon-ids)}
+     (for [[position icon-id] (map-indexed vector icon-ids)]
        ^{:key (str (:id card) "-" position "-" (name icon-id))}
        [gnostica-icon icon-id])]))
 
@@ -379,7 +377,7 @@
      {:src (:image card)
       :alt alt-text
       :draggable "false"}]
-    [card-icon-triplet card]]))
+    [card-icon-stack card]]))
 
 (defn- css-space-offset [step-count edge-offset]
   (str "calc(" step-count " * var(--card-step) + " edge-offset ")"))
@@ -828,13 +826,25 @@
   (mount!))
 
 (defn- smoke-major-icon-deck-order []
-  (let [major-hand-card (cards/card-by-id "fool")
-        major-board-card (cards/card-by-id "chariot")
-        reserved-card-ids #{"fool" "chariot"}
-        other-cards (remove #(contains? reserved-card-ids (:id %)) cards/deck)
-        hand-tail (take 11 other-cards)
-        remaining-cards (drop 11 other-cards)]
-    (vec (concat [major-hand-card] hand-tail [major-board-card] remaining-cards))))
+  (let [major-hand-card (cards/card-by-id "magician")
+        major-board-cards [(cards/card-by-id "chariot")
+                           (cards/card-by-id "devil")]
+        minor-cards (filter #(= :minor (:arcana %)) cards/deck)
+        current-hand-minors (take 5 minor-cards)
+        other-hand-cards (take 30 (drop 5 minor-cards))
+        board-minors (take 7 (drop 35 minor-cards))
+        used-card-ids (set (map :id (concat [major-hand-card]
+                                            major-board-cards
+                                            current-hand-minors
+                                            other-hand-cards
+                                            board-minors)))
+        remaining-cards (remove #(contains? used-card-ids (:id %)) cards/deck)]
+    (vec (concat [major-hand-card]
+                 current-hand-minors
+                 other-hand-cards
+                 major-board-cards
+                 board-minors
+                 remaining-cards))))
 
 (defn- init-options []
   (let [params (js/URLSearchParams. (.. js/window -location -search))]
