@@ -38,11 +38,13 @@ Starting deck accounting is explicit: the first six cards per player become play
 
 The browser app initializes through `gnostica.app-state/initialize`, which stores the `create-game` result under app-db `:game`. Board, piece, selected-territory, and current-player subscriptions read through that shared game value instead of maintaining a second top-level board or piece setup path. The visible demo pieces are kept in the game state's `[:pieces :on-board]` slot so renderer smoke checks still exercise piece layout.
 
+The main screen also displays the current player's hand, the draw deck, and the discard pile from `:game`. The hand zone shows the current player's six card images and titles, the draw deck shows a facedown deck affordance with remaining-card count, and the discard pile shows an empty state until a top discarded card exists. These zones are UI-only: drawing and discarding still require future pure gameplay transitions.
+
 Rule helpers return explicit result maps: successful transitions use `{:ok? true :state ... :events [...]}`, while validation errors use `{:ok? false :error {:code ... :message ... :data ...}}`.
 
 ## Gameplay Move Selection
 
-The browser app includes a current-player move panel driven from shared app-db state in `gnostica.app-state`. Move selection is stored outside `:game` under `:move-selection`, while board, pieces, hand cards, draw counts, and player metadata continue to derive from the authoritative game state.
+The browser app includes a current-player move panel driven from shared app-db state in `gnostica.app-state`. Move selection is stored outside `:game` under `:move-selection`, while board, pieces, card zones, hand cards, draw counts, and player metadata continue to derive from the authoritative game state.
 
 The current flow lets the player choose a move source, then stage the required source territory, hand card, minion, target territory, draw count, or orientation. Three.js card picking and the CSS fallback board both dispatch through the same board-selection event, so active move flows stay synchronized with the territory inspection panel. Confirming a complete move currently returns a visible `:move-transition-unavailable` error instead of mutating game state; future rule transitions should replace that placeholder with pure gameplay helpers that return the same explicit success/error result shape.
 
@@ -63,6 +65,8 @@ clojure -M:smoke
 `clojure -M:smoke` starts the released Ring app unless `SMOKE_URL` points at an already-running dev or release server. It drives a local headless Chrome/Chromium through the DevTools protocol, so no npm workflow is added. Set `SMOKE_CHROME` if Chrome is not in a standard location.
 
 The smoke checks desktop and mobile viewport widths, verifies the r128 Three.js and OrbitControls globals, confirms the canvas screenshot is nonblank with visible board content and dark velvet table pixels, waits for nine card texture loads, checks the twelve initial wasteland outline targets and visible piece edge outline count, fails on happy-path texture/fallback status messages, verifies the reset control is present, clicks the center 3D card and checks that the territory panel updates, blocks the pinned CDN scripts to verify the missing-global CSS fallback path, and injects a mismatched Three.js revision to verify that version drift also falls back before user interaction. Pip marker count and placement are covered by the browser-free layout tests.
+
+The smoke checks also assert that the current-player card zones are present in the Three.js and fallback layouts, including six visible hand cards, a non-empty draw deck count, and the initial empty discard pile state.
 
 ## Commands
 

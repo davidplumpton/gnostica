@@ -41,6 +41,35 @@
   (let [db (app-state/initialize {:game-options {:shuffle-fn identity}})]
     (is (= db (app-state/select-board-card db 99)))))
 
+(deftest card-zones-derive-from-authoritative-game-state
+  (let [db (app-state/initialize {:game-options {:shuffle-fn identity}})
+        zones (app-state/card-zones db)
+        expected-hand (take game-state/starting-hand-size cards/deck)
+        expected-draw-count (- (count cards/deck)
+                               (* game-state/starting-hand-size
+                                  (count app-state/default-player-specs))
+                               board/board-card-count)]
+    (is (= (mapv :id expected-hand)
+           (mapv :id (:hand zones))))
+    (is (= expected-draw-count (:draw-count zones)))
+    (is (= expected-draw-count (count (:draw-pile zones))))
+    (is (zero? (:discard-count zones)))
+    (is (empty? (:discard-pile zones)))
+    (is (nil? (:discard-top-card zones)))))
+
+(deftest card-zones-reflect-draw-and-discard-game-updates
+  (let [db (app-state/initialize {:game-options {:shuffle-fn identity}})
+        discarded-card (first (get-in db [:game :draw-pile]))
+        updated-db (-> db
+                       (update-in [:game :draw-pile] #(vec (rest %)))
+                       (assoc-in [:game :discard-pile] [discarded-card]))
+        zones (app-state/card-zones updated-db)]
+    (is (= (dec (count (get-in db [:game :draw-pile])))
+           (:draw-count zones)))
+    (is (= 1 (:discard-count zones)))
+    (is (= (:id discarded-card)
+           (:id (:discard-top-card zones))))))
+
 (defn- source-option [db source-id]
   (some #(when (= source-id (:id %)) %)
         (app-state/move-source-options db)))

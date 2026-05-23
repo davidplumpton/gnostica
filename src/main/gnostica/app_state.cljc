@@ -110,6 +110,23 @@
 (defn current-player-hand [db]
   (vec (:hand (current-player db))))
 
+(defn draw-pile [db]
+  (vec (get-in db [:game :draw-pile] [])))
+
+(defn discard-pile [db]
+  (vec (get-in db [:game :discard-pile] [])))
+
+(defn discard-top-card [db]
+  (peek (discard-pile db)))
+
+(defn card-zones [db]
+  {:hand (current-player-hand db)
+   :draw-pile (draw-pile db)
+   :discard-pile (discard-pile db)
+   :draw-count (count (draw-pile db))
+   :discard-count (count (discard-pile db))
+   :discard-top-card (discard-top-card db)})
+
 (defn current-player-pieces [db]
   (let [player-id (current-player-id db)]
     (->> (board-pieces db)

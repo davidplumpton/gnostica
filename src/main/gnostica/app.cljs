@@ -97,6 +97,11 @@
    (app-state/current-player db)))
 
 (rf/reg-sub
+ ::card-zones
+ (fn [db _]
+   (app-state/card-zones db)))
+
+(rf/reg-sub
  ::three-texture-errors
  (fn [db _]
    (:three-texture-errors db)))
@@ -296,6 +301,68 @@
             cell
             (= selected-index (:index cell))
             (get pieces-by-space (:index cell))])]])]))
+
+(defn- card-count-label [n]
+  (str n " card" (when (not= 1 n) "s")))
+
+(defn- hand-card [card]
+  ^{:key (:id card)}
+  [:article.hand-card
+   [:img.hand-card__image
+    {:src (:image card)
+     :alt (:title card)
+     :draggable "false"}]
+   [:h3.hand-card__title (:title card)]])
+
+(defn- draw-deck-zone [draw-count]
+  [:article.card-pile-zone
+   {:aria-label (str "Draw deck, " (card-count-label draw-count) " remaining")}
+   [:div.card-pile-zone__preview.is-deck
+    {:aria-hidden "true"}
+    [:span]]
+   [:div.card-pile-zone__body
+    [:h3.card-pile-zone__title "Draw deck"]
+    [:p.card-pile-zone__detail (str (card-count-label draw-count) " remaining")]]])
+
+(defn- discard-pile-zone [discard-count top-card]
+  [:article.card-pile-zone
+   {:aria-label (str "Discard pile, " (card-count-label discard-count))}
+   (if top-card
+     [:img.card-pile-zone__preview
+      {:src (:image top-card)
+       :alt (str "Top discard: " (:title top-card))
+       :draggable "false"}]
+     [:div.card-pile-zone__preview.is-empty
+      {:aria-hidden "true"}])
+   [:div.card-pile-zone__body
+    [:h3.card-pile-zone__title "Discard pile"]
+    [:p.card-pile-zone__detail
+     (if top-card
+       (str (card-count-label discard-count) ", top card " (:title top-card))
+       "No cards discarded")]]])
+
+(defn card-zones []
+  (let [current-player @(rf/subscribe [::current-player])
+        {:keys [hand draw-count discard-count discard-top-card]} @(rf/subscribe [::card-zones])]
+    [:section.card-zones
+     {:data-hand-count (count hand)
+      :data-draw-count draw-count
+      :data-discard-count discard-count}
+     [:div.card-zones__header
+      [:div
+       [:p.eyebrow "Cards"]
+       [:h2.card-zones__title
+        (if current-player
+          (str (:name current-player) " hand")
+          "Current hand")]]
+      [:span.card-zones__count (card-count-label (count hand))]]
+     [:div.hand-card-grid
+      (for [card hand]
+        ^{:key (:id card)}
+        [hand-card card])]
+     [:div.card-pile-grid
+      [draw-deck-zone draw-count]
+      [discard-pile-zone discard-count discard-top-card]]]))
 
 (defn territory-panel []
   (let [{:keys [row col orientation card]} @(rf/subscribe [::selected-board-cell])
@@ -547,7 +614,9 @@
      (if setup-error
        [setup-error-panel setup-error]
        [:main.app-shell
-        [board-stage]
+        [:div.play-stack
+         [board-stage]
+         [card-zones]]
         [:div.side-stack
          [move-panel]
          [territory-panel]]])]))

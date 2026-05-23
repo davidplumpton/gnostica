@@ -304,6 +304,8 @@
      const board = document.querySelector('.board-three');
      const canvas = document.querySelector('.board-three__canvas');
      const rect = canvas ? canvas.getBoundingClientRect() : null;
+     const cardZones = document.querySelector('.card-zones');
+     const cardZonesRect = cardZones ? cardZones.getBoundingClientRect() : null;
      const status = Array.from(document.querySelectorAll('.board-3d-status.is-error')).map((node) => node.textContent.trim());
      const imageResourceCount = performance.getEntriesByType('resource')
        .filter((entry) => /\\/images\\/.*\\.png(?:$|\\?)/.test(entry.name)).length;
@@ -327,6 +329,11 @@
        canvasClientWidth: rect ? Math.round(rect.width) : 0,
        canvasClientHeight: rect ? Math.round(rect.height) : 0,
        reset: Boolean(document.querySelector('.board-three__reset')),
+       cardZones: Boolean(cardZones),
+       cardZonesVisible: Boolean(cardZonesRect && cardZonesRect.width > 0 && cardZonesRect.height > 0),
+       handCardCount: document.querySelectorAll('.hand-card').length,
+       drawCount: cardZones ? Number(cardZones.dataset.drawCount || -1) : -1,
+       discardCount: cardZones ? Number(cardZones.dataset.discardCount || -1) : -1,
        status,
        imageResourceCount
      };
@@ -361,6 +368,8 @@
   "(() => {
      const status = document.querySelector('.board-3d-status');
      const stage = document.querySelector('.board-fallback .board-stage');
+     const cardZones = document.querySelector('.card-zones');
+     const cardZonesRect = cardZones ? cardZones.getBoundingClientRect() : null;
      return {
        threeRevision: window.THREE ? window.THREE.REVISION : null,
        orbitControls: Boolean(window.THREE && window.THREE.OrbitControls),
@@ -370,6 +379,11 @@
        canvas: Boolean(document.querySelector('.board-three__canvas')),
        tableSurfaceColor: stage ? stage.dataset.tableSurfaceColor : null,
        tableClearColor: stage ? stage.dataset.tableClearColor : null,
+       cardZones: Boolean(cardZones),
+       cardZonesVisible: Boolean(cardZonesRect && cardZonesRect.width > 0 && cardZonesRect.height > 0),
+       handCardCount: document.querySelectorAll('.hand-card').length,
+       drawCount: cardZones ? Number(cardZones.dataset.drawCount || -1) : -1,
+       discardCount: cardZones ? Number(cardZones.dataset.discardCount || -1) : -1,
        statusText: status ? status.textContent.trim() : '',
        panelText: (document.querySelector('.territory-panel') || {}).innerText || ''
      };
@@ -413,6 +427,11 @@
          (pos? (long (or (get stats "canvasClientWidth") 0)))
          (pos? (long (or (get stats "canvasClientHeight") 0)))
          (true? (get stats "reset"))
+         (true? (get stats "cardZones"))
+         (true? (get stats "cardZonesVisible"))
+         (= 6 (long (or (get stats "handCardCount") -1)))
+         (pos? (long (or (get stats "drawCount") 0)))
+         (zero? (long (or (get stats "discardCount") -1)))
          (empty? (get stats "status"))
          (>= (long (or (get stats "imageResourceCount") 0)) 9))))
 
@@ -425,6 +444,11 @@
        (= expected-table-clear-color (get stats "tableClearColor"))
        (= 9 (get stats "cssCards"))
        (= 12 (get stats "cssWastelands"))
+       (true? (get stats "cardZones"))
+       (true? (get stats "cardZonesVisible"))
+       (= 6 (long (or (get stats "handCardCount") -1)))
+       (pos? (long (or (get stats "drawCount") 0)))
+       (zero? (long (or (get stats "discardCount") -1)))
        (str/includes? (or (get stats "statusText") "") "Three.js is unavailable")))
 
 (defn- mismatch-ready? [stats]
@@ -436,6 +460,11 @@
        (= expected-table-clear-color (get stats "tableClearColor"))
        (= 9 (get stats "cssCards"))
        (= 12 (get stats "cssWastelands"))
+       (true? (get stats "cardZones"))
+       (true? (get stats "cardZonesVisible"))
+       (= 6 (long (or (get stats "handCardCount") -1)))
+       (pos? (long (or (get stats "drawCount") 0)))
+       (zero? (long (or (get stats "discardCount") -1)))
        (str/includes? (or (get stats "statusText") "") "revision 999 is incompatible")))
 
 (defn- browser-diagnostics [client]
