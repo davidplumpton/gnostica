@@ -293,13 +293,13 @@ img {
 
 .app-shell {
   display: grid;
-  grid-template-columns: minmax(19rem, 1fr) minmax(16rem, 22rem);
+  grid-template-columns: minmax(0, 1fr) minmax(14rem, 18rem);
   align-items: start;
-  gap: 2rem;
-  width: min(76rem, 100%);
+  gap: clamp(0.9rem, 1.6vw, 1.5rem);
+  width: min(96rem, 100%);
   min-height: calc(100vh - 4rem);
   margin: 0 auto;
-  padding: 2rem clamp(1rem, 4vw, 3rem);
+  padding: clamp(1rem, 2vw, 1.4rem) clamp(1rem, 3vw, 2.25rem) 2rem;
 }
 
 .app-shell.is-setup-error {
@@ -461,7 +461,7 @@ img {
 
 .board-three {
   position: relative;
-  width: min(100%, clamp(20rem, 57vw, 43rem));
+  width: min(100%, clamp(22rem, 60vw, 50rem));
   aspect-ratio: 1 / 1;
   overflow: hidden;
   border: 1px solid rgba(255, 250, 240, 0.26);
@@ -561,11 +561,11 @@ img {
 }
 
 .board-stage {
-  --card-short: clamp(2.8rem, 9vw, 5.4rem);
-  --card-long: clamp(4.48rem, 14.4vw, 8.64rem);
+  --card-short: clamp(3.2rem, 12vw, 9.5rem);
+  --card-long: clamp(5.12rem, 19.2vw, 15.2rem);
   --card-gap: clamp(0.14rem, 0.35vw, 0.28rem);
-  --card-half-sum: clamp(3.64rem, 11.7vw, 7.02rem);
-  --card-offset: clamp(0.84rem, 2.7vw, 1.62rem);
+  --card-half-sum: clamp(4.16rem, 15.6vw, 12.35rem);
+  --card-offset: clamp(0.96rem, 3.6vw, 2.85rem);
   --card-step: calc(var(--card-half-sum) + var(--card-gap));
   position: relative;
   width: calc(var(--card-step) + var(--card-step) + var(--card-long));
@@ -777,7 +777,7 @@ img {
 
 .play-stack {
   display: grid;
-  gap: 1rem;
+  gap: 0.85rem;
   justify-items: center;
   align-self: start;
   width: 100%;
@@ -786,10 +786,10 @@ img {
 
 .card-zones {
   display: grid;
-  gap: 0.85rem;
-  width: min(100%, clamp(20rem, 57vw, 43rem));
+  gap: 0.75rem;
+  width: min(100%, clamp(22rem, 60vw, 50rem));
   min-width: 0;
-  padding: 1rem;
+  padding: 0.85rem;
   border: 1px solid rgba(255, 250, 240, 0.24);
   border-radius: 8px;
   background: rgba(54, 68, 64, 0.92);
@@ -918,16 +918,21 @@ img {
 
 .side-stack {
   display: grid;
-  gap: 1rem;
+  gap: 0.75rem;
   align-self: start;
   min-width: 0;
+  max-height: calc(100vh - 5.75rem);
+  overflow: auto;
+  position: sticky;
+  top: 4.75rem;
+  scrollbar-gutter: stable;
 }
 
 .move-panel {
   display: grid;
-  gap: 1rem;
+  gap: 0.8rem;
   min-width: 0;
-  padding: 1.1rem;
+  padding: 0.9rem;
   border: 1px solid rgba(255, 250, 240, 0.24);
   border-radius: 8px;
   background: rgba(54, 68, 64, 0.92);
@@ -944,7 +949,7 @@ img {
 .move-panel h2 {
   min-width: 0;
   margin: 0;
-  font-size: 1.15rem;
+  font-size: 1rem;
   line-height: 1.2;
   letter-spacing: 0;
   overflow-wrap: anywhere;
@@ -969,8 +974,8 @@ img {
   display: grid;
   gap: 0.25rem;
   width: 100%;
-  min-height: 3.25rem;
-  padding: 0.55rem 0.65rem;
+  min-height: 2.95rem;
+  padding: 0.5rem 0.6rem;
   text-align: left;
 }
 
@@ -1104,13 +1109,18 @@ img {
 
 .territory-panel {
   display: grid;
-  gap: 1rem;
-  align-self: center;
+  gap: 0.8rem;
+  align-self: start;
   min-width: 0;
-  padding: 1.1rem;
+  padding: 0.9rem;
   border: 1px solid rgba(255, 250, 240, 0.24);
   border-radius: 8px;
   background: rgba(54, 68, 64, 0.92);
+}
+
+.territory-panel h1 {
+  font-size: clamp(1.35rem, 2vw, 1.85rem);
+  line-height: 1.05;
 }
 
 .eyebrow {
@@ -1186,6 +1196,72 @@ h1 {
   background: var(--piece-color);
 }
 
+@media (min-width: 821px) {
+  .card-zones {
+    grid-template-columns: minmax(9rem, 0.75fr) minmax(0, 1.9fr) minmax(11rem, 0.85fr);
+    align-items: start;
+  }
+
+  .card-zones__header {
+    display: grid;
+    gap: 0.35rem;
+    align-content: start;
+  }
+
+  .card-zones__count {
+    justify-self: start;
+  }
+
+  .hand-card-grid {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+
+  .hand-card__title {
+    font-size: 0.62rem;
+  }
+
+  .card-pile-grid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.5rem;
+  }
+
+  .card-pile-zone {
+    padding-top: 0;
+    padding-left: 0.65rem;
+    border-top: 0;
+    border-left: 1px solid rgba(255, 250, 240, 0.16);
+  }
+
+  .card-pile-zone__preview {
+    flex-basis: 3.2rem;
+  }
+
+  .move-panel.is-idle {
+    gap: 0.6rem;
+  }
+
+  .move-panel.is-idle .move-source-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .move-panel.is-idle .move-source-option {
+    min-height: 2.35rem;
+    padding: 0.42rem 0.48rem;
+  }
+
+  .move-panel.is-idle .move-source-option__summary {
+    display: none;
+  }
+
+  .territory-panel.is-empty {
+    gap: 0.65rem;
+  }
+
+  .territory-panel.is-empty .territory-facts div {
+    padding-top: 0.5rem;
+  }
+}
+
 @media (max-width: 820px) {
   .app-shell {
     grid-template-columns: 1fr;
@@ -1206,6 +1282,9 @@ h1 {
   .side-stack {
     width: min(100%, 31rem);
     justify-self: center;
+    max-height: none;
+    overflow: visible;
+    position: static;
   }
 }
 

@@ -482,6 +482,7 @@
         selected-pieces @(rf/subscribe [::selected-board-pieces])
         {:keys [title group rank]} card]
     [:aside.territory-panel
+     {:class (when-not (seq selected-pieces) "is-empty")}
      [:p.eyebrow "Territory"]
      [:h1 title]
      [:dl.territory-facts
@@ -748,6 +749,7 @@
         ready? @(rf/subscribe [::move-ready?])
         {:keys [source error]} selection]
     [:section.move-panel
+     {:class (if source "is-active" "is-idle")}
      [:div.move-panel__heading
       [:p.eyebrow "Move"]
       [:h2 (if current-player
