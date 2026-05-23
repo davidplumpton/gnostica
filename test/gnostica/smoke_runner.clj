@@ -362,6 +362,8 @@
        antialiasRequested: board ? board.dataset.antialiasRequested === 'true' : false,
        antialiasEnabled: board ? board.dataset.antialiasEnabled === 'true' : false,
        antialiasSupported,
+       minZoomDistance: board ? Number(board.dataset.minZoomDistance || -1) : -1,
+       maxZoomDistance: board ? Number(board.dataset.maxZoomDistance || -1) : -1,
        reset: Boolean(document.querySelector('.board-three__reset')),
        cardZones: Boolean(cardZones),
        cardZonesVisible: Boolean(cardZonesRect && cardZonesRect.width > 0 && cardZonesRect.height > 0),
@@ -600,6 +602,8 @@
          (pos? (long (or (get stats "canvasClientWidth") 0)))
          (pos? (long (or (get stats "canvasClientHeight") 0)))
          (antialias-ready? stats)
+         (roughly= 3.2 (double (or (get stats "minZoomDistance") -1)) 0.001)
+         (roughly= 10.0 (double (or (get stats "maxZoomDistance") -1)) 0.001)
          (true? (get stats "reset"))
          (true? (get stats "cardZones"))
          (true? (get stats "cardZonesVisible"))

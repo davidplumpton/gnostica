@@ -28,6 +28,12 @@
 (def card-icon-margin-x icon-layout/texture-card-icon-margin-x)
 (def card-icon-margin-y icon-layout/texture-card-icon-margin-y)
 (def card-icon-gap icon-layout/texture-card-icon-gap)
+(def controls-min-distance 3.2)
+(def controls-max-distance 10)
+(def controls-min-polar-angle 0.28)
+(def controls-max-polar-angle 1.34)
+(def controls-zoom-speed 0.78)
+(def controls-rotate-speed 0.62)
 
 (defn three-runtime []
   (when (exists? js/THREE)
@@ -815,12 +821,12 @@
                   (set! (.-enablePan controls) false)
                   (set! (.-enableRotate controls) true)
                   (set! (.-enableZoom controls) true)
-                  (set! (.-minDistance controls) 5.2)
-                  (set! (.-maxDistance controls) 10)
-                  (set! (.-minPolarAngle controls) 0.28)
-                  (set! (.-maxPolarAngle controls) 1.34)
-                  (set! (.-zoomSpeed controls) 0.78)
-                  (set! (.-rotateSpeed controls) 0.62)
+                  (set! (.-minDistance controls) controls-min-distance)
+                  (set! (.-maxDistance controls) controls-max-distance)
+                  (set! (.-minPolarAngle controls) controls-min-polar-angle)
+                  (set! (.-maxPolarAngle controls) controls-max-polar-angle)
+                  (set! (.-zoomSpeed controls) controls-zoom-speed)
+                  (set! (.-rotateSpeed controls) controls-rotate-speed)
                   (.update controls)
                   (.saveState controls)
                   (.addEventListener controls "change" control-change-listener)
@@ -924,6 +930,8 @@
           :data-piece-edge-outline-count (or (:piece-edge-outline-count state) 0)
           :data-antialias-requested renderer-antialias-requested?
           :data-antialias-enabled (true? (:antialias-enabled? state))
+          :data-min-zoom-distance controls-min-distance
+          :data-max-zoom-distance controls-max-distance
           :data-selected-board-index _selected-index
           :data-table-surface-color table-surface-css-color
           :data-table-clear-color table-clear-css-color
