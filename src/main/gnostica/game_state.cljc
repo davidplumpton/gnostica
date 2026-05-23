@@ -6,6 +6,7 @@
 
 (def min-players 2)
 (def max-players 6)
+(def starting-hand-size 6)
 (def pieces-per-size-in-stash 5)
 (def initial-phase :setup)
 (def default-target-score 9)
@@ -133,6 +134,12 @@
                  {:players invalid-players
                   :required-fields required-player-fields})))))
 
+(defn- initial-stash []
+  (into {}
+        (map (fn [size]
+               [size pieces-per-size-in-stash]))
+        (keys pieces/piece-sizes)))
+
 (defn- normalize-player [index player-spec]
   (let [id (player-id player-spec)
         piece-player (get pieces/players-by-id id)]
@@ -141,6 +148,10 @@
      player-spec
      {:order-index index
       :hand []
+      :score 0
+      :challenge nil
+      :eliminated? false
+      :stash (initial-stash)
       :bid nil})))
 
 (defn- deck-source [{:keys [deck deck-order]
@@ -196,41 +207,44 @@
        (map first)
        vec))
 
-(defn- validate-deck [deck]
-  (if-not (sequential? deck)
-    (failure :invalid-deck
-             "The deck must be an ordered sequential collection of card maps."
-             {:deck deck})
-    (let [invalid-deck-cards (invalid-cards deck)
-          duplicate-ids (duplicate-card-ids deck)]
-      (cond
-        (< (count deck) board/board-card-count)
-        (failure :insufficient-deck
-                 "The deck must contain enough cards to build the territory board."
-                 {:count (count deck)
-                  :minimum board/board-card-count})
+(defn- required-starting-card-count [player-count]
+  (+ board/board-card-count
+     (* starting-hand-size player-count)))
 
-        (seq invalid-deck-cards)
-        (failure :invalid-deck-cards
-                 "Every deck card must include an id, title, and image path."
-                 {:invalid-cards invalid-deck-cards
-                  :required-fields required-card-fields})
+(defn- validate-deck
+  ([deck]
+   (validate-deck deck board/board-card-count))
+  ([deck minimum-card-count]
+   (if-not (sequential? deck)
+     (failure :invalid-deck
+              "The deck must be an ordered sequential collection of card maps."
+              {:deck deck})
+     (let [invalid-deck-cards (invalid-cards deck)
+           duplicate-ids (duplicate-card-ids deck)]
+       (cond
+         (< (count deck) minimum-card-count)
+         (failure :insufficient-deck
+                  "The deck must contain enough cards to deal player hands and build the territory board."
+                  {:count (count deck)
+                   :minimum minimum-card-count
+                   :starting-hand-size starting-hand-size
+                   :board-card-count board/board-card-count})
 
-        (seq duplicate-ids)
-        (failure :duplicate-card-ids
-                 "Deck card ids must be unique."
-                 {:duplicate-ids duplicate-ids})))))
+         (seq invalid-deck-cards)
+         (failure :invalid-deck-cards
+                  "Every deck card must include an id, title, and image path."
+                  {:invalid-cards invalid-deck-cards
+                   :required-fields required-card-fields})
 
-(defn- initial-stash []
-  (into {}
-        (map (fn [size]
-               [size pieces-per-size-in-stash]))
-        (keys pieces/piece-sizes)))
+         (seq duplicate-ids)
+         (failure :duplicate-card-ids
+                  "Deck card ids must be unique."
+                  {:duplicate-ids duplicate-ids}))))))
 
 (defn- initial-stashes [players]
   (into {}
         (map (fn [player]
-               [(:id player) (initial-stash)]))
+               [(:id player) (:stash player)]))
         players))
 
 (defn- initial-turn [players]
@@ -239,6 +253,17 @@
      :current-player-index 0
      :current-player-id (first order)
      :round 1}))
+
+(defn- deal-starting-hands [players deck]
+  (let [hand-card-count (* starting-hand-size (count players))
+        hand-cards (take hand-card-count deck)
+        hands (partition starting-hand-size hand-cards)
+        board-deck (vec (drop hand-card-count deck))]
+    {:players (mapv (fn [player hand]
+                      (assoc player :hand (vec hand)))
+                    players
+                    hands)
+     :board-deck board-deck}))
 
 (defn current-player [state]
   (get-in state [:players-by-id (get-in state [:turn :current-player-id])]))
@@ -252,17 +277,20 @@
   ([player-specs opts]
    (if-let [error (validate-player-specs player-specs)]
      error
-     (let [source-deck (deck-source opts)]
-       (if-let [error (validate-deck source-deck)]
+     (let [minimum-card-count (required-starting-card-count (count player-specs))
+           source-deck (deck-source opts)]
+       (if-let [error (validate-deck source-deck minimum-card-count)]
          error
          (let [deck (ordered-deck opts)]
-           (if-let [error (validate-deck deck)]
+           (if-let [error (validate-deck deck minimum-card-count)]
              error
-             (let [players (mapv normalize-player (range) player-specs)
-                   board-cells (board/initial-board deck identity)
+             (let [base-players (mapv normalize-player (range) player-specs)
+                   {:keys [players board-deck]} (deal-starting-hands base-players deck)
+                   board-cells (board/initial-board board-deck identity)
                    event {:type :game/created
                           :phase initial-phase
                           :player-ids (mapv :id players)
+                          :starting-hand-size starting-hand-size
                           :board-card-count (count board-cells)}
                    state {:phase initial-phase
                           :players players
@@ -271,7 +299,7 @@
                           :board board-cells
                           :pieces {:on-board []
                                    :stashes (initial-stashes players)}
-                          :draw-pile (vec (drop board/board-card-count deck))
+                          :draw-pile (vec (drop board/board-card-count board-deck))
                           :discard-pile []
                           :setup {:bids {}
                                   :bid-history []

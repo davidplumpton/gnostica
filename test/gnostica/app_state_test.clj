@@ -3,12 +3,16 @@
             [gnostica.app-state :as app-state]
             [gnostica.board :as board]
             [gnostica.cards :as cards]
+            [gnostica.game-state :as game-state]
             [gnostica.pieces :as pieces]))
 
 (deftest initialize-builds-app-db-from-shared-game-state
-  (let [db (app-state/initialize {:game-options {:shuffle-fn identity}})]
+  (let [hand-count (* game-state/starting-hand-size
+                      (count app-state/default-player-specs))
+        board-deck (drop hand-count cards/deck)
+        db (app-state/initialize {:game-options {:shuffle-fn identity}})]
     (is (nil? (app-state/setup-error db)))
-    (is (= (board/initial-board cards/deck identity)
+    (is (= (board/initial-board board-deck identity)
            (app-state/board db)))
     (is (= pieces/initial-pieces
            (app-state/board-pieces db)))

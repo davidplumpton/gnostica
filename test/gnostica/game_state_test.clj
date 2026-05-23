@@ -11,12 +11,31 @@
    {:id :indigo
     :name "Indigo"}])
 
+(defn- card-ids [cards]
+  (mapv :id cards))
+
+(defn- board-card-ids [state]
+  (mapv (comp :id :card) (:board state)))
+
+(defn- hand-card-count [player-count]
+  (* game-state/starting-hand-size player-count))
+
+(defn- all-card-ids [state]
+  (vec
+   (concat
+    (map :id (mapcat :hand (:players state)))
+    (map (comp :id :card) (:board state))
+    (map :id (:draw-pile state))
+    (map :id (:discard-pile state)))))
+
 (deftest creates-deterministic-initial-state
-  (let [{:keys [ok? state]} (game-state/create-game player-specs {:shuffle-fn identity})]
+  (let [hand-count (hand-card-count (count player-specs))
+        board-deck (drop hand-count cards/deck)
+        {:keys [ok? state]} (game-state/create-game player-specs {:shuffle-fn identity})]
     (is ok?)
-    (is (= (board/initial-board cards/deck identity)
+    (is (= (board/initial-board board-deck identity)
            (:board state)))
-    (is (= (mapv :id (drop board/board-card-count cards/deck))
+    (is (= (mapv :id (drop (+ hand-count board/board-card-count) cards/deck))
            (mapv :id (:draw-pile state))))
     (is (empty? (:discard-pile state)))
     (is (= #{:rose :indigo}
@@ -36,13 +55,19 @@
             :large 5}
            (get-in state [:pieces :stashes :rose])))))
 
-(deftest explicit-deck-order-controls-board-and-draw-pile
+(deftest explicit-deck-order-controls-hands-board-and-draw-pile
   (let [deck-order (vec (reverse cards/deck))
         {:keys [state]} (game-state/create-game player-specs {:deck-order deck-order})
-        board-card-ids (mapv (comp :id :card) (:board state))]
-    (is (= (mapv :id (take board/board-card-count deck-order))
-           board-card-ids))
-    (is (= (mapv :id (drop board/board-card-count deck-order))
+        hand-count (hand-card-count (count player-specs))]
+    (is (= (card-ids (take game-state/starting-hand-size deck-order))
+           (card-ids (get-in state [:players 0 :hand]))))
+    (is (= (card-ids (take game-state/starting-hand-size
+                           (drop game-state/starting-hand-size deck-order)))
+           (card-ids (get-in state [:players 1 :hand]))))
+    (is (= (card-ids (take board/board-card-count
+                           (drop hand-count deck-order)))
+           (board-card-ids state)))
+    (is (= (card-ids (drop (+ hand-count board/board-card-count) deck-order))
            (mapv :id (:draw-pile state))))))
 
 (deftest rejects-invalid-player-counts
@@ -69,8 +94,32 @@
          (fn [player]
            (and (string? (:name player))
                 (integer? (:color player))
-                (string? (:css-color player))))
+                (string? (:css-color player))
+                (vector? (:hand player))
+                (zero? (:score player))
+                (contains? player :challenge)
+                (false? (:eliminated? player))
+                (= {:small 5
+                    :medium 5
+                    :large 5}
+                   (:stash player))))
          (:players state)))))
+
+(deftest deals-six-card-hands-for-two-through-six-players
+  (doseq [player-count (range game-state/min-players (inc game-state/max-players))
+          :let [player-specs (mapv #(select-keys % [:id])
+                                   (take player-count pieces/players))
+                {:keys [ok? state]} (game-state/create-game player-specs
+                                                             {:shuffle-fn identity})]]
+    (is ok?)
+    (is (every? #(= game-state/starting-hand-size (count (:hand %)))
+                (:players state)))
+    (is (= (count cards/deck)
+           (count (all-card-ids state))))
+    (is (= (count cards/deck)
+           (count (set (all-card-ids state)))))
+    (is (= (set (map :id cards/deck))
+           (set (all-card-ids state))))))
 
 (deftest rejects-unknown-player-ids
   (let [{:keys [ok? error]} (game-state/create-game [{:id :rose}
