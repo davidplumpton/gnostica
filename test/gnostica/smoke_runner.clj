@@ -336,9 +336,11 @@
      };
      return {
        url: location.href,
+       cardIconMode: (document.querySelector('.app-shell') || {}).dataset.cardIconMode || null,
        threeRevision: window.THREE ? window.THREE.REVISION : null,
        orbitControls: Boolean(window.THREE && window.THREE.OrbitControls),
        board: Boolean(board),
+       boardCardIconMode: board ? board.dataset.cardIconMode : null,
        boardCardCount: board ? Number(board.dataset.boardCardCount || -1) : -1,
        majorIconCardCount: board ? Number(board.dataset.majorIconCardCount || -1) : -1,
        majorIconCount: board ? Number(board.dataset.majorIconCount || -1) : -1,
@@ -403,6 +405,7 @@
   "(() => {
      const status = document.querySelector('.board-3d-status');
      const stage = document.querySelector('.board-fallback .board-stage');
+     const fallbackFace = document.querySelector('.board-fallback .card-face');
      const cardZones = document.querySelector('.card-zones');
      const cardZonesRect = cardZones ? cardZones.getBoundingClientRect() : null;
      const iconMetrics = (selector) => {
@@ -422,9 +425,11 @@
        };
      };
      return {
+       cardIconMode: (document.querySelector('.app-shell') || {}).dataset.cardIconMode || null,
        threeRevision: window.THREE ? window.THREE.REVISION : null,
        orbitControls: Boolean(window.THREE && window.THREE.OrbitControls),
        fallback: Boolean(document.querySelector('.board-fallback')),
+       boardCardIconMode: fallbackFace ? fallbackFace.dataset.iconMode : null,
        cssCards: document.querySelectorAll('.board-fallback .board-card').length,
        cssMajorIconStackCount: document.querySelectorAll('.board-fallback .board-card .gnostica-icon-stack').length,
        cssMajorIconCount: document.querySelectorAll('.board-fallback .board-card .gnostica-icon').length,
@@ -443,6 +448,57 @@
        discardCount: cardZones ? Number(cardZones.dataset.discardCount || -1) : -1,
        statusText: status ? status.textContent.trim() : '',
        panelText: (document.querySelector('.territory-panel') || {}).innerText || ''
+     };
+   })()")
+
+(def popup-mode-js
+  "(() => {
+     const visible = (node) => {
+       if (!node) return false;
+       const rect = node.getBoundingClientRect();
+       const style = getComputedStyle(node);
+       return rect.width > 0
+         && rect.height > 0
+         && style.visibility !== 'hidden'
+         && Number(style.opacity || 0) > 0.8;
+     };
+     const text = (node) => node ? node.textContent.trim() : '';
+     const focusStats = (target, popoverSelector) => {
+       if (target && target.focus) target.focus();
+       const popover = document.querySelector(popoverSelector);
+       return {
+         visible: visible(popover),
+         iconCount: popover ? popover.querySelectorAll('.gnostica-icon').length : 0,
+         itemCount: popover ? popover.querySelectorAll('.card-icon-popover__item').length : 0,
+         text: text(popover)
+       };
+     };
+     const shell = document.querySelector('.app-shell');
+     const board = document.querySelector('.board-three');
+     const fallback = document.querySelector('.board-fallback');
+     const fallbackFace = document.querySelector('.board-fallback .card-face');
+     const handFace = document.querySelector('.hand-card.has-gnostica-icons .card-face');
+     const fallbackTwoIconCard = document.querySelector('.board-fallback .board-card .card-icon-popover[data-icon-count=\"2\"]');
+     const fallbackThreeIconCard = document.querySelector('.board-fallback .board-card .card-icon-popover[data-icon-count=\"3\"]');
+     const hand = focusStats(handFace, '.hand-card.has-gnostica-icons .card-icon-popover');
+     const boardTwo = focusStats(
+       board || (fallbackTwoIconCard ? fallbackTwoIconCard.closest('.board-card') : null),
+       board ? '.board-three-icon-popover .card-icon-popover' : '.board-fallback .board-card .card-icon-popover[data-icon-count=\"2\"]'
+     );
+     const boardThree = focusStats(
+       fallbackThreeIconCard ? fallbackThreeIconCard.closest('.board-card') : null,
+       '.board-fallback .board-card .card-icon-popover[data-icon-count=\"3\"]'
+     );
+     return {
+       appMode: shell ? shell.dataset.cardIconMode : null,
+       boardMode: board ? board.dataset.cardIconMode : (fallbackFace ? fallbackFace.dataset.iconMode : null),
+       fallback: Boolean(fallback),
+       togglePressed: (document.querySelector('.card-icon-mode-toggle') || {}).getAttribute('aria-pressed'),
+       handStackCount: document.querySelectorAll('.hand-card .gnostica-icon-stack').length,
+       boardStackCount: document.querySelectorAll('.board-fallback .board-card .gnostica-icon-stack').length,
+       hand,
+       boardTwo,
+       boardThree
      };
    })()")
 
@@ -499,8 +555,10 @@
   (let [visible-piece-count (long (or (get stats "visiblePieceCount") -1))
         piece-edge-outline-count (long (or (get stats "pieceEdgeOutlineCount") -1))]
     (and (= "128" (get stats "threeRevision"))
+         (= "always" (get stats "cardIconMode"))
          (true? (get stats "orbitControls"))
          (true? (get stats "board"))
+         (= "always" (get stats "boardCardIconMode"))
          (= 2 (long (or (get stats "majorIconCardCount") -1)))
          (= 5 (long (or (get stats "majorIconCount") -1)))
          (three-icon-layout-ready? stats)
@@ -528,8 +586,10 @@
 
 (defn- fallback-ready? [stats]
   (and (nil? (get stats "threeRevision"))
+       (= "always" (get stats "cardIconMode"))
        (false? (get stats "orbitControls"))
        (true? (get stats "fallback"))
+       (= "always" (get stats "boardCardIconMode"))
        (false? (get stats "canvas"))
        (= expected-table-surface-color (get stats "tableSurfaceColor"))
        (= expected-table-clear-color (get stats "tableClearColor"))
@@ -550,8 +610,10 @@
 
 (defn- mismatch-ready? [stats]
   (and (= "999" (get stats "threeRevision"))
+       (= "always" (get stats "cardIconMode"))
        (true? (get stats "orbitControls"))
        (true? (get stats "fallback"))
+       (= "always" (get stats "boardCardIconMode"))
        (false? (get stats "canvas"))
        (= expected-table-surface-color (get stats "tableSurfaceColor"))
        (= expected-table-clear-color (get stats "tableClearColor"))
@@ -569,6 +631,27 @@
        (pos? (long (or (get stats "drawCount") 0)))
        (zero? (long (or (get stats "discardCount") -1)))
        (str/includes? (or (get stats "statusText") "") "revision 999 is incompatible")))
+
+(defn- popup-mode-ready? [stats]
+  (let [hand (get stats "hand")
+        board-two (get stats "boardTwo")
+        board-three (get stats "boardThree")
+        fallback? (true? (get stats "fallback"))]
+    (and (= "popup" (get stats "appMode"))
+         (= "popup" (get stats "boardMode"))
+         (= "false" (get stats "togglePressed"))
+         (zero? (long (or (get stats "handStackCount") -1)))
+         (true? (get hand "visible"))
+         (= 1 (long (or (get hand "iconCount") -1)))
+         (str/includes? (or (get hand "text") "") "Sword, rod, cup, or disc")
+         (true? (get board-two "visible"))
+         (= 2 (long (or (get board-two "iconCount") -1)))
+         (str/includes? (or (get board-two "text") "") "Rod")
+         (or (not fallback?)
+             (and (true? (get board-three "visible"))
+                  (= 3 (long (or (get board-three "iconCount") -1)))
+                  (str/includes? (or (get board-three "text") "")
+                                 "Orient a target piece"))))))
 
 (defn- browser-diagnostics [client]
   (->> @(:events client)
@@ -648,6 +731,16 @@
   (dispatch-click! client {"x" centerX
                            "y" centerY}))
 
+(defn- dispatch-i-key! [client]
+  (doseq [event-type ["keyDown" "keyUp"]]
+    (cdp-command! client
+                  "Input.dispatchKeyEvent"
+                  {"type" event-type
+                   "key" "i"
+                   "code" "KeyI"
+                   "windowsVirtualKeyCode" 73
+                   "nativeVirtualKeyCode" 73})))
+
 (defn- run-happy-viewport! [http-client chrome url viewport]
   (println (format "Smoke checking %s viewport at %dx%d."
                    (:name viewport)
@@ -671,16 +764,28 @@
                           {:viewport viewport
                            :stats stats
                            :pixel-stats pixel-stats})))
-        (dispatch-center-click! client rect)
-        (let [selection (wait-for! client
-                                   (str (:name viewport) " center-card selection")
-                                   selection-js
-                                   #(str/includes? (or (get % "panelText") "")
-                                                  "Row 2, Column 2"))]
-          {:viewport (:name viewport)
-           :stats stats
-           :pixel-stats pixel-stats
-           :selection selection}))
+        (dispatch-i-key! client)
+        (let [popup-stats (wait-for! client
+                                      (str (:name viewport) " popup icon mode")
+                                      popup-mode-js
+                                      popup-mode-ready?)
+              updated-rect (evaluate! client canvas-rect-js)]
+          (when-not updated-rect
+            (throw (ex-info "Three.js canvas bounds could not be remeasured after popup mode."
+                            {:viewport viewport
+                             :stats stats
+                             :popup-stats popup-stats})))
+          (dispatch-center-click! client updated-rect)
+          (let [selection (wait-for! client
+                                     (str (:name viewport) " center-card selection")
+                                     selection-js
+                                     #(str/includes? (or (get % "panelText") "")
+                                                    "Row 2, Column 2"))]
+            {:viewport (:name viewport)
+             :stats stats
+             :popup-stats popup-stats
+             :pixel-stats pixel-stats
+             :selection selection})))
       (catch Exception error
         (throw (ex-info (str "3D board smoke failed in the " (:name viewport) " viewport.")
                         {:viewport viewport
@@ -704,6 +809,11 @@
                  "CSS fallback after blocked Three.js CDN globals"
                  fallback-stats-js
                  fallback-ready?)
+      (dispatch-i-key! client)
+      (wait-for! client
+                 "CSS fallback popup icon mode"
+                 popup-mode-js
+                 popup-mode-ready?)
       (catch Exception error
         (throw (ex-info "3D board fallback smoke failed when Three.js CDN scripts were blocked."
                         {:url url

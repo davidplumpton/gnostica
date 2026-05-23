@@ -60,7 +60,19 @@
            (app-state/board-pieces db)))
     (is (= :rose (:id (app-state/current-player db))))
     (is (= app-state/default-selected-board-index
-           (app-state/selected-board-index db)))))
+           (app-state/selected-board-index db)))
+    (is (= :always
+           (app-state/card-icon-mode db)))))
+
+(deftest card-icon-mode-can-be-initialized-and-toggled
+  (let [db (app-state/initialize {:game-options {:shuffle-fn identity}
+                                  :card-icon-mode :popup})]
+    (is (= :popup (app-state/card-icon-mode db)))
+    (is (= :always
+           (app-state/card-icon-mode (app-state/toggle-card-icon-mode db))))
+    (is (= :always
+           (app-state/card-icon-mode
+            (app-state/set-card-icon-mode db :unknown))))))
 
 (deftest initialize-records-explicit-setup-errors
   (let [db (app-state/initialize {:player-specs [{:id :solo}]})]

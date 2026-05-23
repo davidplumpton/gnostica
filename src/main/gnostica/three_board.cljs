@@ -1,6 +1,7 @@
 (ns gnostica.three-board
   (:require [gnostica.board-layout :as layout]
             [gnostica.icon-layout :as icon-layout]
+            [gnostica.icon-view :as icon-view]
             [gnostica.icons :as icons]
             [gnostica.pieces :as pieces]
             [reagent.core :as r]))
@@ -489,6 +490,8 @@
                 pointer-down-listener
                 pointer-up-listener
                 pointer-cancel-listener
+                pointer-move-listener
+                pointer-leave-listener
                 active?
                 geometries
                 materials
@@ -516,6 +519,10 @@
           (.removeEventListener canvas "pointerup" pointer-up-listener))
         (when pointer-cancel-listener
           (.removeEventListener canvas "pointercancel" pointer-cancel-listener))
+        (when pointer-move-listener
+          (.removeEventListener canvas "pointermove" pointer-move-listener))
+        (when pointer-leave-listener
+          (.removeEventListener canvas "pointerleave" pointer-leave-listener))
         (when parent
           (.removeChild parent canvas)))
       (.dispose renderer)))
@@ -649,6 +656,14 @@
     (catch :default _
       false)))
 
+(defn- show-card-icon-overlays? [card-icon-mode]
+  (not= :popup card-icon-mode))
+
+(defn- assoc-component-state! [this key value]
+  (let [state (r/state this)]
+    (when (not= (get state key) value)
+      (r/replace-state this (assoc state key value)))))
+
 (defn- add-card-plane!
   [scene
    loader
@@ -659,6 +674,7 @@
    textures
    card-meshes
    selection-meshes
+   card-icon-mode
    callbacks
    {:keys [index orientation card] :as cell}]
   (let [{:keys [image title]} card
@@ -688,7 +704,8 @@
     (swap! geometries conj geometry)
     (swap! materials conj material)
     (swap! card-meshes conj mesh)
-    (if (seq (icons/present-icon-ids (:gnostica-icons card)))
+    (if (and (show-card-icon-overlays? card-icon-mode)
+             (seq (icons/present-icon-ids (:gnostica-icons card))))
       (load-card-icon-texture! material render! active? textures callbacks card)
       (let [texture (.load loader
                            image
@@ -719,7 +736,7 @@
 
 (defn- mount! [this]
   (dispose! this)
-  (let [[_ cells board-pieces selected-index _texture-errors callbacks] (r/argv this)]
+  (let [[_ cells board-pieces selected-index card-icon-mode _texture-errors callbacks] (r/argv this)]
     (invoke-callback callbacks :on-clear-texture-errors)
     (when (available?)
       (let [mount-node (.-boardMountNode ^js this)]
@@ -758,7 +775,7 @@
                             (set! (.-aspect camera) (/ width height))
                             (.updateProjectionMatrix camera)
                             (render!))))
-                      (select-card-at! [event]
+                      (board-index-at! [event]
                         (when (pointer-event->board-pointer! pointer (.-domElement renderer) event)
                           (.setFromCamera raycaster pointer camera)
                           (let [intersections (.intersectObjects raycaster (to-array @card-meshes) false)
@@ -768,7 +785,12 @@
                                                      (.-userData)
                                                      (aget board-index-user-data-key))]
                             (when (number? picked-index)
-                              (invoke-callback callbacks :on-card-select picked-index)))))
+                              picked-index))))
+                      (select-card-at! [event]
+                        (when-let [picked-index (board-index-at! event)]
+                          (invoke-callback callbacks :on-card-select picked-index)))
+                      (hover-card-at! [event]
+                        (assoc-component-state! this :hovered-index (board-index-at! event)))
                       (pointer-down-listener [event]
                         (reset! pointer-down {:id (.-pointerId event)
                                               :x (.-clientX event)
@@ -782,7 +804,9 @@
                                        (<= distance pointer-click-threshold))
                               (select-card-at! event)))))
                       (pointer-cancel-listener [_]
-                        (reset! pointer-down nil))]
+                        (reset! pointer-down nil))
+                      (pointer-leave-listener [_]
+                        (assoc-component-state! this :hovered-index nil))]
                 (let [controls (js/THREE.OrbitControls. camera (.-domElement renderer))
                       canvas (.-domElement renderer)
                       control-change-listener (fn [_] (render!))]
@@ -803,6 +827,8 @@
                   (.addEventListener canvas "pointerdown" pointer-down-listener)
                   (.addEventListener canvas "pointerup" pointer-up-listener)
                   (.addEventListener canvas "pointercancel" pointer-cancel-listener)
+                  (.addEventListener canvas "pointermove" hover-card-at!)
+                  (.addEventListener canvas "pointerleave" pointer-leave-listener)
                   (add-piece-lights! scene)
                   (let [wastelands (layout/wasteland-spaces cells)
                         board-spaces (vec (concat cells wastelands))]
@@ -818,6 +844,7 @@
                                      textures
                                      card-meshes
                                      selection-meshes
+                                     card-icon-mode
                                      callbacks
                                      cell))
                   (let [piece-edge-outline-count (add-piece-meshes! scene
@@ -835,6 +862,8 @@
                                            :pointer-down-listener pointer-down-listener
                                            :pointer-up-listener pointer-up-listener
                                            :pointer-cancel-listener pointer-cancel-listener
+                                           :pointer-move-listener hover-card-at!
+                                           :pointer-leave-listener pointer-leave-listener
                                            :active? active?
                                            :render! render!
                                            :geometries @geometries
@@ -851,21 +880,35 @@
     :component-did-mount mount!
     :component-did-update
     (fn [this old-argv _ _]
-      (let [[_ old-cells old-pieces old-selected-index] old-argv
-            [_ new-cells new-pieces new-selected-index] (r/argv this)]
+      (let [[_ old-cells old-pieces old-selected-index old-card-icon-mode] old-argv
+            [_ new-cells new-pieces new-selected-index new-card-icon-mode] (r/argv this)]
         (if (or (not= old-cells new-cells)
-                (not= old-pieces new-pieces))
+                (not= old-pieces new-pieces)
+                (not= old-card-icon-mode new-card-icon-mode))
           (mount! this)
           (when (not= old-selected-index new-selected-index)
             (set-selection! this new-selected-index)))))
     :component-will-unmount dispose!
     :reagent-render
-    (fn [_cells _pieces _selected-index texture-errors _callbacks]
+    (fn [_cells _pieces _selected-index card-icon-mode texture-errors _callbacks]
       (let [component (r/current-component)
-            state (r/state component)]
+            state (r/state component)
+            cells-by-index (layout/cells-by-index _cells)
+            selected-card (get-in cells-by-index [_selected-index :card])
+            popover-index (or (:hovered-index state)
+                              (when (:board-focused? state)
+                                _selected-index))
+            popover-card (get-in cells-by-index [popover-index :card])]
         [:div.board-three
          {:role "img"
-          :aria-label "Three-dimensional Gnostica board with nine face-up tarot territory cards and Icehouse pieces"
+          :tabIndex 0
+          :aria-label (str "Three-dimensional Gnostica board with nine face-up tarot territory cards and Icehouse pieces"
+                           (when-let [summary (and (= :popup card-icon-mode)
+                                                   (icons/icon-stack-label (:gnostica-icons selected-card)))]
+                             (when (seq summary)
+                               (str ". Selected card special moves: " summary))))
+          :on-focus #(assoc-component-state! component :board-focused? true)
+          :on-blur #(assoc-component-state! component :board-focused? false)
           :data-board-card-count (count _cells)
           :data-major-icon-card-count (count (filter #(seq (icons/present-icon-ids
                                                             (get-in % [:card :gnostica-icons])))
@@ -873,6 +916,7 @@
           :data-major-icon-count (reduce + (map #(count (icons/present-icon-ids
                                                          (get-in % [:card :gnostica-icons])))
                                                 _cells))
+          :data-card-icon-mode (name card-icon-mode)
           :data-card-icon-scale icon-layout/card-icon-scale
           :data-card-icon-size card-icon-size
           :data-wasteland-count (count (layout/wasteland-spaces _cells))
@@ -891,6 +935,10 @@
           {:type "button"
            :on-click #(reset-view! component)}
           "Reset view"]
+         (when (and (= :popup card-icon-mode)
+                    (seq (icons/present-icon-ids (:gnostica-icons popover-card))))
+           [:div.board-three-icon-popover
+            [icon-view/card-icon-popover popover-card {:show-title? true}]])
          (when (seq texture-errors)
            [:p.board-3d-status.is-error
             (str "Texture load failed for "

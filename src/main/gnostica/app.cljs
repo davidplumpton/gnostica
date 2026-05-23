@@ -4,6 +4,7 @@
             [gnostica.board-layout :as layout]
             [gnostica.cards :as cards]
             [gnostica.icon-layout :as icon-layout]
+            [gnostica.icon-view :as icon-view]
             [gnostica.icons :as icons]
             [gnostica.pieces :as pieces]
             [gnostica.three-board :as three-board]
@@ -54,6 +55,11 @@
  ::cancel-move
  (fn [db _]
    (app-state/cancel-move db)))
+
+(rf/reg-event-db
+ ::toggle-card-icon-mode
+ (fn [db _]
+   (app-state/toggle-card-icon-mode db)))
 
 (rf/reg-event-db
  ::clear-three-texture-errors
@@ -175,187 +181,16 @@
  (fn [db _]
    (app-state/draw-count-options db)))
 
+(rf/reg-sub
+ ::card-icon-mode
+ (fn [db _]
+   (app-state/card-icon-mode db)))
+
 (defn orientation-label [orientation]
   (case orientation
     :portrait "Portrait"
     :landscape "Landscape"
     "Unknown"))
-
-(defn- cup-symbol []
-  [:g
-   [:path {:d "M28 24 H72 L65 56 Q50 67 35 56 Z"}]
-   [:path {:d "M50 66 V80"}]
-   [:path {:d "M36 82 H64"}]])
-
-(defn- rod-symbol []
-  [:g
-   [:path {:d "M34 76 L60 20"}]
-   [:path {:d "M53 34 Q70 32 74 45 Q61 47 53 34 Z"}]
-   [:path {:d "M47 48 Q33 45 30 34 Q43 34 47 48 Z"}]])
-
-(defn- sword-symbol []
-  [:g
-   [:path {:d "M31 73 L60 24 L70 17 L66 30 L37 78 Z"}]
-   [:path {:d "M29 61 L47 76"}]
-   [:path {:d "M24 76 L40 84"}]])
-
-(defn- disc-symbol []
-  [:polygon {:points "50,16 60,41 87,41 65,57 73,84 50,68 27,84 35,57 13,41 40,41"}])
-
-(defn- triangle-symbol [attrs]
-  [:polygon (merge {:points "50,16 77,76 23,76"
-                    :fill "currentColor"}
-                   attrs)])
-
-(defn- card-stack-symbol []
-  [:g
-   [:rect {:x 28 :y 25 :width 30 :height 43 :rx 3}]
-   [:path {:d "M34 22 L66 29 L58 72"}]
-   [:path {:d "M40 19 L72 29 L62 72"}]])
-
-(defn- curved-arrow-symbol []
-  [:g
-   [:path {:d "M26 36 Q51 12 75 34"}]
-   [:path {:d "M71 21 L77 35 L62 35"}]])
-
-(defn- swap-arrows-symbol []
-  [:g
-   [:path {:d "M26 34 Q50 12 73 35"}]
-   [:path {:d "M68 23 L74 36 L59 35"}]
-   [:path {:d "M74 66 Q50 88 27 65"}]
-   [:path {:d "M32 77 L26 64 L41 65"}]])
-
-(defn- mini-triangles-symbol []
-  [:g
-   [:polygon {:points "20,23 28,41 12,41" :fill "currentColor"}]
-   [:polygon {:points "80,23 88,41 72,41" :fill "currentColor"}]
-   [:polygon {:points "20,77 28,59 12,59" :fill "currentColor"}]
-   [:polygon {:points "80,77 88,59 72,59" :fill "currentColor"}]])
-
-(defn- icon-symbol [icon-id]
-  (case icon-id
-    :question-card
-    [:g
-     [:rect {:x 30 :y 22 :width 40 :height 56 :rx 4}]
-     [:text {:x 50 :y 65 :text-anchor "middle"} "?"]]
-
-    :wild-suits
-    [:g
-     [:path {:d "M20 78 L80 22"}]
-     [:path {:d "M20 22 L80 78"}]
-     [:g {:transform "translate(50 8) scale(0.35) translate(-50 -50)"}
-      (cup-symbol)]
-     [:g {:transform "translate(77 50) scale(0.33) translate(-50 -50)"}
-      (sword-symbol)]
-     [:g {:transform "translate(23 50) scale(0.33) translate(-50 -50)"}
-      (rod-symbol)]
-     [:g {:transform "translate(50 82) scale(0.35) translate(-50 -50)"}
-      (disc-symbol)]]
-
-    :draw-hand
-    (card-stack-symbol)
-
-    :orient-minion
-    [:g
-     (triangle-symbol {:fill "none"})
-     [:polygon {:points "64,48 79,76 49,76" :fill "none"}]
-     (curved-arrow-symbol)]
-
-    :cup-unbounded
-    [:g
-     (mini-triangles-symbol)
-     (cup-symbol)]
-
-    :rod-unbounded
-    [:g
-     (mini-triangles-symbol)
-     (rod-symbol)]
-
-    :convert-piece
-    [:g
-     (triangle-symbol {})
-     [:polygon {:points "68,22 84,56 52,56" :fill "none"}]
-     [:path {:d "M45 40 H65"}]
-     [:path {:d "M60 32 L68 40 L60 48"}]]
-
-    :rod
-    (rod-symbol)
-
-    :cup
-    (cup-symbol)
-
-    :trade-hand
-    [:g
-     [:rect {:x 26 :y 28 :width 23 :height 32 :rx 3}]
-     [:rect {:x 52 :y 40 :width 23 :height 32 :rx 3}]
-     (swap-arrows-symbol)]
-
-    :sword
-    (sword-symbol)
-
-    :relocate
-    [:g
-     [:path {:d "M28 70 Q50 54 72 70"}]
-     [:path {:d "M50 70 L50 23"}]
-     [:path {:d "M50 23 L70 45"}]
-     [:path {:d "M50 23 L30 45"}]
-     [:path {:d "M30 45 Q18 42 14 30 Q30 31 39 51"}]
-     [:path {:d "M70 45 Q82 42 86 30 Q70 31 61 51"}]]
-
-    :wheel-cup
-    [:g
-     (cup-symbol)
-     [:text {:x 50 :y 56 :text-anchor "middle"} "?"]]
-
-    :disc
-    (disc-symbol)
-
-    :orient-target
-    [:g
-     (triangle-symbol {})
-     [:polygon {:points "68,30 88,76 48,76" :fill "currentColor"}]
-     (curved-arrow-symbol)]
-
-    :sword-from-discard
-    [:g
-     (swap-arrows-symbol)
-     (sword-symbol)]
-
-    :disc-from-discard
-    [:g
-     (swap-arrows-symbol)
-     (disc-symbol)]
-
-    :judgement
-    [:g
-     (card-stack-symbol)
-     [:polygon {:points "67,30 83,66 51,66" :fill "none"}]
-     [:path {:d "M76 75 V51"}]
-     [:path {:d "M68 59 L76 50 L84 59"}]]
-
-    :world
-    [:g
-     [:ellipse {:cx 50 :cy 50 :rx 35 :ry 21}]
-     [:path {:d "M16 50 H84"}]
-     [:path {:d "M32 37 Q50 48 68 37"}]
-     [:path {:d "M32 63 Q50 52 68 63"}]]
-
-    nil))
-
-(defn- gnostica-icon [icon-id]
-  [:svg.gnostica-icon
-   {:class (str "is-" (name icon-id))
-    :viewBox "0 0 100 100"
-    :focusable "false"
-    :aria-hidden "true"
-    :data-icon-id (name icon-id)}
-   [:circle.gnostica-icon__base {:cx 50 :cy 50 :r 45}]
-   [:g.gnostica-icon__mark
-    {:fill "none"
-     :stroke "currentColor"
-     :stroke-linecap "round"
-     :stroke-linejoin "round"}
-    (icon-symbol icon-id)]])
 
 (defn- card-icon-stack [card]
   (when-let [icon-ids (seq (icons/present-icon-ids (:gnostica-icons card)))]
@@ -368,19 +203,45 @@
       :title (icons/icon-stack-label icon-ids)}
      (for [[position icon-id] (map-indexed vector icon-ids)]
        ^{:key (str (:id card) "-" position "-" (name icon-id))}
-       [gnostica-icon icon-id])]))
+       [icon-view/gnostica-icon icon-id])]))
+
+(defn- card-icon-summary [card]
+  (when-let [icon-ids (seq (icons/present-icon-ids (:gnostica-icons card)))]
+    (icons/icon-stack-label icon-ids)))
+
+(defn- card-aria-label [card alt-text]
+  (str alt-text
+       (when-let [summary (card-icon-summary card)]
+         (str ", special moves: " summary))))
+
+(defn- class-names [& classes]
+  (->> classes
+       (remove str/blank?)
+       (str/join " ")))
 
 (defn- card-face
-  ([card class-name]
-   (card-face card class-name (:title card)))
-  ([card class-name alt-text]
-   [:span.card-face
-    {:class class-name}
-    [:img.card-face__image
-     {:src (:image card)
-      :alt alt-text
-      :draggable "false"}]
-    [card-icon-stack card]]))
+  ([card class-name card-icon-mode]
+   (card-face card class-name (:title card) card-icon-mode {}))
+  ([card class-name alt-text card-icon-mode]
+   (card-face card class-name alt-text card-icon-mode {}))
+  ([card class-name alt-text card-icon-mode {:keys [focusable?]}]
+   (let [has-icons? (boolean (seq (icons/present-icon-ids (:gnostica-icons card))))
+         popup-mode? (= :popup card-icon-mode)]
+     [:span.card-face
+      {:class (class-names class-name
+                           (when has-icons? "has-gnostica-icons"))
+       :data-icon-mode (name card-icon-mode)
+       :aria-label (when (and focusable? has-icons?)
+                     (card-aria-label card alt-text))
+       :tabIndex (when (and focusable? has-icons?)
+                   0)}
+      [:img.card-face__image
+       {:src (:image card)
+        :alt alt-text
+        :draggable "false"}]
+      (if popup-mode?
+        [icon-view/card-icon-popover card]
+        [card-icon-stack card])])))
 
 (defn- css-space-offset [step-count edge-offset]
   (str "calc(" step-count " * var(--card-step) + " edge-offset ")"))
@@ -434,7 +295,7 @@
     :style (board-space-style bounds space)
     :aria-hidden "true"}])
 
-(defn board-card [bounds {:keys [index row col orientation card] :as cell} selected? board-pieces]
+(defn board-card [bounds {:keys [index row col orientation card] :as cell} selected? board-pieces card-icon-mode]
   (let [{:keys [title]} card]
     [:button.board-card
      {:type "button"
@@ -450,11 +311,13 @@
                        (inc row)
                        ", column "
                        (inc col)
+                       (when-let [summary (card-icon-summary card)]
+                         (str ", special moves: " summary))
                        (when (seq board-pieces)
                          (str ", pieces: "
                               (apply str (interpose "; " (map piece-summary board-pieces))))))
       :on-click #(rf/dispatch [::select-board-card index])}
-     [card-face card "board-card__face"]
+     [card-face card "board-card__face" card-icon-mode]
      (when (seq board-pieces)
        [:div.board-card__pieces
         {:aria-hidden "true"}
@@ -468,6 +331,7 @@
         wastelands (layout/wasteland-spaces cells)
         space-bounds (layout/space-bounds (concat cells wastelands))
         selected-index @(rf/subscribe [::selected-board-index])
+        card-icon-mode @(rf/subscribe [::card-icon-mode])
         texture-errors @(rf/subscribe [::three-texture-errors])
         renderer-error @(rf/subscribe [::three-renderer-error])
         runtime-status (three-board/runtime-status)]
@@ -478,6 +342,7 @@
         cells
         board-pieces
         selected-index
+        card-icon-mode
         texture-errors
         {:on-card-select #(rf/dispatch [::select-board-card %])
          :on-clear-texture-errors #(rf/dispatch-sync [::clear-three-texture-errors])
@@ -503,15 +368,17 @@
             space-bounds
             cell
             (= selected-index (:index cell))
-            (get pieces-by-space (:index cell))])]])]))
+            (get pieces-by-space (:index cell))
+            card-icon-mode])]])]))
 
 (defn- card-count-label [n]
   (str n " card" (when (not= 1 n) "s")))
 
-(defn- hand-card [card]
+(defn- hand-card [card card-icon-mode]
   ^{:key (:id card)}
   [:article.hand-card
-   [card-face card "hand-card__face"]
+   {:class (when (card-icon-summary card) "has-gnostica-icons")}
+   [card-face card "hand-card__face" (:title card) card-icon-mode {:focusable? true}]
    [:h3.hand-card__title (:title card)]])
 
 (defn- draw-deck-zone [draw-count]
@@ -524,11 +391,16 @@
     [:h3.card-pile-zone__title "Draw deck"]
     [:p.card-pile-zone__detail (str (card-count-label draw-count) " remaining")]]])
 
-(defn- discard-pile-zone [discard-count top-card]
+(defn- discard-pile-zone [discard-count top-card card-icon-mode]
   [:article.card-pile-zone
    {:aria-label (str "Discard pile, " (card-count-label discard-count))}
    (if top-card
-     [card-face top-card "card-pile-zone__preview" (str "Top discard: " (:title top-card))]
+     [card-face
+      top-card
+      "card-pile-zone__preview"
+      (str "Top discard: " (:title top-card))
+      card-icon-mode
+      {:focusable? true}]
      [:div.card-pile-zone__preview.is-empty
       {:aria-hidden "true"}])
    [:div.card-pile-zone__body
@@ -540,6 +412,7 @@
 
 (defn card-zones []
   (let [current-player @(rf/subscribe [::current-player])
+        card-icon-mode @(rf/subscribe [::card-icon-mode])
         {:keys [hand draw-count discard-count discard-top-card]} @(rf/subscribe [::card-zones])]
     [:section.card-zones
      {:data-hand-count (count hand)
@@ -556,10 +429,10 @@
      [:div.hand-card-grid
       (for [card hand]
         ^{:key (:id card)}
-        [hand-card card])]
+        [hand-card card card-icon-mode])]
      [:div.card-pile-grid
       [draw-deck-zone draw-count]
-      [discard-pile-zone discard-count discard-top-card]]]))
+      [discard-pile-zone discard-count discard-top-card card-icon-mode]]]))
 
 (defn territory-panel []
   (let [{:keys [row col orientation card]} @(rf/subscribe [::selected-board-cell])
@@ -787,16 +660,34 @@
           :on-click #(rf/dispatch [::confirm-move])}
          "Confirm"]])]))
 
+(defn- card-icon-mode-toggle [card-icon-mode]
+  [:button.card-icon-mode-toggle
+   {:type "button"
+    :aria-label (if (= :always card-icon-mode)
+                  "Hide card icon overlays"
+                  "Show card icon overlays")
+    :aria-pressed (= :always card-icon-mode)
+    :data-card-icon-mode (name card-icon-mode)
+    :title "Toggle card icon overlays"
+    :on-click #(rf/dispatch [::toggle-card-icon-mode])}
+   [:span.card-icon-mode-toggle__mark
+    {:aria-hidden "true"}
+    "i"]
+   [:span.card-icon-mode-toggle__label "Icons"]])
+
 (defn app-header []
-  (let [current-player @(rf/subscribe [::current-player])]
+  (let [current-player @(rf/subscribe [::current-player])
+        card-icon-mode @(rf/subscribe [::card-icon-mode])]
     [:header.app-header
      [:div.brand
       [:span.brand__mark "G"]
       [:span.brand__name "Gnostica"]]
-     (when current-player
-       [:div.app-status
-        [:span "Current player"]
-        [:strong (:name current-player)]])]))
+     [:div.app-header__actions
+      [card-icon-mode-toggle card-icon-mode]
+      (when current-player
+        [:div.app-status
+         [:span "Current player"]
+         [:strong (:name current-player)]])]]))
 
 (defn setup-error-panel [error]
   [:main.app-shell.is-setup-error
@@ -809,12 +700,14 @@
       [:pre.setup-error__data (pr-str (:data error))])]])
 
 (defn app []
-  (let [setup-error @(rf/subscribe [::setup-error])]
+  (let [setup-error @(rf/subscribe [::setup-error])
+        card-icon-mode @(rf/subscribe [::card-icon-mode])]
     [:<>
      [app-header]
      (if setup-error
        [setup-error-panel setup-error]
        [:main.app-shell
+        {:data-card-icon-mode (name card-icon-mode)}
         [:div.play-stack
          [board-stage]
          [card-zones]]
@@ -822,7 +715,30 @@
          [move-panel]
          [territory-panel]]])]))
 
+(defonce keyboard-shortcut-listener
+  (atom nil))
+
+(defn- editable-target? [target]
+  (let [tag-name (some-> target .-tagName str/lower-case)]
+    (or (and target (.-isContentEditable target))
+        (#{"input" "select" "textarea"} tag-name))))
+
+(defn- install-keyboard-shortcuts! []
+  (when-let [listener @keyboard-shortcut-listener]
+    (.removeEventListener js/window "keydown" listener))
+  (let [listener (fn [event]
+                   (when (and (= "i" (str/lower-case (.-key event)))
+                              (not (.-altKey event))
+                              (not (.-ctrlKey event))
+                              (not (.-metaKey event))
+                              (not (editable-target? (.-target event))))
+                     (.preventDefault event)
+                     (rf/dispatch [::toggle-card-icon-mode])))]
+    (reset! keyboard-shortcut-listener listener)
+    (.addEventListener js/window "keydown" listener)))
+
 (defn mount! []
+  (install-keyboard-shortcuts!)
   (rdom/render [app] (.getElementById js/document "app")))
 
 (defn reload! []

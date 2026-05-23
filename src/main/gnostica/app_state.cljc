@@ -7,6 +7,11 @@
 
 (def default-selected-board-index 0)
 
+(def default-card-icon-mode :always)
+
+(def card-icon-modes
+  #{:always :popup})
+
 (def default-demo-board-pieces
   pieces/initial-pieces)
 
@@ -64,15 +69,22 @@
     (some? demo-board-pieces)
     (assoc-in [:pieces :on-board] (vec demo-board-pieces))))
 
+(defn normalize-card-icon-mode [mode]
+  (if (contains? card-icon-modes mode)
+    mode
+    default-card-icon-mode))
+
 (defn initialize
   ([] (initialize {}))
-  ([{:keys [player-specs game-options selected-board-index demo-board-pieces]
+  ([{:keys [player-specs game-options selected-board-index demo-board-pieces card-icon-mode]
      :or {player-specs default-player-specs
           game-options {}
           selected-board-index default-selected-board-index
-          demo-board-pieces default-demo-board-pieces}}]
-     (let [result (game-state/create-game player-specs game-options)
+          demo-board-pieces default-demo-board-pieces
+          card-icon-mode default-card-icon-mode}}]
+   (let [result (game-state/create-game player-specs game-options)
          base-db {:selected-board-index selected-board-index
+                  :card-icon-mode (normalize-card-icon-mode card-icon-mode)
                   :move-selection (empty-move-selection)
                   :three-texture-errors []}]
      (if (:ok? result)
@@ -100,6 +112,18 @@
 
 (defn selected-board-pieces [db]
   (pieces/pieces-for-space (board-pieces db) (selected-board-index db)))
+
+(defn card-icon-mode [db]
+  (normalize-card-icon-mode (:card-icon-mode db)))
+
+(defn set-card-icon-mode [db mode]
+  (assoc db :card-icon-mode (normalize-card-icon-mode mode)))
+
+(defn toggle-card-icon-mode [db]
+  (set-card-icon-mode db
+                      (if (= :always (card-icon-mode db))
+                        :popup
+                        :always)))
 
 (defn current-player [db]
   (some-> (game db) game-state/current-player))
