@@ -6,6 +6,10 @@
   #?(:clj Math/PI
      :cljs js/Math.PI))
 
+(defn- sqrt [value]
+  #?(:clj (Math/sqrt value)
+     :cljs (js/Math.sqrt value)))
+
 (def card-short 1)
 (def card-long 1.5)
 (def card-gap 0.14)
@@ -126,14 +130,34 @@
      (/ (- (/ (:height piece-size) 2) y)
         (:height piece-size))))
 
-(defn piece-pip-local-positions [piece-size]
+(defn- piece-front-side-face-normal [piece-size]
+  (let [slope (/ (:radius piece-size) (:height piece-size))
+        length (sqrt (+ 2 (* slope slope)))]
+    [(/ -1 length) (/ slope length) (/ 1 length)]))
+
+(defn piece-pip-local-markers [piece-size]
   (let [pip-count (or (:pips piece-size) 0)
+        inset (* (:height piece-size) piece-pip-marker-base-inset-ratio)
         y (+ (- (/ (:height piece-size) 2))
-             (* (:height piece-size) piece-pip-marker-base-inset-ratio))
-        z (+ (piece-radius-at-local-y piece-size y)
-             piece-pip-marker-surface-lift)
+             inset)
+        face-radius (piece-radius-at-local-y piece-size y)
+        face-center [(- (/ face-radius 2)) y (/ face-radius 2)]
+        edge-direction [(/ -1 (sqrt 2)) 0 (/ -1 (sqrt 2))]
+        normal (piece-front-side-face-normal piece-size)
         x-step (* (:radius piece-size) piece-pip-marker-spacing-ratio)
         center-offset (/ (dec pip-count) 2)]
     (mapv (fn [index]
-            [(* (- index center-offset) x-step) y z])
+            (let [edge-offset (* (- index center-offset) x-step)
+                  position (mapv (fn [center edge normal-component]
+                                   (+ center
+                                      (* edge-offset edge)
+                                      (* piece-pip-marker-surface-lift normal-component)))
+                                 face-center
+                                 edge-direction
+                                 normal)]
+              {:position position
+               :normal normal}))
           (range pip-count))))
+
+(defn piece-pip-local-positions [piece-size]
+  (mapv :position (piece-pip-local-markers piece-size)))

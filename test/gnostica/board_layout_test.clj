@@ -12,6 +12,11 @@
   (and (= (count expected) (count actual))
        (every? true? (map roughly= expected actual))))
 
+(defn- distance [[ax ay az] [bx by bz]]
+  (Math/sqrt (+ (Math/pow (- ax bx) 2)
+                (Math/pow (- ay by) 2)
+                (Math/pow (- az bz) 2))))
+
 (deftest card-positions-center-the-three-by-three-board
   (is (roughly-vector= [(- layout/card-step) layout/card-step]
                        (layout/card-position {:row 0 :col 0})))
@@ -96,17 +101,40 @@
 
 (deftest piece-pip-markers-follow-size-counts
   (doseq [[size piece-size] pieces/piece-sizes
-          :let [positions (layout/piece-pip-local-positions piece-size)
-                xs (map first positions)
-                ys (map second positions)
-                zs (map #(nth % 2) positions)]]
-    (is (= (:pips piece-size) (count positions))
+          :let [markers (layout/piece-pip-local-markers piece-size)
+                positions (mapv :position markers)
+                normals (mapv :normal markers)
+                surface-positions (mapv (fn [position normal]
+                                           (mapv (fn [value normal-component]
+                                                   (- value
+                                                      (* layout/piece-pip-marker-surface-lift
+                                                         normal-component)))
+                                                 position
+                                                 normal))
+                                         positions
+                                         normals)
+                distances (map distance positions (rest positions))]]
+    (is (= (:pips piece-size) (count markers))
         (str "Expected " size " marker count to match pip count"))
-    (is (roughly= 0 (reduce + xs))
-        (str "Expected " size " marker row to be centered"))
-    (is (every? neg? ys)
+    (is (every? (fn [[normal-x normal-y normal-z]]
+                  (and (neg? normal-x)
+                       (pos? normal-y)
+                       (pos? normal-z)
+                       (roughly= 1 (distance [0 0 0] [normal-x normal-y normal-z]))))
+                normals)
+        (str "Expected " size " marker normals to face out from one side face"))
+    (is (every? (fn [[surface-x surface-y surface-z]]
+                  (let [face-radius (* (:radius piece-size)
+                                       (/ (- (/ (:height piece-size) 2) surface-y)
+                                          (:height piece-size)))]
+                    (roughly= face-radius (+ (- surface-x) surface-z))))
+                surface-positions)
+        (str "Expected " size " markers to sit on the front-left pyramid side face"))
+    (is (every? neg? (map second surface-positions))
         (str "Expected " size " markers near the pyramid base"))
-    (is (every? pos? zs)
-        (str "Expected " size " markers on the visible front face"))
-    (is (every? #(roughly= (first ys) %) ys))
-    (is (every? #(roughly= (first zs) %) zs))))
+    (is (every? #(> % (* 2 layout/piece-pip-marker-radius)) distances)
+        (str "Expected " size " marker spacing to keep pip counts legible"))
+    (is (every? #(roughly= (* (:radius piece-size)
+                              layout/piece-pip-marker-spacing-ratio)
+                           %)
+                distances))))

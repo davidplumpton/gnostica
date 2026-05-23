@@ -178,6 +178,12 @@
     (.set point x y z)
     point))
 
+(defn- align-local-z-to-normal! [mesh [normal-x normal-y normal-z]]
+  (.setFromUnitVectors (.-quaternion mesh)
+                       (vector3 0 0 1)
+                       (vector3 normal-x normal-y normal-z))
+  mesh)
+
 (defn- add-wasteland-line! [scene geometries material [[start-x start-y] [end-x end-y]]]
   (let [geometry (js/THREE.BufferGeometry.)
         line (js/THREE.Line. geometry material)]
@@ -232,12 +238,14 @@
           [offset-x offset-y] (layout/piece-slot-offset slot piece-count)
           z (layout/piece-center-z piece-size (:orientation piece))]
       (add-piece-edge-outline! mesh geometries materials geometry)
-      (doseq [[x y marker-z] (layout/piece-pip-local-positions piece-size)]
+      (doseq [{:keys [position normal]} (layout/piece-pip-local-markers piece-size)]
         (let [pip-geometry (js/THREE.CircleGeometry. layout/piece-pip-marker-radius 16)
               pip-material (js/THREE.MeshBasicMaterial.
                             #js {:color pip-marker-color
                                  :side js/THREE.DoubleSide})
-              pip-mesh (js/THREE.Mesh. pip-geometry pip-material)]
+              pip-mesh (js/THREE.Mesh. pip-geometry pip-material)
+              [x y marker-z] position]
+          (align-local-z-to-normal! pip-mesh normal)
           (.set (.-position pip-mesh) x y marker-z)
           (.add mesh pip-mesh)
           (swap! geometries conj pip-geometry)

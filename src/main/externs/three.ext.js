@@ -317,6 +317,9 @@ THREE.Mesh.prototype.position;
 /** @type {!THREE.Euler} */
 THREE.Mesh.prototype.rotation;
 
+/** @type {!THREE.Quaternion} */
+THREE.Mesh.prototype.quaternion;
+
 /** @type {!Object} */
 THREE.Mesh.prototype.userData;
 
@@ -427,6 +430,16 @@ THREE.Vector3.prototype.z;
  * @return {void}
  */
 THREE.Vector3.prototype.set = function(x, y, z) {};
+
+/** @constructor */
+THREE.Quaternion = function() {};
+
+/**
+ * @param {!THREE.Vector3} vFrom
+ * @param {!THREE.Vector3} vTo
+ * @return {!THREE.Quaternion}
+ */
+THREE.Quaternion.prototype.setFromUnitVectors = function(vFrom, vTo) {};
 
 /** @constructor */
 THREE.Euler = function() {};
