@@ -6,8 +6,8 @@
   --page: #26312f;
   --panel: #364440;
   --panel-soft: #4a5954;
-  --table: #5a1f36;
-  --table-deep: #2b101b;
+  --table: #2a1020;
+  --table-deep: #12070f;
   --line: #8bb9ab;
   --accent: #ffe08a;
   --accent-red: #ff8a7a;
@@ -159,7 +159,7 @@ img {
   border: 1px solid rgba(255, 250, 240, 0.26);
   border-radius: 8px;
   background:
-    radial-gradient(circle at center, rgba(255, 224, 138, 0.16), transparent 66%),
+    radial-gradient(circle at center, rgba(116, 45, 76, 0.28), transparent 66%),
     var(--table);
   box-shadow: var(--shadow);
 }
@@ -242,7 +242,7 @@ img {
   height: calc(var(--card-step) + var(--card-step) + var(--card-long));
   border-radius: 8px;
   background:
-    radial-gradient(circle at center, rgba(255, 224, 138, 0.16), transparent 66%),
+    radial-gradient(circle at center, rgba(116, 45, 76, 0.28), transparent 66%),
     var(--table);
   box-shadow: var(--shadow);
 }

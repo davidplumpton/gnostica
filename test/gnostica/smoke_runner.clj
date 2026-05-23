@@ -20,8 +20,8 @@
 
 (def cdp-timeout-ms 10000)
 (def wait-timeout-ms 20000)
-(def expected-table-surface-color "#5a1f36")
-(def expected-table-clear-color "#2b101b")
+(def expected-table-surface-color "#2a1020")
+(def expected-table-clear-color "#12070f")
 (def min-velvet-pixels 120)
 
 (def viewports
@@ -382,13 +382,13 @@
   (let [r (bit-and (bit-shift-right argb 16) 0xff)
         g (bit-and (bit-shift-right argb 8) 0xff)
         b (bit-and argb 0xff)]
-    (and (>= r 65)
-         (>= b 35)
-         (<= g 115)
-         (<= b 170)
+    (and (>= r 24)
+         (>= b 18)
+         (<= g 80)
+         (<= b 130)
          (> r g)
          (> b g)
-         (>= (- r g) 24)
+         (>= (- r g) 12)
          (>= (- b g) 4))))
 
 (defn- pixel-ok? [stats]
