@@ -7,6 +7,8 @@
 (def board-index-user-data-key "gnosticaBoardIndex")
 (def expected-three-revision "128")
 (def pip-marker-color 0xfff4d3)
+(def piece-edge-outline-color 0x050505)
+(def piece-edge-outline-opacity 0.9)
 (def wasteland-outline-color 0xd8fff3)
 (def wasteland-outline-opacity 0.42)
 (def wasteland-outline-z -0.005)
@@ -201,6 +203,17 @@
     (.add scene ambient)
     (.add scene directional)))
 
+(defn- add-piece-edge-outline! [mesh geometries materials geometry]
+  (let [edge-geometry (js/THREE.EdgesGeometry. geometry)
+        edge-material (js/THREE.LineBasicMaterial.
+                       #js {:color piece-edge-outline-color
+                            :transparent true
+                            :opacity piece-edge-outline-opacity})
+        edge-lines (js/THREE.LineSegments. edge-geometry edge-material)]
+    (.add mesh edge-lines)
+    (swap! geometries conj edge-geometry)
+    (swap! materials conj edge-material)))
+
 (defn- add-piece-mesh!
   [scene geometries materials cells-by-index slot piece-count piece]
   (when-let [cell (get cells-by-index (:space-index piece))]
@@ -214,6 +227,7 @@
           [card-x card-y] (layout/card-position cell)
           [offset-x offset-y] (layout/piece-slot-offset slot piece-count)
           z (layout/piece-center-z piece-size (:orientation piece))]
+      (add-piece-edge-outline! mesh geometries materials geometry)
       (doseq [[x y marker-z] (layout/piece-pip-local-positions piece-size)]
         (let [pip-geometry (js/THREE.CircleGeometry. layout/piece-pip-marker-radius 16)
               pip-material (js/THREE.MeshBasicMaterial.
@@ -228,13 +242,23 @@
       (set-piece-rotation! mesh (:orientation piece) piece-size)
       (.add scene mesh)
       (swap! geometries conj geometry)
-      (swap! materials conj material))))
+      (swap! materials conj material)
+      true)))
 
 (defn- add-piece-meshes! [scene geometries materials cells board-pieces]
-  (let [indexed-cells (layout/cells-by-index cells)]
+  (let [indexed-cells (layout/cells-by-index cells)
+        edge-outline-count (atom 0)]
     (doseq [[_ space-pieces] (pieces/pieces-by-space board-pieces)
             [slot piece] (layout/visible-piece-slots space-pieces)]
-      (add-piece-mesh! scene geometries materials indexed-cells slot (count space-pieces) piece))))
+      (when (add-piece-mesh! scene geometries materials indexed-cells slot (count space-pieces) piece)
+        (swap! edge-outline-count inc)))
+    @edge-outline-count))
+
+(defn- visible-piece-count [board-pieces]
+  (reduce (fn [total [_ space-pieces]]
+            (+ total (count (layout/visible-piece-slots space-pieces))))
+          0
+          (pieces/pieces-by-space board-pieces)))
 
 (defn- create-renderer [callbacks]
   (try
@@ -413,23 +437,28 @@
                                      selection-meshes
                                      callbacks
                                      cell))
-                  (add-piece-meshes! scene geometries materials cells board-pieces)
-                  (.addEventListener js/window "resize" resize!)
-                  (resize!)
-                  (r/replace-state this {:renderer renderer
-                                         :resize-listener resize!
-                                         :controls controls
-                                         :control-change-listener control-change-listener
-                                         :pointer-down-listener pointer-down-listener
-                                         :pointer-up-listener pointer-up-listener
-                                         :pointer-cancel-listener pointer-cancel-listener
-                                         :active? active?
-                                         :render! render!
-                                         :geometries @geometries
-                                         :materials @materials
-                                         :textures @textures
-                                         :selection-meshes @selection-meshes})
-                  (set-selection! this selected-index))))))))))
+                  (let [piece-edge-outline-count (add-piece-meshes! scene
+                                                                      geometries
+                                                                      materials
+                                                                      cells
+                                                                      board-pieces)]
+                    (.addEventListener js/window "resize" resize!)
+                    (resize!)
+                    (r/replace-state this {:renderer renderer
+                                           :resize-listener resize!
+                                           :controls controls
+                                           :control-change-listener control-change-listener
+                                           :pointer-down-listener pointer-down-listener
+                                           :pointer-up-listener pointer-up-listener
+                                           :pointer-cancel-listener pointer-cancel-listener
+                                           :active? active?
+                                           :render! render!
+                                           :geometries @geometries
+                                           :materials @materials
+                                           :textures @textures
+                                           :selection-meshes @selection-meshes
+                                           :piece-edge-outline-count piece-edge-outline-count})
+                    (set-selection! this selected-index)))))))))))
 
 (def scene
   (r/create-class
@@ -453,6 +482,8 @@
           :aria-label "Three-dimensional Gnostica board with nine face-up tarot territory cards and Icehouse pieces"
           :data-board-card-count (count _cells)
           :data-wasteland-count (count (layout/wasteland-spaces _cells))
+          :data-visible-piece-count (visible-piece-count _pieces)
+          :data-piece-edge-outline-count (or (:piece-edge-outline-count (r/state component)) 0)
           :data-selected-board-index _selected-index
           :data-texture-error-count (count texture-errors)}
          [:div.board-three__mount

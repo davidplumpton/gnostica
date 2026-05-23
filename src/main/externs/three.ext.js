@@ -248,6 +248,16 @@ THREE.ConeGeometry.prototype.dispose = function() {};
 
 /**
  * @constructor
+ * @param {!Object} geometry
+ * @param {number=} thresholdAngle
+ */
+THREE.EdgesGeometry = function(geometry, thresholdAngle) {};
+
+/** @return {void} */
+THREE.EdgesGeometry.prototype.dispose = function() {};
+
+/**
+ * @constructor
  * @param {!Object=} parameters
  */
 THREE.MeshBasicMaterial = function(parameters) {};
@@ -272,6 +282,15 @@ THREE.LineDashedMaterial = function(parameters) {};
 
 /** @return {void} */
 THREE.LineDashedMaterial.prototype.dispose = function() {};
+
+/**
+ * @constructor
+ * @param {!Object=} parameters
+ */
+THREE.LineBasicMaterial = function(parameters) {};
+
+/** @return {void} */
+THREE.LineBasicMaterial.prototype.dispose = function() {};
 
 /**
  * @constructor
@@ -338,6 +357,13 @@ THREE.Line = function(geometry, material) {};
 
 /** @return {void} */
 THREE.Line.prototype.computeLineDistances = function() {};
+
+/**
+ * @constructor
+ * @param {!Object} geometry
+ * @param {!Object} material
+ */
+THREE.LineSegments = function(geometry, material) {};
 
 /** @constructor */
 THREE.TextureLoader = function() {};

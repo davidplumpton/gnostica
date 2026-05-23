@@ -311,6 +311,8 @@
        board: Boolean(board),
        boardCardCount: board ? Number(board.dataset.boardCardCount || -1) : -1,
        wastelandCount: board ? Number(board.dataset.wastelandCount || -1) : -1,
+       visiblePieceCount: board ? Number(board.dataset.visiblePieceCount || -1) : -1,
+       pieceEdgeOutlineCount: board ? Number(board.dataset.pieceEdgeOutlineCount || -1) : -1,
        selectedIndex: board ? Number(board.dataset.selectedBoardIndex || -1) : -1,
        textureErrorCount: board ? Number(board.dataset.textureErrorCount || -1) : -1,
        fallback: Boolean(document.querySelector('.board-fallback')),
@@ -374,17 +376,21 @@
        (>= (long (or (get stats "distinctColors") 0)) 16)))
 
 (defn- happy-ready? [stats]
-  (and (= "128" (get stats "threeRevision"))
-       (true? (get stats "orbitControls"))
-       (true? (get stats "board"))
-       (= 12 (get stats "wastelandCount"))
-       (false? (get stats "fallback"))
-       (true? (get stats "canvas"))
-       (pos? (long (or (get stats "canvasClientWidth") 0)))
-       (pos? (long (or (get stats "canvasClientHeight") 0)))
-       (true? (get stats "reset"))
-       (empty? (get stats "status"))
-       (>= (long (or (get stats "imageResourceCount") 0)) 9)))
+  (let [visible-piece-count (long (or (get stats "visiblePieceCount") -1))
+        piece-edge-outline-count (long (or (get stats "pieceEdgeOutlineCount") -1))]
+    (and (= "128" (get stats "threeRevision"))
+         (true? (get stats "orbitControls"))
+         (true? (get stats "board"))
+         (= 12 (get stats "wastelandCount"))
+         (pos? visible-piece-count)
+         (= visible-piece-count piece-edge-outline-count)
+         (false? (get stats "fallback"))
+         (true? (get stats "canvas"))
+         (pos? (long (or (get stats "canvasClientWidth") 0)))
+         (pos? (long (or (get stats "canvasClientHeight") 0)))
+         (true? (get stats "reset"))
+         (empty? (get stats "status"))
+         (>= (long (or (get stats "imageResourceCount") 0)) 9))))
 
 (defn- fallback-ready? [stats]
   (and (nil? (get stats "threeRevision"))
