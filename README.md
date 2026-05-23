@@ -34,6 +34,12 @@ The browser app initializes through `gnostica.app-state/initialize`, which store
 
 Rule helpers return explicit result maps: successful transitions use `{:ok? true :state ... :events [...]}`, while validation errors use `{:ok? false :error {:code ... :message ... :data ...}}`.
 
+## Gameplay Move Selection
+
+The browser app includes a current-player move panel driven from shared app-db state in `gnostica.app-state`. Move selection is stored outside `:game` under `:move-selection`, while board, pieces, hand cards, draw counts, and player metadata continue to derive from the authoritative game state.
+
+The current flow lets the player choose a move source, then stage the required source territory, hand card, minion, target territory, draw count, or orientation. Three.js card picking and the CSS fallback board both dispatch through the same board-selection event, so active move flows stay synchronized with the territory inspection panel. Confirming a complete move currently returns a visible `:move-transition-unavailable` error instead of mutating game state; future rule transitions should replace that placeholder with pure gameplay helpers that return the same explicit success/error result shape.
+
 `gnostica.game-schema` provides Malli schemas for the pure gameplay data contract: card references, board cells, player state, six-card hand limits, Icehouse pieces, draw/discard piles, and top-level game state invariants. Use `valid-game?`, `explain-game`, and `assert-valid-game` in tests, future Cucumber steps, and other pure-data boundaries where a readable state-shape failure is more useful than renderer or re-frame behavior.
 
 Gameplay rule examples live in Cucumber/Gherkin-style `.feature` files under `features/`. Step definitions and reusable test-world helpers live under `test/gnostica/feature_steps.clj` and `test/gnostica/feature_world.clj`; they create deterministic games, apply pure actions, inspect state paths, and include Malli explanations in failing step output. `clojure -M:test` runs these feature scenarios alongside the existing `clojure.test` namespaces.

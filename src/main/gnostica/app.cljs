@@ -16,6 +16,41 @@
    (app-state/select-board-card db index)))
 
 (rf/reg-event-db
+ ::select-move-source
+ (fn [db [_ source-id]]
+   (app-state/select-move-source db source-id)))
+
+(rf/reg-event-db
+ ::select-move-piece
+ (fn [db [_ piece-id]]
+   (app-state/select-move-piece db piece-id)))
+
+(rf/reg-event-db
+ ::select-move-hand-card
+ (fn [db [_ card-id]]
+   (app-state/select-move-hand-card db card-id)))
+
+(rf/reg-event-db
+ ::set-move-orientation
+ (fn [db [_ orientation]]
+   (app-state/set-move-orientation db orientation)))
+
+(rf/reg-event-db
+ ::set-move-draw-count
+ (fn [db [_ draw-count]]
+   (app-state/set-move-draw-count db draw-count)))
+
+(rf/reg-event-db
+ ::confirm-move
+ (fn [db _]
+   (app-state/confirm-move db)))
+
+(rf/reg-event-db
+ ::cancel-move
+ (fn [db _]
+   (app-state/cancel-move db)))
+
+(rf/reg-event-db
  ::clear-three-texture-errors
  (fn [db _]
    (assoc db :three-texture-errors [])))
@@ -79,6 +114,56 @@
  ::selected-board-pieces
  (fn [db _]
    (app-state/selected-board-pieces db)))
+
+(rf/reg-sub
+ ::move-selection
+ (fn [db _]
+   (app-state/move-selection db)))
+
+(rf/reg-sub
+ ::move-source-options
+ (fn [db _]
+   (app-state/move-source-options db)))
+
+(rf/reg-sub
+ ::move-prompt
+ (fn [db _]
+   (app-state/move-prompt db)))
+
+(rf/reg-sub
+ ::move-ready?
+ (fn [db _]
+   (app-state/move-ready? db)))
+
+(rf/reg-sub
+ ::move-piece-options
+ (fn [db _]
+   (app-state/move-piece-options db)))
+
+(rf/reg-sub
+ ::move-hand-card-options
+ (fn [db _]
+   (app-state/move-hand-card-options db)))
+
+(rf/reg-sub
+ ::move-source-board-options
+ (fn [db _]
+   (app-state/move-source-board-options db)))
+
+(rf/reg-sub
+ ::move-target-board-options
+ (fn [db _]
+   (app-state/move-target-board-options db)))
+
+(rf/reg-sub
+ ::move-orientation-options
+ (fn [db _]
+   (app-state/move-orientation-options db)))
+
+(rf/reg-sub
+ ::draw-count-options
+ (fn [db _]
+   (app-state/draw-count-options db)))
 
 (defn orientation-label [orientation]
   (case orientation
@@ -207,6 +292,193 @@
                 [:span (piece-summary piece)]]))]
           "None")]]]]))
 
+(defn- move-source-picker [options selected-source]
+  [:div.move-source-list
+   (for [{:keys [id label summary enabled? reason]} options]
+     ^{:key id}
+     [:button.move-source-option
+      {:type "button"
+       :class (when (= selected-source id) "is-selected")
+       :disabled (not enabled?)
+       :aria-pressed (= selected-source id)
+       :on-click #(rf/dispatch [::select-move-source id])}
+      [:span.move-source-option__label label]
+      [:span.move-source-option__summary (if enabled? summary reason)]])])
+
+(defn- board-cell-label [{:keys [row col card]}]
+  (str (:title card)
+       ", row "
+       (inc row)
+       ", column "
+       (inc col)))
+
+(defn- board-choice-grid [label cells selected-index]
+  [:div.move-step
+   [:div.move-step__header
+    [:span label]
+    [:strong
+     (if-let [selected-cell (some #(when (= selected-index (:index %)) %) cells)]
+       (:title (:card selected-cell))
+       "None")]]
+   [:div.move-board-choice-grid
+    (for [cell cells]
+      ^{:key (:index cell)}
+      [:button.move-chip
+       {:type "button"
+        :class (when (= selected-index (:index cell)) "is-selected")
+        :aria-pressed (= selected-index (:index cell))
+        :on-click #(rf/dispatch [::select-board-card (:index cell)])}
+       (board-cell-label cell)])]])
+
+(defn- hand-card-choices [cards selected-card-id]
+  [:div.move-step
+   [:div.move-step__header
+    [:span "Hand card"]
+    [:strong
+     (or (:title (some #(when (= selected-card-id (:id %)) %) cards))
+         "None")]]
+   [:div.move-choice-list
+    (for [card cards]
+      ^{:key (:id card)}
+      [:button.move-chip
+       {:type "button"
+        :class (when (= selected-card-id (:id card)) "is-selected")
+        :aria-pressed (= selected-card-id (:id card))
+        :on-click #(rf/dispatch [::select-move-hand-card (:id card)])}
+       (:title card)])]])
+
+(defn- piece-choice-label [board piece]
+  (let [cell (get board (:space-index piece))]
+    (str (piece-summary piece)
+         " on "
+         (:title (:card cell)))))
+
+(defn- piece-choices [board pieces selected-piece-id]
+  [:div.move-step
+   [:div.move-step__header
+    [:span "Minion"]
+    [:strong
+     (if-let [piece (some #(when (= selected-piece-id (:id %)) %) pieces)]
+       (piece-summary piece)
+       "None")]]
+   (if (seq pieces)
+     [:div.move-choice-list
+      (for [piece pieces]
+        ^{:key (:id piece)}
+        [:button.move-chip
+         {:type "button"
+          :class (when (= selected-piece-id (:id piece)) "is-selected")
+          :aria-pressed (= selected-piece-id (:id piece))
+          :on-click #(rf/dispatch [::select-move-piece (:id piece)])}
+         (piece-choice-label board piece)])]
+     [:p.move-step__empty "No pieces available."])])
+
+(defn- orientation-choices [options selected-orientation]
+  [:div.move-step
+   [:div.move-step__header
+    [:span "Orientation"]
+    [:strong (pieces/orientation-label selected-orientation)]]
+   [:div.move-choice-list.is-compact
+    (for [{:keys [id label]} options]
+      ^{:key id}
+      [:button.move-chip
+       {:type "button"
+        :class (when (= selected-orientation id) "is-selected")
+        :aria-pressed (= selected-orientation id)
+        :on-click #(rf/dispatch [::set-move-orientation id])}
+       label])]])
+
+(defn- draw-count-choices [options selected-count]
+  [:div.move-step
+   [:div.move-step__header
+    [:span "Draw count"]
+    [:strong (or selected-count "None")]]
+   [:div.move-choice-list.is-compact
+    (for [draw-count options]
+      ^{:key draw-count}
+      [:button.move-chip
+       {:type "button"
+        :class (when (= selected-count draw-count) "is-selected")
+        :aria-pressed (= selected-count draw-count)
+        :on-click #(rf/dispatch [::set-move-draw-count draw-count])}
+       draw-count])]])
+
+(defn- move-active-controls [selection]
+  (let [{:keys [source params]} selection
+        board @(rf/subscribe [::board])
+        piece-options @(rf/subscribe [::move-piece-options])
+        hand-options @(rf/subscribe [::move-hand-card-options])
+        source-board-options @(rf/subscribe [::move-source-board-options])
+        target-board-options @(rf/subscribe [::move-target-board-options])
+        orientation-options @(rf/subscribe [::move-orientation-options])
+        draw-options @(rf/subscribe [::draw-count-options])]
+    (case source
+      :activate-territory
+      [:<>
+       [board-choice-grid "Source territory" source-board-options (:source-board-index params)]
+       (when (:source-board-index params)
+         [piece-choices board piece-options (:piece-id params)])
+       (when (:piece-id params)
+         [board-choice-grid "Target territory" target-board-options (:target-board-index params)])]
+
+      :play-hand-card
+      [:<>
+       [hand-card-choices hand-options (:hand-card-id params)]
+       (when (:hand-card-id params)
+         [piece-choices board piece-options (:piece-id params)])
+       (when (:piece-id params)
+         [board-choice-grid "Target territory" target-board-options (:target-board-index params)])]
+
+      :draw-cards
+      [draw-count-choices draw-options (:draw-count params)]
+
+      :orient-piece
+      [:<>
+       [piece-choices board piece-options (:piece-id params)]
+       (when (:piece-id params)
+         [orientation-choices orientation-options (:orientation params)])]
+
+      :place-initial-small
+      [:<>
+       [board-choice-grid "Target territory" target-board-options (:target-board-index params)]
+       (when (:target-board-index params)
+         [orientation-choices orientation-options (:orientation params)])]
+
+      nil)))
+
+(defn move-panel []
+  (let [current-player @(rf/subscribe [::current-player])
+        selection @(rf/subscribe [::move-selection])
+        source-options @(rf/subscribe [::move-source-options])
+        prompt @(rf/subscribe [::move-prompt])
+        ready? @(rf/subscribe [::move-ready?])
+        {:keys [source error]} selection]
+    [:section.move-panel
+     [:div.move-panel__heading
+      [:p.eyebrow "Move"]
+      [:h2 (if current-player
+             (:name current-player)
+             "No player")]]
+     [move-source-picker source-options source]
+     [:p.move-panel__prompt prompt]
+     (when source
+       [move-active-controls selection])
+     (when error
+       [:p.move-error
+        {:role "alert"}
+        (:message error)])
+     (when source
+       [:div.move-actions
+        [:button.move-action
+         {:type "button"
+          :on-click #(rf/dispatch [::cancel-move])}
+         "Cancel"]
+        [:button.move-action.is-primary
+         {:type "button"
+          :disabled (not ready?)
+          :on-click #(rf/dispatch [::confirm-move])}
+         "Confirm"]])]))
+
 (defn app-header []
   (let [current-player @(rf/subscribe [::current-player])]
     [:header.app-header
@@ -236,7 +508,9 @@
        [setup-error-panel setup-error]
        [:main.app-shell
         [board-stage]
-        [territory-panel]])]))
+        [:div.side-stack
+         [move-panel]
+         [territory-panel]]])]))
 
 (defn mount! []
   (rdom/render [app] (.getElementById js/document "app")))
