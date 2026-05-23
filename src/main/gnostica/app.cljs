@@ -1,6 +1,9 @@
 (ns gnostica.app
-  (:require [gnostica.app-state :as app-state]
+  (:require [clojure.string :as str]
+            [gnostica.app-state :as app-state]
             [gnostica.board-layout :as layout]
+            [gnostica.cards :as cards]
+            [gnostica.icons :as icons]
             [gnostica.pieces :as pieces]
             [gnostica.three-board :as three-board]
             [re-frame.core :as rf]
@@ -177,6 +180,207 @@
     :landscape "Landscape"
     "Unknown"))
 
+(defn- cup-symbol []
+  [:g
+   [:path {:d "M28 24 H72 L65 56 Q50 67 35 56 Z"}]
+   [:path {:d "M50 66 V80"}]
+   [:path {:d "M36 82 H64"}]])
+
+(defn- rod-symbol []
+  [:g
+   [:path {:d "M34 76 L60 20"}]
+   [:path {:d "M53 34 Q70 32 74 45 Q61 47 53 34 Z"}]
+   [:path {:d "M47 48 Q33 45 30 34 Q43 34 47 48 Z"}]])
+
+(defn- sword-symbol []
+  [:g
+   [:path {:d "M31 73 L60 24 L70 17 L66 30 L37 78 Z"}]
+   [:path {:d "M29 61 L47 76"}]
+   [:path {:d "M24 76 L40 84"}]])
+
+(defn- disc-symbol []
+  [:polygon {:points "50,16 60,41 87,41 65,57 73,84 50,68 27,84 35,57 13,41 40,41"}])
+
+(defn- triangle-symbol [attrs]
+  [:polygon (merge {:points "50,16 77,76 23,76"
+                    :fill "currentColor"}
+                   attrs)])
+
+(defn- card-stack-symbol []
+  [:g
+   [:rect {:x 28 :y 25 :width 30 :height 43 :rx 3}]
+   [:path {:d "M34 22 L66 29 L58 72"}]
+   [:path {:d "M40 19 L72 29 L62 72"}]])
+
+(defn- curved-arrow-symbol []
+  [:g
+   [:path {:d "M26 36 Q51 12 75 34"}]
+   [:path {:d "M71 21 L77 35 L62 35"}]])
+
+(defn- swap-arrows-symbol []
+  [:g
+   [:path {:d "M26 34 Q50 12 73 35"}]
+   [:path {:d "M68 23 L74 36 L59 35"}]
+   [:path {:d "M74 66 Q50 88 27 65"}]
+   [:path {:d "M32 77 L26 64 L41 65"}]])
+
+(defn- mini-triangles-symbol []
+  [:g
+   [:polygon {:points "20,23 28,41 12,41" :fill "currentColor"}]
+   [:polygon {:points "80,23 88,41 72,41" :fill "currentColor"}]
+   [:polygon {:points "20,77 28,59 12,59" :fill "currentColor"}]
+   [:polygon {:points "80,77 88,59 72,59" :fill "currentColor"}]])
+
+(defn- icon-symbol [icon-id]
+  (case icon-id
+    :empty
+    nil
+
+    :question-card
+    [:g
+     [:rect {:x 30 :y 22 :width 40 :height 56 :rx 4}]
+     [:text {:x 50 :y 65 :text-anchor "middle"} "?"]]
+
+    :wild-suits
+    [:g
+     [:path {:d "M20 78 L80 22"}]
+     [:path {:d "M20 22 L80 78"}]
+     [:g {:transform "translate(50 8) scale(0.35) translate(-50 -50)"}
+      (cup-symbol)]
+     [:g {:transform "translate(77 50) scale(0.33) translate(-50 -50)"}
+      (sword-symbol)]
+     [:g {:transform "translate(23 50) scale(0.33) translate(-50 -50)"}
+      (rod-symbol)]
+     [:g {:transform "translate(50 82) scale(0.35) translate(-50 -50)"}
+      (disc-symbol)]]
+
+    :draw-hand
+    (card-stack-symbol)
+
+    :orient-minion
+    [:g
+     (triangle-symbol {:fill "none"})
+     [:polygon {:points "64,48 79,76 49,76" :fill "none"}]
+     (curved-arrow-symbol)]
+
+    :cup-unbounded
+    [:g
+     (mini-triangles-symbol)
+     (cup-symbol)]
+
+    :rod-unbounded
+    [:g
+     (mini-triangles-symbol)
+     (rod-symbol)]
+
+    :convert-piece
+    [:g
+     (triangle-symbol {})
+     [:polygon {:points "68,22 84,56 52,56" :fill "none"}]
+     [:path {:d "M45 40 H65"}]
+     [:path {:d "M60 32 L68 40 L60 48"}]]
+
+    :rod
+    (rod-symbol)
+
+    :cup
+    (cup-symbol)
+
+    :trade-hand
+    [:g
+     [:rect {:x 26 :y 28 :width 23 :height 32 :rx 3}]
+     [:rect {:x 52 :y 40 :width 23 :height 32 :rx 3}]
+     (swap-arrows-symbol)]
+
+    :sword
+    (sword-symbol)
+
+    :relocate
+    [:g
+     [:path {:d "M28 70 Q50 54 72 70"}]
+     [:path {:d "M50 70 L50 23"}]
+     [:path {:d "M50 23 L70 45"}]
+     [:path {:d "M50 23 L30 45"}]
+     [:path {:d "M30 45 Q18 42 14 30 Q30 31 39 51"}]
+     [:path {:d "M70 45 Q82 42 86 30 Q70 31 61 51"}]]
+
+    :wheel-cup
+    [:g
+     (cup-symbol)
+     [:text {:x 50 :y 56 :text-anchor "middle"} "?"]]
+
+    :disc
+    (disc-symbol)
+
+    :orient-target
+    [:g
+     (triangle-symbol {})
+     [:polygon {:points "68,30 88,76 48,76" :fill "currentColor"}]
+     (curved-arrow-symbol)]
+
+    :sword-from-discard
+    [:g
+     (swap-arrows-symbol)
+     (sword-symbol)]
+
+    :disc-from-discard
+    [:g
+     (swap-arrows-symbol)
+     (disc-symbol)]
+
+    :judgement
+    [:g
+     (card-stack-symbol)
+     [:polygon {:points "67,30 83,66 51,66" :fill "none"}]
+     [:path {:d "M76 75 V51"}]
+     [:path {:d "M68 59 L76 50 L84 59"}]]
+
+    :world
+    [:g
+     [:ellipse {:cx 50 :cy 50 :rx 35 :ry 21}]
+     [:path {:d "M16 50 H84"}]
+     [:path {:d "M32 37 Q50 48 68 37"}]
+     [:path {:d "M32 63 Q50 52 68 63"}]]
+
+    nil))
+
+(defn- gnostica-icon [icon-id]
+  [:svg.gnostica-icon
+   {:class (str "is-" (name icon-id))
+    :viewBox "0 0 100 100"
+    :focusable "false"
+    :aria-hidden "true"
+    :data-icon-id (name icon-id)}
+   [:circle.gnostica-icon__base {:cx 50 :cy 50 :r 45}]
+   [:g.gnostica-icon__mark
+    {:fill "none"
+     :stroke "currentColor"
+     :stroke-linecap "round"
+     :stroke-linejoin "round"}
+    (icon-symbol icon-id)]])
+
+(defn- card-icon-triplet [card]
+  (when-let [triplet (seq (:gnostica-icons card))]
+    [:span.gnostica-icon-triplet
+     {:aria-hidden "true"
+      :data-icon-ids (str/join "," (map name triplet))
+      :title (icons/icon-triplet-label triplet)}
+     (for [[position icon-id] (map-indexed vector triplet)]
+       ^{:key (str (:id card) "-" position "-" (name icon-id))}
+       [gnostica-icon icon-id])]))
+
+(defn- card-face
+  ([card class-name]
+   (card-face card class-name (:title card)))
+  ([card class-name alt-text]
+   [:span.card-face
+    {:class class-name}
+    [:img.card-face__image
+     {:src (:image card)
+      :alt alt-text
+      :draggable "false"}]
+    [card-icon-triplet card]]))
+
 (defn- css-space-offset [step-count edge-offset]
   (str "calc(" step-count " * var(--card-step) + " edge-offset ")"))
 
@@ -230,7 +434,7 @@
     :aria-hidden "true"}])
 
 (defn board-card [bounds {:keys [index row col orientation card] :as cell} selected? board-pieces]
-  (let [{:keys [image title]} card]
+  (let [{:keys [title]} card]
     [:button.board-card
      {:type "button"
       :class (str "is-" (name orientation)
@@ -249,9 +453,7 @@
                          (str ", pieces: "
                               (apply str (interpose "; " (map piece-summary board-pieces))))))
       :on-click #(rf/dispatch [::select-board-card index])}
-     [:img {:src image
-            :alt title
-            :draggable "false"}]
+     [card-face card "board-card__face"]
      (when (seq board-pieces)
        [:div.board-card__pieces
         {:aria-hidden "true"}
@@ -308,10 +510,7 @@
 (defn- hand-card [card]
   ^{:key (:id card)}
   [:article.hand-card
-   [:img.hand-card__image
-    {:src (:image card)
-     :alt (:title card)
-     :draggable "false"}]
+   [card-face card "hand-card__face"]
    [:h3.hand-card__title (:title card)]])
 
 (defn- draw-deck-zone [draw-count]
@@ -328,10 +527,7 @@
   [:article.card-pile-zone
    {:aria-label (str "Discard pile, " (card-count-label discard-count))}
    (if top-card
-     [:img.card-pile-zone__preview
-      {:src (:image top-card)
-       :alt (str "Top discard: " (:title top-card))
-       :draggable "false"}]
+     [card-face top-card "card-pile-zone__preview" (str "Top discard: " (:title top-card))]
      [:div.card-pile-zone__preview.is-empty
       {:aria-hidden "true"}])
    [:div.card-pile-zone__body
@@ -627,6 +823,20 @@
 (defn reload! []
   (mount!))
 
+(defn- smoke-major-icon-deck-order []
+  (let [major-hand-card (cards/card-by-id "fool")
+        major-board-card (cards/card-by-id "chariot")
+        reserved-card-ids #{"fool" "chariot"}
+        other-cards (remove #(contains? reserved-card-ids (:id %)) cards/deck)
+        hand-tail (take 11 other-cards)
+        remaining-cards (drop 11 other-cards)]
+    (vec (concat [major-hand-card] hand-tail [major-board-card] remaining-cards))))
+
+(defn- init-options []
+  (let [params (js/URLSearchParams. (.. js/window -location -search))]
+    (when (= "major-icons" (.get params "gnostica-smoke"))
+      {:deck-order (smoke-major-icon-deck-order)})))
+
 (defn init []
-  (rf/dispatch-sync [::initialize])
+  (rf/dispatch-sync [::initialize (init-options)])
   (mount!))

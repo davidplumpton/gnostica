@@ -1,5 +1,6 @@
 (ns gnostica.cards
-  (:require [clojure.string :as str]))
+  (:require [clojure.string :as str]
+            [gnostica.icons :as icons]))
 
 (def image-files
   ["chariot.png"
@@ -158,9 +159,11 @@
      {:id card-stem
       :image (str "/images/" file-name)}
      (if-let [title (get major-titles card-stem)]
-       {:arcana :major
-        :group "Major Arcana"
-        :title title}
+       (cond-> {:arcana :major
+                :group "Major Arcana"
+                :title title}
+         (icons/major-card-id? card-stem)
+         (assoc :gnostica-icons (get icons/major-arcana-icon-triplets card-stem)))
        (minor-card card-stem)))))
 
 (def deck

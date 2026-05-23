@@ -323,6 +323,7 @@
        orbitControls: Boolean(window.THREE && window.THREE.OrbitControls),
        board: Boolean(board),
        boardCardCount: board ? Number(board.dataset.boardCardCount || -1) : -1,
+       majorIconCardCount: board ? Number(board.dataset.majorIconCardCount || -1) : -1,
        wastelandCount: board ? Number(board.dataset.wastelandCount || -1) : -1,
        visiblePieceCount: board ? Number(board.dataset.visiblePieceCount || -1) : -1,
        pieceEdgeOutlineCount: board ? Number(board.dataset.pieceEdgeOutlineCount || -1) : -1,
@@ -343,6 +344,7 @@
        cardZones: Boolean(cardZones),
        cardZonesVisible: Boolean(cardZonesRect && cardZonesRect.width > 0 && cardZonesRect.height > 0),
        handCardCount: document.querySelectorAll('.hand-card').length,
+       handMajorIconTripletCount: document.querySelectorAll('.hand-card .gnostica-icon-triplet').length,
        drawCount: cardZones ? Number(cardZones.dataset.drawCount || -1) : -1,
        discardCount: cardZones ? Number(cardZones.dataset.discardCount || -1) : -1,
        status,
@@ -386,6 +388,7 @@
        orbitControls: Boolean(window.THREE && window.THREE.OrbitControls),
        fallback: Boolean(document.querySelector('.board-fallback')),
        cssCards: document.querySelectorAll('.board-fallback .board-card').length,
+       cssMajorIconTripletCount: document.querySelectorAll('.board-fallback .board-card .gnostica-icon-triplet').length,
        cssWastelands: document.querySelectorAll('.board-fallback .board-wasteland').length,
        canvas: Boolean(document.querySelector('.board-three__canvas')),
        tableSurfaceColor: stage ? stage.dataset.tableSurfaceColor : null,
@@ -393,6 +396,7 @@
        cardZones: Boolean(cardZones),
        cardZonesVisible: Boolean(cardZonesRect && cardZonesRect.width > 0 && cardZonesRect.height > 0),
        handCardCount: document.querySelectorAll('.hand-card').length,
+       handMajorIconTripletCount: document.querySelectorAll('.hand-card .gnostica-icon-triplet').length,
        drawCount: cardZones ? Number(cardZones.dataset.drawCount || -1) : -1,
        discardCount: cardZones ? Number(cardZones.dataset.discardCount || -1) : -1,
        statusText: status ? status.textContent.trim() : '',
@@ -433,6 +437,7 @@
     (and (= "128" (get stats "threeRevision"))
          (true? (get stats "orbitControls"))
          (true? (get stats "board"))
+         (pos? (long (or (get stats "majorIconCardCount") 0)))
          (= 12 (get stats "wastelandCount"))
          (pos? visible-piece-count)
          (= visible-piece-count piece-edge-outline-count)
@@ -447,6 +452,7 @@
          (true? (get stats "cardZones"))
          (true? (get stats "cardZonesVisible"))
          (= 6 (long (or (get stats "handCardCount") -1)))
+         (pos? (long (or (get stats "handMajorIconTripletCount") 0)))
          (pos? (long (or (get stats "drawCount") 0)))
          (zero? (long (or (get stats "discardCount") -1)))
          (empty? (get stats "status"))
@@ -460,10 +466,12 @@
        (= expected-table-surface-color (get stats "tableSurfaceColor"))
        (= expected-table-clear-color (get stats "tableClearColor"))
        (= 9 (get stats "cssCards"))
+       (pos? (long (or (get stats "cssMajorIconTripletCount") 0)))
        (= 12 (get stats "cssWastelands"))
        (true? (get stats "cardZones"))
        (true? (get stats "cardZonesVisible"))
        (= 6 (long (or (get stats "handCardCount") -1)))
+       (pos? (long (or (get stats "handMajorIconTripletCount") 0)))
        (pos? (long (or (get stats "drawCount") 0)))
        (zero? (long (or (get stats "discardCount") -1)))
        (str/includes? (or (get stats "statusText") "") "Three.js is unavailable")))
@@ -476,10 +484,12 @@
        (= expected-table-surface-color (get stats "tableSurfaceColor"))
        (= expected-table-clear-color (get stats "tableClearColor"))
        (= 9 (get stats "cssCards"))
+       (pos? (long (or (get stats "cssMajorIconTripletCount") 0)))
        (= 12 (get stats "cssWastelands"))
        (true? (get stats "cardZones"))
        (true? (get stats "cardZonesVisible"))
        (= 6 (long (or (get stats "handCardCount") -1)))
+       (pos? (long (or (get stats "handMajorIconTripletCount") 0)))
        (pos? (long (or (get stats "drawCount") 0)))
        (zero? (long (or (get stats "discardCount") -1)))
        (str/includes? (or (get stats "statusText") "") "revision 999 is incompatible")))
@@ -542,6 +552,11 @@
      (wait-for! client "the Gnostica app shell" app-ready-js true?)
      client)))
 
+(defn- major-icons-smoke-url [url]
+  (str url
+       (if (str/includes? url "?") "&" "?")
+       "gnostica-smoke=major-icons"))
+
 (defn- dispatch-click! [client {:strs [x y]}]
   (doseq [event-type ["mouseMoved" "mousePressed" "mouseReleased"]]
     (cdp-command! client
@@ -562,7 +577,7 @@
                    (:name viewport)
                    (:width viewport)
                    (:height viewport)))
-  (let [client (open-page! http-client chrome viewport url nil)]
+  (let [client (open-page! http-client chrome viewport (major-icons-smoke-url url) nil)]
     (try
       (let [stats (wait-for! client
                              (str (:name viewport) " Three.js board render")
@@ -606,7 +621,7 @@
   (let [client (open-page! http-client
                            chrome
                            (first viewports)
-                           url
+                           (major-icons-smoke-url url)
                            ["*cdn.jsdelivr.net/npm/three@0.128.0*"])]
     (try
       (wait-for! client
@@ -628,7 +643,7 @@
   (let [client (open-page! http-client
                            chrome
                            (first viewports)
-                           url
+                           (major-icons-smoke-url url)
                            ["*cdn.jsdelivr.net/npm/three@0.128.0*"]
                            mismatched-three-js)]
     (try

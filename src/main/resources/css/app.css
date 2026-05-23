@@ -40,6 +40,60 @@ img {
   max-width: 100%;
 }
 
+.card-face {
+  position: relative;
+  display: block;
+  overflow: hidden;
+  background: #efe5d0;
+}
+
+.card-face__image {
+  display: block;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  object-fit: cover;
+  user-select: none;
+}
+
+.gnostica-icon-triplet {
+  position: absolute;
+  top: 4%;
+  left: 5%;
+  z-index: 1;
+  display: grid;
+  grid-template-rows: repeat(3, minmax(0, 1fr));
+  gap: 3%;
+  width: 18%;
+  pointer-events: none;
+}
+
+.gnostica-icon {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1;
+  color: #16100d;
+  filter: drop-shadow(0 1px 1px rgba(255, 250, 240, 0.45));
+}
+
+.gnostica-icon__base {
+  fill: #fffaf0;
+  stroke: #16100d;
+  stroke-width: 5;
+}
+
+.gnostica-icon__mark {
+  stroke-width: 6;
+}
+
+.gnostica-icon text {
+  fill: currentColor;
+  stroke: none;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 52px;
+  font-weight: 700;
+}
+
 .app-header {
   position: sticky;
   top: 0;
@@ -343,20 +397,17 @@ img {
   outline-offset: 3px;
 }
 
-.board-card img {
+.board-card__face {
   position: absolute;
   top: 50%;
   left: 50%;
   z-index: 0;
   width: 100%;
   height: 100%;
-  max-width: none;
-  object-fit: cover;
   transform: translate(-50%, -50%);
-  user-select: none;
 }
 
-.board-card.is-landscape img {
+.board-card.is-landscape .board-card__face {
   width: var(--card-short);
   height: var(--card-long);
   transform: translate(-50%, -50%) rotate(90deg);
@@ -365,7 +416,7 @@ img {
 .board-card__pieces {
   position: absolute;
   inset: 0;
-  z-index: 1;
+  z-index: 2;
   pointer-events: none;
 }
 
@@ -507,14 +558,13 @@ img {
   margin: 0;
 }
 
-.hand-card__image,
+.hand-card__face,
 .card-pile-zone__preview {
   width: 100%;
   aspect-ratio: 5 / 8;
   border: 1px solid rgba(255, 250, 240, 0.36);
   border-radius: 5px;
   background: #efe5d0;
-  object-fit: cover;
   box-shadow: 0 0.3rem 0.85rem rgba(0, 0, 0, 0.22);
 }
 
