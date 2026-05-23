@@ -58,13 +58,13 @@ img {
 
 .gnostica-icon-stack {
   position: absolute;
-  top: 4%;
-  left: 5%;
+  top: var(--gnostica-icon-stack-top, 4%);
+  left: var(--gnostica-icon-stack-left, 5%);
   z-index: 1;
   display: flex;
   flex-direction: column;
-  gap: 3px;
-  width: 18%;
+  gap: var(--gnostica-icon-stack-gap, 6px);
+  width: var(--gnostica-icon-stack-width, 36%);
   pointer-events: none;
 }
 

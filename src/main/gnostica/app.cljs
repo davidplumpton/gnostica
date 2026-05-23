@@ -3,6 +3,7 @@
             [gnostica.app-state :as app-state]
             [gnostica.board-layout :as layout]
             [gnostica.cards :as cards]
+            [gnostica.icon-layout :as icon-layout]
             [gnostica.icons :as icons]
             [gnostica.pieces :as pieces]
             [gnostica.three-board :as three-board]
@@ -360,6 +361,8 @@
   (when-let [icon-ids (seq (icons/present-icon-ids (:gnostica-icons card)))]
     [:span.gnostica-icon-stack
      {:aria-hidden "true"
+      :style (icon-layout/dom-icon-stack-style)
+      :data-icon-scale icon-layout/card-icon-scale
       :data-icon-count (count icon-ids)
       :data-icon-ids (str/join "," (map name icon-ids))
       :title (icons/icon-stack-label icon-ids)}

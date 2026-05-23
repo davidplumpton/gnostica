@@ -2,6 +2,7 @@
   (:require [clojure.data.json :as json]
             [clojure.java.io :as io]
             [clojure.string :as str]
+            [gnostica.icon-layout :as icon-layout]
             [gnostica.server :as app-server]
             [ring.adapter.jetty :as jetty])
   (:import [java.io ByteArrayInputStream File]
@@ -317,6 +318,22 @@
      const status = Array.from(document.querySelectorAll('.board-3d-status.is-error')).map((node) => node.textContent.trim());
      const imageResourceCount = performance.getEntriesByType('resource')
        .filter((entry) => /\\/images\\/.*\\.png(?:$|\\?)/.test(entry.name)).length;
+     const iconMetrics = (selector) => {
+       const icon = document.querySelector(selector);
+       const stack = icon ? icon.closest('.gnostica-icon-stack') : null;
+       const face = icon ? icon.closest('.card-face') : null;
+       const iconRect = icon ? icon.getBoundingClientRect() : null;
+       const faceRect = face ? face.getBoundingClientRect() : null;
+       const stackStyle = stack ? getComputedStyle(stack) : null;
+       const gap = stackStyle ? Number.parseFloat(stackStyle.rowGap || stackStyle.gap || '') : -1;
+       return {
+         scale: stack ? Number(stack.dataset.iconScale || -1) : -1,
+         iconWidth: iconRect ? iconRect.width : 0,
+         faceWidth: faceRect ? faceRect.width : 0,
+         widthRatio: iconRect && faceRect && faceRect.width > 0 ? iconRect.width / faceRect.width : 0,
+         gap: Number.isFinite(gap) ? gap : -1
+       };
+     };
      return {
        url: location.href,
        threeRevision: window.THREE ? window.THREE.REVISION : null,
@@ -325,6 +342,8 @@
        boardCardCount: board ? Number(board.dataset.boardCardCount || -1) : -1,
        majorIconCardCount: board ? Number(board.dataset.majorIconCardCount || -1) : -1,
        majorIconCount: board ? Number(board.dataset.majorIconCount || -1) : -1,
+       cardIconScale: board ? Number(board.dataset.cardIconScale || -1) : -1,
+       cardIconSize: board ? Number(board.dataset.cardIconSize || -1) : -1,
        wastelandCount: board ? Number(board.dataset.wastelandCount || -1) : -1,
        visiblePieceCount: board ? Number(board.dataset.visiblePieceCount || -1) : -1,
        pieceEdgeOutlineCount: board ? Number(board.dataset.pieceEdgeOutlineCount || -1) : -1,
@@ -347,6 +366,7 @@
        handCardCount: document.querySelectorAll('.hand-card').length,
        handMajorIconStackCount: document.querySelectorAll('.hand-card .gnostica-icon-stack').length,
        handMajorIconCount: document.querySelectorAll('.hand-card .gnostica-icon').length,
+       handIconMetrics: iconMetrics('.hand-card .gnostica-icon'),
        drawCount: cardZones ? Number(cardZones.dataset.drawCount || -1) : -1,
        discardCount: cardZones ? Number(cardZones.dataset.discardCount || -1) : -1,
        status,
@@ -385,6 +405,22 @@
      const stage = document.querySelector('.board-fallback .board-stage');
      const cardZones = document.querySelector('.card-zones');
      const cardZonesRect = cardZones ? cardZones.getBoundingClientRect() : null;
+     const iconMetrics = (selector) => {
+       const icon = document.querySelector(selector);
+       const stack = icon ? icon.closest('.gnostica-icon-stack') : null;
+       const face = icon ? icon.closest('.card-face') : null;
+       const iconRect = icon ? icon.getBoundingClientRect() : null;
+       const faceRect = face ? face.getBoundingClientRect() : null;
+       const stackStyle = stack ? getComputedStyle(stack) : null;
+       const gap = stackStyle ? Number.parseFloat(stackStyle.rowGap || stackStyle.gap || '') : -1;
+       return {
+         scale: stack ? Number(stack.dataset.iconScale || -1) : -1,
+         iconWidth: iconRect ? iconRect.width : 0,
+         faceWidth: faceRect ? faceRect.width : 0,
+         widthRatio: iconRect && faceRect && faceRect.width > 0 ? iconRect.width / faceRect.width : 0,
+         gap: Number.isFinite(gap) ? gap : -1
+       };
+     };
      return {
        threeRevision: window.THREE ? window.THREE.REVISION : null,
        orbitControls: Boolean(window.THREE && window.THREE.OrbitControls),
@@ -392,6 +428,7 @@
        cssCards: document.querySelectorAll('.board-fallback .board-card').length,
        cssMajorIconStackCount: document.querySelectorAll('.board-fallback .board-card .gnostica-icon-stack').length,
        cssMajorIconCount: document.querySelectorAll('.board-fallback .board-card .gnostica-icon').length,
+       cssBoardIconMetrics: iconMetrics('.board-fallback .board-card.is-portrait .gnostica-icon'),
        cssWastelands: document.querySelectorAll('.board-fallback .board-wasteland').length,
        canvas: Boolean(document.querySelector('.board-three__canvas')),
        tableSurfaceColor: stage ? stage.dataset.tableSurfaceColor : null,
@@ -401,6 +438,7 @@
        handCardCount: document.querySelectorAll('.hand-card').length,
        handMajorIconStackCount: document.querySelectorAll('.hand-card .gnostica-icon-stack').length,
        handMajorIconCount: document.querySelectorAll('.hand-card .gnostica-icon').length,
+       handIconMetrics: iconMetrics('.hand-card .gnostica-icon'),
        drawCount: cardZones ? Number(cardZones.dataset.drawCount || -1) : -1,
        discardCount: cardZones ? Number(cardZones.dataset.discardCount || -1) : -1,
        statusText: status ? status.textContent.trim() : '',
@@ -435,6 +473,28 @@
        (or (false? (get stats "antialiasSupported"))
            (true? (get stats "antialiasEnabled")))))
 
+(defn- roughly= [expected actual tolerance]
+  (<= (Math/abs (- (double expected) (double actual))) tolerance))
+
+(defn- dom-icon-layout-ready? [metrics]
+  (let [width-ratio (double (or (get metrics "widthRatio") 0))
+        gap (double (or (get metrics "gap") -1))
+        icon-width (double (or (get metrics "iconWidth") 0))]
+    (and (map? metrics)
+         (= icon-layout/card-icon-scale
+            (long (or (get metrics "scale") -1)))
+         (roughly= (/ icon-layout/dom-card-icon-width-percent 100.0)
+                   width-ratio
+                   0.03)
+         (roughly= icon-layout/dom-card-icon-gap-px gap 1.0)
+         (pos? icon-width))))
+
+(defn- three-icon-layout-ready? [stats]
+  (and (= icon-layout/card-icon-scale
+          (long (or (get stats "cardIconScale") -1)))
+       (= icon-layout/texture-card-icon-size
+          (long (or (get stats "cardIconSize") -1)))))
+
 (defn- happy-ready? [stats]
   (let [visible-piece-count (long (or (get stats "visiblePieceCount") -1))
         piece-edge-outline-count (long (or (get stats "pieceEdgeOutlineCount") -1))]
@@ -443,6 +503,7 @@
          (true? (get stats "board"))
          (= 2 (long (or (get stats "majorIconCardCount") -1)))
          (= 5 (long (or (get stats "majorIconCount") -1)))
+         (three-icon-layout-ready? stats)
          (= 12 (get stats "wastelandCount"))
          (pos? visible-piece-count)
          (= visible-piece-count piece-edge-outline-count)
@@ -459,6 +520,7 @@
          (= 6 (long (or (get stats "handCardCount") -1)))
          (= 1 (long (or (get stats "handMajorIconStackCount") -1)))
          (= 1 (long (or (get stats "handMajorIconCount") -1)))
+         (dom-icon-layout-ready? (get stats "handIconMetrics"))
          (pos? (long (or (get stats "drawCount") 0)))
          (zero? (long (or (get stats "discardCount") -1)))
          (empty? (get stats "status"))
@@ -474,12 +536,14 @@
        (= 9 (get stats "cssCards"))
        (= 2 (long (or (get stats "cssMajorIconStackCount") -1)))
        (= 5 (long (or (get stats "cssMajorIconCount") -1)))
+       (dom-icon-layout-ready? (get stats "cssBoardIconMetrics"))
        (= 12 (get stats "cssWastelands"))
        (true? (get stats "cardZones"))
        (true? (get stats "cardZonesVisible"))
        (= 6 (long (or (get stats "handCardCount") -1)))
        (= 1 (long (or (get stats "handMajorIconStackCount") -1)))
        (= 1 (long (or (get stats "handMajorIconCount") -1)))
+       (dom-icon-layout-ready? (get stats "handIconMetrics"))
        (pos? (long (or (get stats "drawCount") 0)))
        (zero? (long (or (get stats "discardCount") -1)))
        (str/includes? (or (get stats "statusText") "") "Three.js is unavailable")))
@@ -494,12 +558,14 @@
        (= 9 (get stats "cssCards"))
        (= 2 (long (or (get stats "cssMajorIconStackCount") -1)))
        (= 5 (long (or (get stats "cssMajorIconCount") -1)))
+       (dom-icon-layout-ready? (get stats "cssBoardIconMetrics"))
        (= 12 (get stats "cssWastelands"))
        (true? (get stats "cardZones"))
        (true? (get stats "cardZonesVisible"))
        (= 6 (long (or (get stats "handCardCount") -1)))
        (= 1 (long (or (get stats "handMajorIconStackCount") -1)))
        (= 1 (long (or (get stats "handMajorIconCount") -1)))
+       (dom-icon-layout-ready? (get stats "handIconMetrics"))
        (pos? (long (or (get stats "drawCount") 0)))
        (zero? (long (or (get stats "discardCount") -1)))
        (str/includes? (or (get stats "statusText") "") "revision 999 is incompatible")))

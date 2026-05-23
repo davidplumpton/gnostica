@@ -1,5 +1,6 @@
 (ns gnostica.three-board
   (:require [gnostica.board-layout :as layout]
+            [gnostica.icon-layout :as icon-layout]
             [gnostica.icons :as icons]
             [gnostica.pieces :as pieces]
             [reagent.core :as r]))
@@ -20,12 +21,12 @@
 (def wasteland-outline-dash-size 0.035)
 (def wasteland-outline-gap-size 0.055)
 (def renderer-antialias-requested? true)
-(def card-texture-width 1024)
-(def card-texture-height 1536)
-(def card-icon-size 132)
-(def card-icon-margin-x 58)
-(def card-icon-margin-y 58)
-(def card-icon-gap 18)
+(def card-texture-width icon-layout/card-texture-width)
+(def card-texture-height icon-layout/card-texture-height)
+(def card-icon-size icon-layout/texture-card-icon-size)
+(def card-icon-margin-x icon-layout/texture-card-icon-margin-x)
+(def card-icon-margin-y icon-layout/texture-card-icon-margin-y)
+(def card-icon-gap icon-layout/texture-card-icon-gap)
 
 (defn three-runtime []
   (when (exists? js/THREE)
@@ -872,6 +873,8 @@
           :data-major-icon-count (reduce + (map #(count (icons/present-icon-ids
                                                          (get-in % [:card :gnostica-icons])))
                                                 _cells))
+          :data-card-icon-scale icon-layout/card-icon-scale
+          :data-card-icon-size card-icon-size
           :data-wasteland-count (count (layout/wasteland-spaces _cells))
           :data-visible-piece-count (visible-piece-count _pieces)
           :data-piece-edge-outline-count (or (:piece-edge-outline-count state) 0)
