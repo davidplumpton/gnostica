@@ -10,6 +10,10 @@
 (def card-gap 0.14)
 (def selected-card-padding 0.14)
 (def piece-surface-z 0.07)
+(def piece-pip-marker-radius 0.024)
+(def piece-pip-marker-surface-lift 0.01)
+(def piece-pip-marker-base-inset-ratio 0.22)
+(def piece-pip-marker-spacing-ratio 0.42)
 
 ;; Cardinal pyramids lie on one triangular side face rather than balancing on an edge.
 (def piece-side-face-roll (/ pi 4))
@@ -51,3 +55,20 @@
      (if (= :up orientation)
        (/ (:height piece-size) 2)
        (pieces/lying-center-height-above-surface piece-size))))
+
+(defn- piece-radius-at-local-y [piece-size y]
+  (* (:radius piece-size)
+     (/ (- (/ (:height piece-size) 2) y)
+        (:height piece-size))))
+
+(defn piece-pip-local-positions [piece-size]
+  (let [pip-count (or (:pips piece-size) 0)
+        y (+ (- (/ (:height piece-size) 2))
+             (* (:height piece-size) piece-pip-marker-base-inset-ratio))
+        z (+ (piece-radius-at-local-y piece-size y)
+             piece-pip-marker-surface-lift)
+        x-step (* (:radius piece-size) piece-pip-marker-spacing-ratio)
+        center-offset (/ (dec pip-count) 2)]
+    (mapv (fn [index]
+            [(* (- index center-offset) x-step) y z])
+          (range pip-count))))

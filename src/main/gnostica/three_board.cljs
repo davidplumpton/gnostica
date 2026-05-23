@@ -6,6 +6,7 @@
 (def pointer-click-threshold 8)
 (def board-index-user-data-key "gnosticaBoardIndex")
 (def expected-three-revision "128")
+(def pip-marker-color 0xfff4d3)
 
 (defn three-runtime []
   (when (exists? js/THREE)
@@ -179,6 +180,16 @@
           [card-x card-y] (layout/card-position cell)
           [offset-x offset-y] (layout/piece-slot-offset slot piece-count)
           z (layout/piece-center-z piece-size (:orientation piece))]
+      (doseq [[x y marker-z] (layout/piece-pip-local-positions piece-size)]
+        (let [pip-geometry (js/THREE.CircleGeometry. layout/piece-pip-marker-radius 16)
+              pip-material (js/THREE.MeshBasicMaterial.
+                            #js {:color pip-marker-color
+                                 :side js/THREE.DoubleSide})
+              pip-mesh (js/THREE.Mesh. pip-geometry pip-material)]
+          (.set (.-position pip-mesh) x y marker-z)
+          (.add mesh pip-mesh)
+          (swap! geometries conj pip-geometry)
+          (swap! materials conj pip-material)))
       (.set (.-position mesh) (+ card-x offset-x) (+ card-y offset-y) z)
       (set-piece-rotation! mesh (:orientation piece) piece-size)
       (.add scene mesh)

@@ -60,3 +60,20 @@
     (is (roughly= (+ layout/piece-surface-z
                      (pieces/lying-center-height-above-surface piece-size))
                   (layout/piece-center-z piece-size :north)))))
+
+(deftest piece-pip-markers-follow-size-counts
+  (doseq [[size piece-size] pieces/piece-sizes
+          :let [positions (layout/piece-pip-local-positions piece-size)
+                xs (map first positions)
+                ys (map second positions)
+                zs (map #(nth % 2) positions)]]
+    (is (= (:pips piece-size) (count positions))
+        (str "Expected " size " marker count to match pip count"))
+    (is (roughly= 0 (reduce + xs))
+        (str "Expected " size " marker row to be centered"))
+    (is (every? neg? ys)
+        (str "Expected " size " markers near the pyramid base"))
+    (is (every? pos? zs)
+        (str "Expected " size " markers on the visible front face"))
+    (is (every? #(roughly= (first ys) %) ys))
+    (is (every? #(roughly= (first zs) %) zs))))

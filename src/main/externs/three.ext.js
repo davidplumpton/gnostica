@@ -214,6 +214,18 @@ THREE.PlaneGeometry.prototype.dispose = function() {};
 /**
  * @constructor
  * @param {number} radius
+ * @param {number=} segments
+ * @param {number=} thetaStart
+ * @param {number=} thetaLength
+ */
+THREE.CircleGeometry = function(radius, segments, thetaStart, thetaLength) {};
+
+/** @return {void} */
+THREE.CircleGeometry.prototype.dispose = function() {};
+
+/**
+ * @constructor
+ * @param {number} radius
  * @param {number} height
  * @param {number=} radialSegments
  */
@@ -289,6 +301,12 @@ THREE.Mesh.prototype.rotateZ = function(angle) {};
  * @return {!THREE.Mesh}
  */
 THREE.Mesh.prototype.rotateOnWorldAxis = function(axis, angle) {};
+
+/**
+ * @param {!Object} object
+ * @return {!THREE.Mesh}
+ */
+THREE.Mesh.prototype.add = function(object) {};
 
 /** @constructor */
 THREE.TextureLoader = function() {};

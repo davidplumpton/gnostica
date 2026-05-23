@@ -103,11 +103,11 @@
                   " is-" (name (:size piece))
                   " is-" (name (:orientation piece)))
       :style {"--piece-color" (:css-color player)}}
-     [:span.board-piece__body]
-     [:span.board-piece__pips
-      (for [pip (range pips)]
-        ^{:key pip}
-        [:span.board-piece__pip])]]))
+     [:span.board-piece__body
+      [:span.board-piece__pips
+       (for [pip (range pips)]
+         ^{:key pip}
+         [:span.board-piece__pip])]]]))
 
 (defn board-card [{:keys [index row col orientation card]} selected? board-pieces]
   (let [{:keys [image title]} card]
