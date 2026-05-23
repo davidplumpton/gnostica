@@ -22,6 +22,8 @@ The shadow-cljs dev server serves the app at `http://localhost:8080/index.html`.
 
 `src/main/gnostica/app_state.cljc` is the browser-free app-db boundary for re-frame initialization. `gnostica.app/::initialize` delegates to `gnostica.app-state/initialize`, stores the successful game under `:game`, and keeps only UI-specific state such as `:selected-board-index` and Three.js errors at the top level. Board, piece, selected territory, and current-player subscriptions should continue to derive from `:game` instead of rebuilding board or piece state in `app.cljs`.
 
+`src/main/gnostica/game_schema.cljc` defines Malli schemas for the pure gameplay data contract. Keep schema coverage focused on browser-free state values: card references, board cells, player maps and six-card hand limits, Icehouse pieces, draw/discard piles, and whole-game invariants such as player counts, turn membership, piece ownership, stash ownership, and unique card ids. Use `gnostica.game-schema/valid-game?`, `explain-game`, and `assert-valid-game` in tests, future Cucumber steps, and other pure-data boundaries; do not couple these schemas to Three.js or re-frame view state.
+
 ## Browser JavaScript Globals
 
 `src/main/resources/index.html` loads Three.js and OrbitControls from pinned `three@0.128.0` CDN URLs before `/js/main.js`. The script tags carry SRI hashes and `crossorigin="anonymous"`. This keeps the default workflow npm-free while exposing the browser globals `THREE` and `THREE.OrbitControls` to `gnostica.three-board`, which only enables the 3D renderer when `THREE.REVISION` is `"128"` and OrbitControls is present.
