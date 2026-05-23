@@ -365,6 +365,8 @@
        minZoomDistance: board ? Number(board.dataset.minZoomDistance || -1) : -1,
        maxZoomDistance: board ? Number(board.dataset.maxZoomDistance || -1) : -1,
        cameraDistance: board ? Number(board.dataset.cameraDistance || -1) : -1,
+       cameraTargetX: board ? Number(board.dataset.cameraTargetX || -999) : -999,
+       cameraTargetY: board ? Number(board.dataset.cameraTargetY || -999) : -999,
        reset: Boolean(document.querySelector('.board-three__reset')),
        cardZones: Boolean(cardZones),
        cardZonesVisible: Boolean(cardZonesRect && cardZonesRect.width > 0 && cardZonesRect.height > 0),
@@ -607,6 +609,8 @@
          (roughly= 3.2 (double (or (get stats "minZoomDistance") -1)) 0.001)
          (roughly= 10.0 (double (or (get stats "maxZoomDistance") -1)) 0.001)
          (<= 3.2 (double (or (get stats "cameraDistance") -1)) 10.0)
+         (number? (get stats "cameraTargetX"))
+         (number? (get stats "cameraTargetY"))
          (true? (get stats "reset"))
          (true? (get stats "cardZones"))
          (true? (get stats "cardZonesVisible"))
@@ -632,6 +636,16 @@
     (and (pos? expected-distance)
          (pos? current-distance)
          (roughly= expected-distance current-distance 0.02))))
+
+(defn- camera-target-x-changed? [initial-stats stats]
+  (let [initial-x (double (or (get initial-stats "cameraTargetX") -999))
+        current-x (double (or (get stats "cameraTargetX") -999))]
+    (not (roughly= initial-x current-x 0.05))))
+
+(defn- camera-target-y-changed? [initial-stats stats]
+  (let [initial-y (double (or (get initial-stats "cameraTargetY") -999))
+        current-y (double (or (get stats "cameraTargetY") -999))]
+    (not (roughly= initial-y current-y 0.05))))
 
 (defn- fallback-ready? [stats]
   (and (nil? (get stats "threeRevision"))
@@ -709,11 +723,13 @@
          (= "dialog" (get stats "role"))
          (= "true" (get stats "ariaModal"))
          (str/includes? (get stats "title") "Keyboard Commands")
-         (= 3 (long (or (get stats "commandCount") -1)))
+         (= 4 (long (or (get stats "commandCount") -1)))
          (contains? labels "?")
          (contains? labels "I")
+         (contains? labels "W/A/S/D")
+         (contains? labels "Arrow keys")
          (contains? labels "Esc")
-         (str/includes? (or (get stats "text") "") "Toggle card icon overlays"))))
+         (str/includes? (or (get stats "text") "") "Move the 3D board view"))))
 
 (defn- hotkey-help-closed-ready? [stats]
   (and (false? (get stats "overlayVisible"))
@@ -829,6 +845,16 @@
                          :code "KeyI"
                          :key-code 73}))
 
+(defn- dispatch-w-key! [client]
+  (dispatch-key! client {:key "w"
+                         :code "KeyW"
+                         :key-code 87}))
+
+(defn- dispatch-arrow-right-key! [client]
+  (dispatch-key! client {:key "ArrowRight"
+                         :code "ArrowRight"
+                         :key-code 39}))
+
 (defn- dispatch-question-mark-key! [client]
   (dispatch-key! client {:key "?"
                          :code "Slash"
@@ -839,6 +865,17 @@
   (dispatch-key! client {:key "Escape"
                          :code "Escape"
                          :key-code 27}))
+
+(defn- focus-three-board! [client]
+  (when-not (true? (evaluate! client
+                              "(() => {
+                                 const board = document.querySelector('.board-three');
+                                 if (!board) return false;
+                                 board.focus();
+                                 return document.activeElement === board;
+                               })()"))
+    (throw (ex-info "The Three.js board could not be focused for keyboard movement."
+                    {}))))
 
 (defn- run-happy-viewport! [http-client chrome url viewport]
   (println (format "Smoke checking %s viewport at %dx%d."
@@ -863,17 +900,30 @@
                           {:viewport viewport
                            :stats stats
                            :pixel-stats pixel-stats})))
-        (dispatch-wheel! client rect -720)
-        (let [zoomed-stats (wait-for! client
-                                      (str (:name viewport) " changed 3D camera distance")
-                                      happy-stats-js
-                                      #(and (happy-ready? %)
-                                            (camera-distance-changed? stats %)))]
-          (dispatch-question-mark-key! client)
-          (let [hotkey-help (wait-for! client
-                                       (str (:name viewport) " hotkey help dialog")
-                                       hotkey-help-js
-                                       hotkey-help-open-ready?)]
+        (focus-three-board! client)
+        (dispatch-w-key! client)
+        (let [wasd-stats (wait-for! client
+                                    (str (:name viewport) " WASD board movement")
+                                    happy-stats-js
+                                    #(and (happy-ready? %)
+                                          (camera-target-y-changed? stats %)))
+              _ (dispatch-arrow-right-key! client)
+              keyboard-stats (wait-for! client
+                                        (str (:name viewport) " arrow-key board movement")
+                                        happy-stats-js
+                                        #(and (happy-ready? %)
+                                              (camera-target-x-changed? wasd-stats %)))]
+          (dispatch-wheel! client rect -720)
+          (let [zoomed-stats (wait-for! client
+                                        (str (:name viewport) " changed 3D camera distance")
+                                        happy-stats-js
+                                        #(and (happy-ready? %)
+                                              (camera-distance-changed? keyboard-stats %)))]
+            (dispatch-question-mark-key! client)
+            (let [hotkey-help (wait-for! client
+                                         (str (:name viewport) " hotkey help dialog")
+                                         hotkey-help-js
+                                         hotkey-help-open-ready?)]
             (dispatch-escape-key! client)
             (wait-for! client
                        (str (:name viewport) " hotkey help close")
@@ -903,11 +953,12 @@
                                                         "Row 2, Column 2"))]
                 {:viewport (:name viewport)
                  :stats stats
+                 :keyboard-stats keyboard-stats
                  :zoomed-stats zoomed-stats
                  :hotkey-help hotkey-help
                  :popup-stats popup-stats
                  :pixel-stats pixel-stats
-                 :selection selection})))))
+                 :selection selection}))))))
       (catch Exception error
         (throw (ex-info (str "3D board smoke failed in the " (:name viewport) " viewport.")
                         {:viewport viewport

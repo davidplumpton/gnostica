@@ -226,6 +226,8 @@
     :command "Show keyboard commands"}
    {:keys ["I"]
     :command "Toggle card icon overlays"}
+   {:keys ["W/A/S/D" "Arrow keys"]
+    :command "Move the 3D board view when the board is focused"}
    {:keys ["Esc"]
     :command "Close keyboard commands"}])
 

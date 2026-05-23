@@ -34,6 +34,8 @@
 (def controls-max-polar-angle 1.34)
 (def controls-zoom-speed 0.78)
 (def controls-rotate-speed 0.62)
+(def keyboard-pan-step 0.32)
+(def keyboard-pan-boost 2)
 (def camera-metadata-precision 1000)
 
 (defn three-runtime []
@@ -687,14 +689,103 @@
     (js/Math.hypot dx dy dz)))
 
 (defn- camera-view-metadata [camera controls]
-  {:camera-distance (round-camera-number (camera-distance camera controls))})
+  {:camera-distance (round-camera-number (camera-distance camera controls))
+   :camera-target-x (round-camera-number (.. controls -target -x))
+   :camera-target-y (round-camera-number (.. controls -target -y))})
 
 (defn- sync-camera-metadata! [this camera controls]
   (when (and camera controls)
     (let [metadata (camera-view-metadata camera controls)
           state (r/state this)]
-      (when (not= (:camera-distance state) (:camera-distance metadata))
+      (when (not= (select-keys state (keys metadata)) metadata)
         (r/replace-state this (merge state metadata))))))
+
+(defn- clamp-number [value min-value max-value]
+  (-> value
+      (max min-value)
+      (min max-value)))
+
+(defn- keyboard-pan-bounds [cells]
+  (let [{:keys [width height center]} (layout/board-plane (layout/board-spaces cells))
+        [center-x center-y] center
+        max-offset-x (/ width 4)
+        max-offset-y (/ height 4)]
+    {:min-x (- center-x max-offset-x)
+     :max-x (+ center-x max-offset-x)
+     :min-y (- center-y max-offset-y)
+     :max-y (+ center-y max-offset-y)}))
+
+(defn- camera-board-forward [camera controls]
+  (let [position (.-position camera)
+        target (.-target controls)
+        x (- (.-x target) (.-x position))
+        y (- (.-y target) (.-y position))
+        length (js/Math.hypot x y)]
+    (if (> length 0.0001)
+      [(/ x length) (/ y length)]
+      [0 1])))
+
+(defn- keyboard-pan-delta [event]
+  (when-not (or (.-altKey event)
+                (.-ctrlKey event)
+                (.-metaKey event))
+    (let [key (some-> (.-key event) .toLowerCase)
+          multiplier (if (.-shiftKey event) keyboard-pan-boost 1)]
+      (when-let [[right forward] (case key
+                                   "w" [0 1]
+                                   "arrowup" [0 1]
+                                   "s" [0 -1]
+                                   "arrowdown" [0 -1]
+                                   "d" [1 0]
+                                   "arrowright" [1 0]
+                                   "a" [-1 0]
+                                   "arrowleft" [-1 0]
+                                   nil)]
+        [(* right multiplier) (* forward multiplier)]))))
+
+(defn- pan-camera-view! [this right-steps forward-steps]
+  (let [{:keys [camera controls render! keyboard-pan-bounds]} (r/state this)]
+    (when (and camera controls render! keyboard-pan-bounds)
+      (let [[forward-x forward-y] (camera-board-forward camera controls)
+            right-x forward-y
+            right-y (- forward-x)
+            target (.-target controls)
+            position (.-position camera)
+            intended-x (+ (.-x target)
+                          (* keyboard-pan-step
+                             (+ (* right-steps right-x)
+                                (* forward-steps forward-x))))
+            intended-y (+ (.-y target)
+                          (* keyboard-pan-step
+                             (+ (* right-steps right-y)
+                                (* forward-steps forward-y))))
+            clamped-x (clamp-number intended-x
+                                     (:min-x keyboard-pan-bounds)
+                                     (:max-x keyboard-pan-bounds))
+            clamped-y (clamp-number intended-y
+                                     (:min-y keyboard-pan-bounds)
+                                     (:max-y keyboard-pan-bounds))
+            dx (- clamped-x (.-x target))
+            dy (- clamped-y (.-y target))]
+        (when (or (not= 0 dx) (not= 0 dy))
+          (.set position (+ (.-x position) dx) (+ (.-y position) dy) (.-z position))
+          (.set target clamped-x clamped-y (.-z target))
+          (.update controls)
+          (sync-camera-metadata! this camera controls)
+          (render!))))))
+
+(defn- handle-board-key-down! [this event]
+  (when-let [[right-steps forward-steps] (keyboard-pan-delta event)]
+    (.preventDefault event)
+    (.stopPropagation event)
+    (pan-camera-view! this right-steps forward-steps)))
+
+(defn- focus-board-on-pointer-down! [event]
+  (let [target (.-target event)
+        class-list (some-> target .-classList)]
+    (when (and class-list
+               (.contains class-list "board-three__canvas"))
+      (.focus (.-currentTarget event)))))
 
 (defn- capture-view-state [this]
   (let [{:keys [camera controls]} (r/state this)]
@@ -931,7 +1022,8 @@
                                                    :textures @textures
                                                    :selection-meshes @selection-meshes
                                                    :piece-edge-outline-count piece-edge-outline-count
-                                                   :antialias-enabled? antialias-enabled?}
+                                                   :antialias-enabled? antialias-enabled?
+                                                   :keyboard-pan-bounds (keyboard-pan-bounds cells)}
                                                   (camera-view-metadata camera controls)))
                      (set-selection! this selected-index))))))))))))
 
@@ -967,13 +1059,16 @@
         [:div.board-three
          {:role "img"
           :tabIndex 0
-          :aria-label (str "Three-dimensional Gnostica board with nine face-up tarot territory cards and Icehouse pieces"
+          :aria-label (str "Three-dimensional Gnostica board with nine face-up tarot territory cards and Icehouse pieces. "
+                           "Use W, A, S, D, or arrow keys to move the board view when focused"
                            (when-let [summary (and (= :popup card-icon-mode)
                                                    (icons/icon-stack-label (:gnostica-icons selected-card)))]
                              (when (seq summary)
                                (str ". Selected card special moves: " summary))))
           :on-focus #(assoc-component-state! component :board-focused? true)
           :on-blur #(assoc-component-state! component :board-focused? false)
+          :on-pointer-down focus-board-on-pointer-down!
+          :on-key-down #(handle-board-key-down! component %)
           :data-board-card-count (count _cells)
           :data-major-icon-card-count (count (filter #(seq (icons/present-icon-ids
                                                             (get-in % [:card :gnostica-icons])))
@@ -992,6 +1087,8 @@
           :data-min-zoom-distance controls-min-distance
           :data-max-zoom-distance controls-max-distance
           :data-camera-distance (or (:camera-distance state) "")
+          :data-camera-target-x (or (:camera-target-x state) "")
+          :data-camera-target-y (or (:camera-target-y state) "")
           :data-selected-board-index _selected-index
           :data-table-surface-color table-surface-css-color
           :data-table-clear-color table-clear-css-color
