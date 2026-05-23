@@ -22,12 +22,12 @@
    {:id :activate-territory
     :label "Activate territory"
     :summary "Use a board card through one of your pieces."
-    :requirements [:source-board-index :piece-id :target-board-index]}
+    :requirements [:source-board-index :piece-id :target-board-index :orientation]}
    :play-hand-card
    {:id :play-hand-card
     :label "Play hand card"
     :summary "Discard a hand card and use its power through a piece."
-    :requirements [:hand-card-id :piece-id :target-board-index]}
+    :requirements [:hand-card-id :piece-id :target-board-index :orientation]}
    :draw-cards
    {:id :draw-cards
     :label "Draw cards"
@@ -503,9 +503,50 @@
 (defn move-command [db]
   (let [{:keys [source params]} (move-selection db)]
     (when source
-      {:source source
-       :player-id (current-player-id db)
-       :params params})))
+      (case source
+        :activate-territory
+        {:player-id (current-player-id db)
+         :source {:kind :territory
+                  :board-index (:source-board-index params)
+                  :piece-id (:piece-id params)}
+         :target {:kind :territory
+                  :board-index (:target-board-index params)}
+         :orientation (:orientation params)}
+
+        :play-hand-card
+        {:player-id (current-player-id db)
+         :source {:kind :hand-card
+                  :card-id (:hand-card-id params)
+                  :piece-id (:piece-id params)}
+         :target {:kind :territory
+                  :board-index (:target-board-index params)}
+         :orientation (:orientation params)}
+
+        {:source source
+         :player-id (current-player-id db)
+         :params params}))))
+
+(defn- cup-move-source? [source]
+  (contains? #{:activate-territory :play-hand-card} source))
+
+(defn- confirmed-move-result [db command]
+  (if (cup-move-source? (move-source db))
+    (game-state/apply-cup-move (game db) command)
+    (game-state/failure :move-transition-unavailable
+                        "Move selection is complete, but this gameplay rule transition is not implemented yet."
+                        {:command command})))
+
+(defn- apply-confirmed-move-result [db result]
+  (if (:ok? result)
+    (assoc db
+           :game (:state result)
+           :move-selection (assoc (empty-move-selection)
+                                  :last-result result))
+    (assoc db :move-selection
+           (assoc (move-selection db)
+                  :stage :rejected
+                  :error (:error result)
+                  :last-result result))))
 
 (defn confirm-move [db]
   (if-not (move-ready? db)
@@ -515,11 +556,5 @@
                                        "Complete the move selection before confirming."
                                        {:stage (:stage (move-selection db))}))
     (let [command (move-command db)
-          result (game-state/failure :move-transition-unavailable
-                                     "Move selection is complete, but gameplay rule transitions are not implemented yet."
-                                     {:command command})]
-      (assoc db :move-selection
-             (assoc (move-selection db)
-                    :stage :rejected
-                    :error (:error result)
-                    :last-result result)))))
+          result (confirmed-move-result db command)]
+      (apply-confirmed-move-result db result))))

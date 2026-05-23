@@ -722,7 +722,9 @@
        (when (:source-board-index params)
          [piece-choices board piece-options (:piece-id params)])
        (when (:piece-id params)
-         [board-choice-grid "Target territory" target-board-options (:target-board-index params)])]
+         [board-choice-grid "Target territory" target-board-options (:target-board-index params)])
+       (when (:target-board-index params)
+         [orientation-choices orientation-options (:orientation params)])]
 
       :play-hand-card
       [:<>
@@ -730,7 +732,9 @@
        (when (:hand-card-id params)
          [piece-choices board piece-options (:piece-id params)])
        (when (:piece-id params)
-         [board-choice-grid "Target territory" target-board-options (:target-board-index params)])]
+         [board-choice-grid "Target territory" target-board-options (:target-board-index params)])
+       (when (:target-board-index params)
+         [orientation-choices orientation-options (:orientation params)])]
 
       :draw-cards
       [draw-count-choices draw-options (:draw-count params)]

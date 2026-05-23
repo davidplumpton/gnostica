@@ -6,6 +6,48 @@
             [gnostica.game-state :as game-state]
             [gnostica.pieces :as pieces]))
 
+(def test-player-specs
+  [{:id :rose}
+   {:id :indigo}])
+
+(def rose-source-piece
+  {:id :rose-scout
+   :player-id :rose
+   :space-index 0
+   :size :small
+   :orientation :east})
+
+(def rose-hand-piece
+  {:id :rose-striker
+   :player-id :rose
+   :space-index 8
+   :size :medium
+   :orientation :south})
+
+(defn- deck-starting-with [card-ids]
+  (let [front-ids (set card-ids)]
+    (vec
+     (concat
+      (map cards/card-by-id card-ids)
+      (remove #(contains? front-ids (:id %)) cards/deck)))))
+
+(defn- deck-with-card-at [index card-id]
+  (let [card (cards/card-by-id card-id)
+        remaining-cards (remove #(= card-id (:id %)) cards/deck)]
+    (vec
+     (concat
+      (take index remaining-cards)
+      [card]
+      (drop index remaining-cards)))))
+
+(defn- board-card-position [player-specs board-index]
+  (+ (* game-state/starting-hand-size (count player-specs))
+     board-index))
+
+(defn- piece-by-id [db piece-id]
+  (some #(when (= piece-id (:id %)) %)
+        (app-state/board-pieces db)))
+
 (deftest initialize-builds-app-db-from-shared-game-state
   (let [hand-count (* game-state/starting-hand-size
                       (count app-state/default-player-specs))
@@ -83,11 +125,17 @@
     (is (not (:enabled? (source-option db :place-initial-small))))))
 
 (deftest activating-a-board-territory-uses-board-and-piece-selections
-  (let [db (app-state/initialize {:game-options {:shuffle-fn identity}})
+  (let [deck-order (deck-with-card-at (board-card-position test-player-specs 0)
+                                      "cups2")
+        db (app-state/initialize {:player-specs test-player-specs
+                                  :game-options {:deck-order deck-order}
+                                  :demo-board-pieces [rose-source-piece]})
         source-db (app-state/select-move-source db :activate-territory)
         piece-db (app-state/select-move-piece source-db :rose-scout)
         target-db (app-state/select-board-card piece-db 4)
-        confirmed-db (app-state/confirm-move target-db)]
+        oriented-db (app-state/set-move-orientation target-db :east)
+        confirmed-db (app-state/confirm-move oriented-db)
+        created-piece (piece-by-id confirmed-db :rose-small-1)]
     (is (= :piece (:stage (app-state/move-selection source-db))))
     (is (= {:source-board-index 0}
            (app-state/move-params source-db)))
@@ -95,15 +143,21 @@
     (is (= {:source-board-index 0
             :piece-id :rose-scout}
            (app-state/move-params piece-db)))
-    (is (= :confirm (:stage (app-state/move-selection target-db))))
+    (is (= :orientation (:stage (app-state/move-selection target-db))))
     (is (= {:source-board-index 0
             :piece-id :rose-scout
             :target-board-index 4}
            (app-state/move-params target-db)))
-    (is (= :move-transition-unavailable
-           (get-in confirmed-db [:move-selection :error :code])))
-    (is (= (app-state/game target-db)
-           (app-state/game confirmed-db)))))
+    (is (= :confirm (:stage (app-state/move-selection oriented-db))))
+    (is (= {:id :rose-small-1
+            :player-id :rose
+            :space-index 4
+            :size :small
+            :orientation :east}
+           created-piece))
+    (is (= 4 (get-in confirmed-db [:game :pieces :stashes :rose :small])))
+    (is (= :source (:stage (app-state/move-selection confirmed-db))))
+    (is (:ok? (get-in confirmed-db [:move-selection :last-result])))))
 
 (deftest playing-a-hand-card-stages-card_piece_and_target
   (let [db (app-state/initialize {:game-options {:shuffle-fn identity}})
@@ -111,15 +165,62 @@
         source-db (app-state/select-move-source db :play-hand-card)
         card-db (app-state/select-move-hand-card source-db card-id)
         piece-db (app-state/select-move-piece card-db :rose-striker)
-        target-db (app-state/select-board-card piece-db 3)]
+        target-db (app-state/select-board-card piece-db 3)
+        oriented-db (app-state/set-move-orientation target-db :north)]
     (is (= :hand-card (:stage (app-state/move-selection source-db))))
     (is (= :piece (:stage (app-state/move-selection card-db))))
     (is (= :target (:stage (app-state/move-selection piece-db))))
-    (is (= :confirm (:stage (app-state/move-selection target-db))))
+    (is (= :orientation (:stage (app-state/move-selection target-db))))
+    (is (= :confirm (:stage (app-state/move-selection oriented-db))))
     (is (= {:hand-card-id card-id
             :piece-id :rose-striker
-            :target-board-index 3}
-           (app-state/move-params target-db)))))
+            :target-board-index 3
+            :orientation :north}
+           (app-state/move-params oriented-db)))))
+
+(deftest playing-a-cup-hand-card-confirms-through-game-state
+  (let [db (app-state/initialize {:player-specs test-player-specs
+                                  :game-options {:deck-order (deck-starting-with ["cups2"])}
+                                  :demo-board-pieces [rose-hand-piece]})
+        confirmed-db (-> db
+                         (app-state/select-move-source :play-hand-card)
+                         (app-state/select-move-hand-card "cups2")
+                         (app-state/select-move-piece :rose-striker)
+                         (app-state/select-board-card 3)
+                         (app-state/set-move-orientation :west)
+                         app-state/confirm-move)
+        zones (app-state/card-zones confirmed-db)
+        created-piece (piece-by-id confirmed-db :rose-small-1)]
+    (is (:ok? (get-in confirmed-db [:move-selection :last-result])))
+    (is (= ["cups2"] (mapv :id (:discard-pile zones))))
+    (is (= 1 (:discard-count zones)))
+    (is (= "cups2" (:id (:discard-top-card zones))))
+    (is (= 5 (count (:hand zones))))
+    (is (not (some #{"cups2"} (map :id (:hand zones)))))
+    (is (= {:id :rose-small-1
+            :player-id :rose
+            :space-index 3
+            :size :small
+            :orientation :west}
+           created-piece))))
+
+(deftest rejected-cup-confirmation-keeps-staged-selection
+  (let [db (app-state/initialize {:player-specs test-player-specs
+                                  :game-options {:shuffle-fn identity}
+                                  :demo-board-pieces [rose-source-piece]})
+        oriented-db (-> db
+                        (app-state/select-move-source :activate-territory)
+                        (app-state/select-move-piece :rose-scout)
+                        (app-state/select-board-card 4)
+                        (app-state/set-move-orientation :north))
+        confirmed-db (app-state/confirm-move oriented-db)]
+    (is (= :rejected (:stage (app-state/move-selection confirmed-db))))
+    (is (= :source-card-not-cup
+           (get-in confirmed-db [:move-selection :error :code])))
+    (is (= (app-state/move-params oriented-db)
+           (app-state/move-params confirmed-db)))
+    (is (= (app-state/game oriented-db)
+           (app-state/game confirmed-db)))))
 
 (deftest incomplete-moves-report_recoverable_errors
   (let [db (app-state/initialize {:game-options {:shuffle-fn identity}})
