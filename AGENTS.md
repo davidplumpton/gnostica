@@ -4,6 +4,8 @@
 
 Gnostica is a Clojure and ClojureScript tarot app using re-frame and shadow-cljs.
 
+Use `docs/rules.txt` as the local implementation rules reference. The upstream Gnostica PDF remains the provenance source: https://www.looneylabs.com/sites/default/files/pyramid_rules/Gnostica.pdf. If the local text and upstream PDF differ, treat `docs/rules.txt` as authoritative for current repo behavior until the local copy is deliberately reconciled.
+
 ## Development Commands
 
 ```sh

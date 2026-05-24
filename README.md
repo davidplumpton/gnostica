@@ -2,7 +2,7 @@
 
 A Clojure and ClojureScript tarot app using re-frame and shadow-cljs. The current app is a local browser implementation focused on board rendering, shared pure game state, and early move-selection flows. The Ring server only serves the released app assets; multiplayer sync and state import/export workflows are not implemented yet.
 
-Rules are available here https://www.looneylabs.com/sites/default/files/pyramid_rules/Gnostica.pdf
+The implementation rules reference is `docs/rules.txt`, the local text copy used while building and testing gameplay behavior. The upstream Gnostica PDF remains the provenance source: https://www.looneylabs.com/sites/default/files/pyramid_rules/Gnostica.pdf. If the local text and upstream PDF differ, treat `docs/rules.txt` as authoritative for this repo's current implementation context until the local copy is deliberately reconciled.
 
 The game was designed by John Cooper, Kory Heath, Kristin Matherly, and Jacob Davenport. It makes use of a deck of Tarot cards and Looney Pyramids (https://www.looneylabs.com/pyramids-home).
 
