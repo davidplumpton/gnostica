@@ -12,7 +12,7 @@ Use `docs/rules.txt` as the local implementation rules reference. The upstream G
 clojure -M:dev       # start the ClojureScript watcher
 clojure -M:release   # compile an optimized browser build
 clojure -M:server    # serve existing released assets with Clojure/Ring
-clojure -M:test      # run Clojure tests for shared code
+clojure -M:test      # run Clojure tests and gameplay feature scenarios
 clojure -M:smoke     # run the headless Chrome 3D board smoke check
 ```
 
