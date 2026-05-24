@@ -1,8 +1,10 @@
 (ns gnostica.app-state-test
   (:require [clojure.test :refer [deftest is]]
+            [gnostica.app.handlers :as app-handlers]
             [gnostica.app-state :as app-state]
             [gnostica.board :as board]
             [gnostica.cards :as cards]
+            [gnostica.deterministic-shuffle :as deterministic-shuffle]
             [gnostica.fixtures :as fixtures]
             [gnostica.game-schema :as game-schema]
             [gnostica.game-state :as game-state]
@@ -106,6 +108,23 @@
            (app-state/card-icon-mode db)))
     (is (false? (app-state/hotkey-help-open? db)))
     (is (false? (app-state/icon-help-open? db)))))
+
+(deftest initialize-event-handler-is-deterministic-with-injected-seed
+  (let [opts {:player-specs test-player-specs}
+        first-db (app-handlers/initialize-db opts {:shuffle-seed 8675309})
+        second-db (app-handlers/initialize-db opts {:shuffle-seed 8675309})
+        explicit-db (app-handlers/initialize-db
+                     {:player-specs test-player-specs
+                      :game-options {:deck-order cards/deck}}
+                     {:shuffle-seed 8675309})
+        seeded-deck (deterministic-shuffle/shuffle-with-seed 8675309 cards/deck)]
+    (is (= (app-state/game first-db)
+           (app-state/game second-db)))
+    (is (= (mapv :id (take game-state/starting-hand-size seeded-deck))
+           (mapv :id (app-state/current-player-hand first-db))))
+    (is (= (mapv :id (take game-state/starting-hand-size cards/deck))
+           (mapv :id (app-state/current-player-hand explicit-db))))
+    (is (game-schema/valid-game? (app-state/game first-db)))))
 
 (deftest initialize-applies-explicit-demo-pieces
   (let [db (app-state/initialize
@@ -260,6 +279,37 @@
            (mapv :id (:discard-pile zones))))
     (is (= (dec (count (get-in db [:game :draw-pile])))
            (:draw-count zones)))))
+
+(deftest confirm-move-event-handler-is-deterministic-with-injected-draw-shuffle-seed
+  (let [initial-db (app-state/initialize {:player-specs test-player-specs
+                                          :game-options {:shuffle-fn identity}})
+        original-hand (app-state/current-player-hand initial-db)
+        shortened-hand (vec (drop 2 original-hand))
+        first-draw-card (first (get-in initial-db [:game :draw-pile]))
+        prepared-discard (vec (concat (take 2 original-hand)
+                                      (rest (get-in initial-db [:game :draw-pile]))))
+        db (-> initial-db
+               (replace-game-player-hand :rose shortened-hand)
+               (assoc-in [:game :draw-pile] [first-draw-card])
+               (assoc-in [:game :discard-pile] prepared-discard))
+        ready-db (-> db
+                     (app-state/select-move-source :draw-cards)
+                     (app-state/set-move-draw-count 2))
+        first-confirmed-db (app-handlers/confirm-move-db ready-db {:shuffle-seed 20260524})
+        second-confirmed-db (app-handlers/confirm-move-db ready-db {:shuffle-seed 20260524})
+        shuffled-discard (deterministic-shuffle/shuffle-with-seed 20260524 prepared-discard)
+        expected-drawn [first-draw-card (first shuffled-discard)]
+        zones (app-state/card-zones first-confirmed-db)]
+    (is (= (app-state/game first-confirmed-db)
+           (app-state/game second-confirmed-db)))
+    (is (= (mapv :id (concat shortened-hand expected-drawn))
+           (mapv :id (:hand zones))))
+    (is (empty? (:discard-pile zones)))
+    (is (= (mapv :id (rest shuffled-discard))
+           (mapv :id (:draw-pile zones))))
+    (is (true? (get-in first-confirmed-db
+                       [:move-selection :last-result :events 0 :reshuffled-discard?])))
+    (is (game-schema/valid-game? (app-state/game first-confirmed-db)))))
 
 (deftest activating-a-board-territory-uses-board-and-piece-selections
   (let [deck-order (deck-with-card-at (board-card-position test-player-specs 0)

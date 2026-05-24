@@ -1098,27 +1098,35 @@
          :player-id (current-player-id db)
          :params params}))))
 
-(defn- confirmed-move-result [db command]
-  (cond
-    (= :draw-cards (:source command))
-    (game-state/apply-draw-move (game db) command)
+(defn- command-with-transition-options [command transition-options]
+  (cond-> command
+    (and (= :draw-cards (:source command))
+         (:shuffle-fn transition-options)
+         (not (contains? command :shuffle-fn)))
+    (assoc :shuffle-fn (:shuffle-fn transition-options))))
 
-    (= :orient-piece (:source command))
-    (game-state/apply-orient-move (game db) command)
+(defn- confirmed-move-result [db command transition-options]
+  (let [command (command-with-transition-options command transition-options)]
+    (cond
+      (= :draw-cards (:source command))
+      (game-state/apply-draw-move (game db) command)
 
-    (= :place-initial-small (:source command))
-    (game-state/apply-initial-placement (game db) command)
+      (= :orient-piece (:source command))
+      (game-state/apply-orient-move (game db) command)
 
-    (= :cup (move-power db))
-    (game-state/apply-cup-move (game db) command)
+      (= :place-initial-small (:source command))
+      (game-state/apply-initial-placement (game db) command)
 
-    (= :rod (move-power db))
-    (game-state/apply-rod-move (game db) command)
+      (= :cup (move-power db))
+      (game-state/apply-cup-move (game db) command)
 
-    :else
-    (game-state/failure :move-transition-unavailable
-                        "Move selection is complete, but this gameplay rule transition is not implemented yet."
-                        {:command command})))
+      (= :rod (move-power db))
+      (game-state/apply-rod-move (game db) command)
+
+      :else
+      (game-state/failure :move-transition-unavailable
+                          "Move selection is complete, but this gameplay rule transition is not implemented yet."
+                          {:command command}))))
 
 (defn- apply-confirmed-move-result [db result]
   (if (:ok? result)
@@ -1132,14 +1140,15 @@
                   :error (:error result)
                   :last-result result))))
 
-(defn confirm-move [db]
-  (if-not (move-ready? db)
-    (update-move-selection db assoc
-                           :error
-                           (move-error :incomplete-move
-                                       "Complete the move selection before confirming."
-                                       {:stage (:stage (move-selection db))}))
-    (let [command (move-command db)
-          result (confirmed-move-result db command)]
-      (apply-confirmed-move-result db result))))
-
+(defn confirm-move
+  ([db] (confirm-move db {}))
+  ([db transition-options]
+   (if-not (move-ready? db)
+     (update-move-selection db assoc
+                            :error
+                            (move-error :incomplete-move
+                                        "Complete the move selection before confirming."
+                                        {:stage (:stage (move-selection db))}))
+     (let [command (move-command db)
+           result (confirmed-move-result db command transition-options)]
+       (apply-confirmed-move-result db result)))))

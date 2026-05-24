@@ -1,5 +1,6 @@
 (ns gnostica.app.events
   (:require [gnostica.app-state :as app-state]
+            [gnostica.app.handlers :as handlers]
             [re-frame.core :as rf]))
 
 (def initialize :gnostica.app/initialize)
@@ -61,10 +62,23 @@
 (def hotkey-help-open? :gnostica.app/hotkey-help-open?)
 (def icon-help-open? :gnostica.app/icon-help-open?)
 
-(rf/reg-event-db
+(def shuffle-seed :gnostica.app/shuffle-seed)
+
+(def ^:private max-browser-seed 4294967296)
+
+(defn- browser-shuffle-seed []
+  (js/Math.floor (* max-browser-seed (js/Math.random))))
+
+(rf/reg-cofx
+ shuffle-seed
+ (fn [coeffects _]
+   (assoc coeffects shuffle-seed (browser-shuffle-seed))))
+
+(rf/reg-event-fx
  initialize
- (fn [_ [_ opts]]
-   (app-state/initialize opts)))
+ [(rf/inject-cofx shuffle-seed)]
+ (fn [coeffects [_ opts]]
+   {:db (handlers/initialize-db opts {:shuffle-seed (get coeffects shuffle-seed)})}))
 
 (rf/reg-event-db
  select-board-card
@@ -131,10 +145,12 @@
  (fn [db [_ draw-count]]
    (app-state/set-move-draw-count db draw-count)))
 
-(rf/reg-event-db
+(rf/reg-event-fx
  confirm-move
- (fn [db _]
-   (app-state/confirm-move db)))
+ [(rf/inject-cofx shuffle-seed)]
+ (fn [coeffects _]
+   {:db (handlers/confirm-move-db (:db coeffects)
+                                   {:shuffle-seed (get coeffects shuffle-seed)})}))
 
 (rf/reg-event-db
  cancel-move

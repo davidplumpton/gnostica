@@ -179,4 +179,8 @@
 (def move-territory-card-source-options move-selection/move-territory-card-source-options)
 (def move-orientation-options move-selection/move-orientation-options)
 (def move-command move-selection/move-command)
-(def confirm-move move-selection/confirm-move)
+
+(defn confirm-move
+  ([db] (move-selection/confirm-move db))
+  ([db transition-options]
+   (move-selection/confirm-move db transition-options)))
