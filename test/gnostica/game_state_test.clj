@@ -4,6 +4,10 @@
             [gnostica.cards :as cards]
             [gnostica.game-schema :as game-schema]
             [gnostica.game-state :as game-state]
+            [gnostica.game-state.cup :as game-state-cup]
+            [gnostica.game-state.draw :as game-state-draw]
+            [gnostica.game-state.placement :as game-state-placement]
+            [gnostica.game-state.rod :as game-state-rod]
             [gnostica.pieces :as pieces]))
 
 (def player-specs
@@ -260,6 +264,46 @@
              :player-id :indigo
              :round 1}]
            events))))
+
+(deftest focused-transition-namespaces-match-public-facade
+  (let [draw-state (deterministic-game)
+        draw-card (first (get-in draw-state [:players-by-id :rose :hand]))
+        draw-command {:player-id :rose
+                      :discard-card-ids [(:id draw-card)]
+                      :draw-count 1
+                      :shuffle-fn identity}
+        orient-state (state-with-pieces [rose-target-minion])
+        orient-command {:player-id :rose
+                        :piece-id :rose-target-minion
+                        :orientation :west}
+        cup-state (-> (state-with-pieces [rose-cup-minion])
+                      (state-with-board-card 3 "cups2"))
+        cup-command {:player-id :rose
+                     :source {:kind :territory
+                              :board-index 3
+                              :piece-id :rose-cup-minion}
+                     :target {:kind :territory
+                              :board-index 4}
+                     :orientation :east}
+        rod-state (-> (state-with-pieces [rose-rod-minion])
+                      (state-with-board-card 3 "wands2"))
+        rod-command {:player-id :rose
+                     :source {:kind :territory
+                              :board-index 3
+                              :piece-id :rose-rod-minion}
+                     :mode :move-minion
+                     :distance 1
+                     :orientation :south}]
+    (is (= (game-state/apply-draw-move draw-state draw-command)
+           (game-state-draw/apply-draw-move draw-state draw-command)))
+    (is (= (game-state/apply-orient-move orient-state orient-command)
+           (game-state-placement/apply-orient-move orient-state orient-command)))
+    (is (= (game-state/apply-cup-move cup-state cup-command)
+           (game-state-cup/apply-cup-move cup-state cup-command)))
+    (is (= (game-state/resolve-rod-command rod-state rod-command)
+           (game-state-rod/resolve-rod-command rod-state rod-command)))
+    (is (= (game-state/apply-rod-move rod-state rod-command)
+           (game-state-rod/apply-rod-move rod-state rod-command)))))
 
 (deftest draw-move-discards-selected-cards-and-draws-to-hand
   (let [initial-state (deterministic-game)
