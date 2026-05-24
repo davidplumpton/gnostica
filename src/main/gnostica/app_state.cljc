@@ -52,8 +52,8 @@
    :place-initial-small
    {:id :place-initial-small
     :label "Place initial small"
-    :summary "Put your first small piece on the board."
-    :requirements [:target-board-index :orientation]}})
+    :summary "Put your first small piece on an empty territory or wasteland."
+    :requirements [:target-space :orientation]}})
 
 (def move-power-order
   [:cup :rod])
@@ -237,6 +237,16 @@
          (filter #(= player-id (:player-id %)))
          vec)))
 
+(defn- piece-coordinate [db piece]
+  (if-let [{:keys [row col]} (:space piece)]
+    [row col]
+    (when-let [{:keys [row col]} (get (board db) (:space-index piece))]
+      [row col])))
+
+(defn- pieces-at-coordinate [db row col]
+  (filterv #(= [row col] (piece-coordinate db %))
+           (board-pieces db)))
+
 (defn current-player-piece? [db piece]
   (= (current-player-id db) (:player-id piece)))
 
@@ -318,8 +328,18 @@
 (defn valid-board-index? [db index]
   (contains? (board db) index))
 
+(defn- empty-board-target? [db index]
+  (when-let [{:keys [row col]} (get (board db) index)]
+    (empty? (pieces-at-coordinate db row col))))
+
+(defn- empty-wasteland-target? [db {:keys [row col]}]
+  (empty? (pieces-at-coordinate db row col)))
+
 (defn move-target-wasteland-options [db]
-  (layout/wasteland-spaces (board db)))
+  (let [spaces (layout/wasteland-spaces (board db))]
+    (if (= :place-initial-small (get-in db [:move-selection :source]))
+      (filterv #(empty-wasteland-target? db %) spaces)
+      spaces)))
 
 (defn- wasteland-space-by-coordinate [db row col]
   (some #(when (and (= row (:row %))
@@ -333,9 +353,14 @@
        (int? (:col target))
        (some? (wasteland-space-by-coordinate db (:row target) (:col target)))))
 
-(defn- target-space-complete? [db params]
-  (or (valid-board-index? db (:target-board-index params))
-      (valid-wasteland-target? db (:target-wasteland params))))
+(defn- target-space-complete? [db source-id params]
+  (case source-id
+    :place-initial-small
+    (or (empty-board-target? db (:target-board-index params))
+        (valid-wasteland-target? db (:target-wasteland params)))
+
+    (or (valid-board-index? db (:target-board-index params))
+        (valid-wasteland-target? db (:target-wasteland params)))))
 
 (defn- target-resolution-complete? [db source-id params]
   (cond
@@ -493,8 +518,10 @@
     (valid-board-index? db (:target-board-index params))
 
     :target-space
-    (and (cup-move? db source-id params)
-         (target-space-complete? db params))
+    (case source-id
+      :place-initial-small (target-space-complete? db source-id params)
+      (and (cup-move? db source-id params)
+           (target-space-complete? db source-id params)))
 
     :target-resolution
     (and (cup-move? db source-id params)
@@ -613,7 +640,8 @@
       (nil? source) "Choose a move source."
       (= :confirm stage) "Confirm the selected move."
       (= :rejected stage) "Review or cancel the rejected move."
-      (= :target stage) (if (cup-move? db source (move-params db))
+      (= :target stage) (if (or (cup-move? db source (move-params db))
+                                (= :place-initial-small source))
                           (:target-space requirement-prompts)
                           (:target-board-index requirement-prompts))
       (= :one-point-card stage) (:one-point-card-id requirement-prompts)
@@ -647,7 +675,7 @@
                           (assoc :source-board-index selected-index)
 
                           (and (= source-id :place-initial-small)
-                               (valid-board-index? db selected-index))
+                               (empty-board-target? db selected-index))
                           (assoc :target-board-index selected-index))]
         (refresh-move-selection
          (assoc db :move-selection
@@ -758,7 +786,13 @@
         (update-move-selection-success db update :params set-territory-target index)
 
         :place-initial-small
-        (update-move-selection-success db assoc-in [:params :target-board-index] index)
+        (if (empty-board-target? db index)
+          (update-move-selection-success db update :params set-territory-target index)
+          (update-move-selection db assoc
+                                 :error
+                                 (move-error :target-space-occupied
+                                             "Choose an empty territory or wasteland."
+                                             {:board-index index})))
 
         db))))
 
@@ -772,11 +806,12 @@
         params (move-params db)
         space (wasteland-space-by-coordinate db row col)]
     (cond
-      (not (cup-move? db source params))
+      (not (or (cup-move? db source params)
+               (= :place-initial-small source)))
       (update-move-selection db assoc
                              :error
                              (move-error :invalid-wasteland-target
-                                         "Wasteland targets are only available for Cup moves."
+                                         "Wasteland targets are only available for Cup moves or initial placement."
                                          {:row row
                                           :col col
                                           :source source}))
@@ -941,7 +976,10 @@
              (board db))))
 
 (defn move-target-board-options [db]
-  (board db))
+  (if (= :place-initial-small (move-source db))
+    (filterv #(empty-board-target? db (:index %))
+             (board db))
+    (board db)))
 
 (defn move-one-point-card-options [db]
   (let [{:keys [source params]} (move-selection db)]
@@ -962,6 +1000,12 @@
     {:target {:kind :territory
               :board-index (:target-board-index params)}
      :orientation (:orientation params)}))
+
+(defn- initial-placement-target-command [params]
+  (if-let [target-wasteland (:target-wasteland params)]
+    (select-keys target-wasteland [:kind :row :col])
+    {:kind :territory
+     :board-index (:target-board-index params)}))
 
 (defn- source-command [source params]
   (case source
@@ -1014,6 +1058,18 @@
          :discard-card-ids (vec (:discard-card-ids params))
          :draw-count (:draw-count params)}
 
+        :orient-piece
+        {:source :orient-piece
+         :player-id (current-player-id db)
+         :piece-id (:piece-id params)
+         :orientation (:orientation params)}
+
+        :place-initial-small
+        {:source :place-initial-small
+         :player-id (current-player-id db)
+         :target (initial-placement-target-command params)
+         :orientation (:orientation params)}
+
         {:source source
          :player-id (current-player-id db)
          :params params}))))
@@ -1022,6 +1078,12 @@
   (cond
     (= :draw-cards (:source command))
     (game-state/apply-draw-move (game db) command)
+
+    (= :orient-piece (:source command))
+    (game-state/apply-orient-move (game db) command)
+
+    (= :place-initial-small (:source command))
+    (game-state/apply-initial-placement (game db) command)
 
     (= :cup (move-power db))
     (game-state/apply-cup-move (game db) command)

@@ -946,8 +946,12 @@
 
       :place-initial-small
       [:<>
-       [board-choice-grid "Target territory" target-board-options (:target-board-index params)]
-       (when (:target-board-index params)
+       [target-choice-grid target-board-options
+        target-wasteland-options
+        (:target-board-index params)
+        (:target-wasteland params)]
+       (when (or (:target-board-index params)
+                 (:target-wasteland params))
          [orientation-choices orientation-options (:orientation params)])]
 
       nil)))
