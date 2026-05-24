@@ -94,7 +94,7 @@
         card-icon-mode
         texture-errors
         {:on-card-select #(rf/dispatch [events/select-board-card %])
-         :on-clear-texture-errors #(rf/dispatch-sync [events/clear-three-texture-errors])
+         :on-clear-texture-errors #(rf/dispatch [events/clear-three-texture-errors])
          :on-renderer-error #(rf/dispatch [events/three-renderer-error %])
          :on-texture-error #(rf/dispatch [events/three-texture-error %])}]
        [:div.board-fallback

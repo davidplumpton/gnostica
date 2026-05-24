@@ -205,6 +205,9 @@
      const fallback = document.querySelector('.board-fallback');
      const fallbackFace = document.querySelector('.board-fallback .card-face');
      const handFace = document.querySelector('.hand-card.has-gnostica-icons .card-face');
+     const textureStatus = Array.from(document.querySelectorAll('.board-3d-status.is-error'))
+       .map((node) => node.textContent.trim())
+       .filter((message) => message.includes('Texture load failed'));
      const fallbackTwoIconCard = document.querySelector('.board-fallback .board-card .card-icon-popover[data-icon-count=\"2\"]');
      const fallbackThreeIconCard = document.querySelector('.board-fallback .board-card .card-icon-popover[data-icon-count=\"3\"]');
      const hand = focusStats(handFace, '.hand-card.has-gnostica-icons .card-icon-popover');
@@ -220,6 +223,8 @@
        appMode: shell ? shell.dataset.cardIconMode : null,
        boardMode: board ? board.dataset.cardIconMode : (fallbackFace ? fallbackFace.dataset.iconMode : null),
        cameraDistance: board ? Number(board.dataset.cameraDistance || -1) : -1,
+       textureErrorCount: board ? Number(board.dataset.textureErrorCount || -1) : 0,
+       textureStatus,
        fallback: Boolean(fallback),
        togglePressed: (document.querySelector('.card-icon-mode-toggle') || {}).getAttribute('aria-pressed'),
        handStackCount: document.querySelectorAll('.hand-card .gnostica-icon-stack').length,
@@ -499,6 +504,8 @@
          (= "popup" (get stats "boardMode"))
          (= "false" (get stats "togglePressed"))
          (zero? (long (or (get stats "handStackCount") -1)))
+         (zero? (long (or (get stats "textureErrorCount") -1)))
+         (empty? (get stats "textureStatus"))
          (true? (get hand "visible"))
          (= 1 (long (or (get hand "iconCount") -1)))
          (str/includes? (or (get hand "text") "") "Sword, rod, cup, or disc")
