@@ -84,7 +84,7 @@
       (:ok? result) (assoc :state (:state result)))))
 
 (defn- put-pieces [world pieces]
-  (assoc-in world [:state :pieces :on-board] (vec pieces)))
+  (update world :state game-state/with-board-pieces pieces))
 
 (defn- with-rod-fixture [world fixture]
   (assoc world :rod-fixture fixture))

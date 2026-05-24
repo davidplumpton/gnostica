@@ -104,7 +104,12 @@
 (defn- state-with-demo-board-pieces [state demo-board-pieces]
   (cond-> state
     (some? demo-board-pieces)
-    (assoc-in [:pieces :on-board] (vec demo-board-pieces))))
+    (game-state/with-board-pieces demo-board-pieces)))
+
+(defn- default-demo-board-pieces-for [player-specs]
+  (let [player-ids (set (map :id player-specs))]
+    (filterv #(contains? player-ids (:player-id %))
+             default-demo-board-pieces)))
 
 (defn normalize-card-icon-mode [mode]
   (if (contains? card-icon-modes mode)
@@ -114,12 +119,15 @@
 (defn initialize
   ([] (initialize {}))
   ([{:keys [player-specs game-options selected-board-index demo-board-pieces card-icon-mode]
+     :as opts
      :or {player-specs default-player-specs
           game-options {}
           selected-board-index default-selected-board-index
-          demo-board-pieces default-demo-board-pieces
           card-icon-mode default-card-icon-mode}}]
    (let [result (game-state/create-game player-specs game-options)
+         demo-board-pieces (if (contains? opts :demo-board-pieces)
+                             demo-board-pieces
+                             (default-demo-board-pieces-for player-specs))
          base-db {:selected-board-index selected-board-index
                   :card-icon-mode (normalize-card-icon-mode card-icon-mode)
                   :hotkey-help-open? default-hotkey-help-open?

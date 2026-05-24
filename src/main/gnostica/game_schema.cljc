@@ -114,6 +114,48 @@
   (= (player-id-set state)
      (set (keys (get-in state [:pieces :stashes])))))
 
+(defn- player-stashes-match-piece-stashes? [state]
+  (= (into {} (map (juxt :id :stash)) (:players state))
+     (get-in state [:pieces :stashes])))
+
+(defn- piece-counts-by-player-size [state]
+  (reduce (fn [counts {:keys [player-id size]}]
+            (if (and player-id size)
+              (update-in counts [player-id size] (fnil inc 0))
+              counts))
+          {}
+          (get-in state [:pieces :on-board])))
+
+(defn- stash-mirror-errors [state]
+  (->> (:players state)
+       (keep (fn [{:keys [id stash]}]
+               (let [piece-stash (get-in state [:pieces :stashes id])]
+                 (when (not= stash piece-stash)
+                   {:code :stash-mirror-mismatch
+                    :message "Player stashes must match the pieces stash mirror."
+                    :data {:player-id id
+                           :player-stash stash
+                           :piece-stash piece-stash}}))))
+       vec))
+
+(defn- stash-piece-count-errors [state]
+  (let [piece-counts (piece-counts-by-player-size state)]
+    (vec
+     (for [{:keys [id stash]} (:players state)
+           size (keys pieces/piece-sizes)
+           :let [stash-count (get stash size)
+                 board-piece-count (get-in piece-counts [id size] 0)
+                 actual-total (+ (or stash-count 0) board-piece-count)]
+           :when (not= game-state/pieces-per-size-in-stash actual-total)]
+       {:code :piece-count-mismatch
+        :message "A player's stash plus active pieces must equal the starting stash size."
+        :data {:player-id id
+               :size size
+               :stash-count stash-count
+               :active-piece-count board-piece-count
+               :expected-total game-state/pieces-per-size-in-stash
+               :actual-total actual-total}}))))
+
 (defn- hand-limit-errors [state]
   (->> (:players state)
        (keep (fn [{:keys [id hand]}]
@@ -186,10 +228,16 @@
     (duplicate-card-errors state)
     (piece-owner-errors state)
     (piece-space-errors state)
+    (stash-mirror-errors state)
+    (stash-piece-count-errors state)
     (turn-errors state))))
 
 (defn- piece-space-indexes-match-board? [state]
   (empty? (piece-space-errors state)))
+
+(defn- piece-stashes-consistent? [state]
+  (and (player-stashes-match-piece-stashes? state)
+       (empty? (stash-piece-count-errors state))))
 
 (def PlayerId
   (enum-schema (map :id pieces/players)))
@@ -339,6 +387,7 @@
    [:fn {:error/message "piece owners must be participating players"} pieces-owned-by-players?]
    [:fn {:error/message "piece space indexes must reference board cells"} piece-space-indexes-match-board?]
    [:fn {:error/message "piece stashes must match participating players"} stashes-match-players?]
+   [:fn {:error/message "player stashes must match piece stash mirrors and active piece counts"} piece-stashes-consistent?]
    [:fn {:error/message "card ids must be unique across all game zones"} all-card-ids-unique?]])
 
 (defn valid-game? [state]

@@ -3,6 +3,7 @@
             [gnostica.app-state :as app-state]
             [gnostica.board :as board]
             [gnostica.cards :as cards]
+            [gnostica.game-schema :as game-schema]
             [gnostica.game-state :as game-state]
             [gnostica.pieces :as pieces]))
 
@@ -93,6 +94,11 @@
            (app-state/board db)))
     (is (= pieces/initial-pieces
            (app-state/board-pieces db)))
+    (is (= 4 (get-in db [:game :players-by-id :rose :stash :small])))
+    (is (= 4 (get-in db [:game :players-by-id :rose :stash :medium])))
+    (is (= (get-in db [:game :players-by-id :rose :stash])
+           (get-in db [:game :pieces :stashes :rose])))
+    (is (game-schema/valid-game? (app-state/game db)))
     (is (= :rose (:id (app-state/current-player db))))
     (is (= app-state/default-selected-board-index
            (app-state/selected-board-index db)))
@@ -100,6 +106,13 @@
            (app-state/card-icon-mode db)))
     (is (false? (app-state/hotkey-help-open? db)))
     (is (false? (app-state/icon-help-open? db)))))
+
+(deftest initialize-default-demo-pieces-follow-participating-players
+  (let [db (app-state/initialize {:player-specs test-player-specs
+                                  :game-options {:shuffle-fn identity}})]
+    (is (= #{:rose :indigo}
+           (set (map :player-id (app-state/board-pieces db)))))
+    (is (game-schema/valid-game? (app-state/game db)))))
 
 (deftest card-icon-mode-can-be-initialized-and-toggled
   (let [db (app-state/initialize {:game-options {:shuffle-fn identity}
@@ -264,7 +277,9 @@
             :size :small
             :orientation :east}
            created-piece))
-    (is (= 4 (get-in confirmed-db [:game :pieces :stashes :rose :small])))
+    (is (= 3 (get-in confirmed-db [:game :pieces :stashes :rose :small])))
+    (is (= 3 (get-in confirmed-db [:game :players-by-id :rose :stash :small])))
+    (is (game-schema/valid-game? (app-state/game confirmed-db)))
     (is (= :source (:stage (app-state/move-selection confirmed-db))))
     (is (:ok? (get-in confirmed-db [:move-selection :last-result])))))
 

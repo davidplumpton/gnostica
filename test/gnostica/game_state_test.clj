@@ -51,7 +51,7 @@
       (drop deck-index other-cards)))))
 
 (defn- state-with-pieces [pieces]
-  (assoc-in (deterministic-game) [:pieces :on-board] (vec pieces)))
+  (game-state/with-board-pieces (deterministic-game) pieces))
 
 (defn- state-with-board-card [state board-index card-id]
   (update state :board
@@ -365,8 +365,8 @@
             :size :small
             :orientation :east}
            created-piece))
-    (is (= 4 (get-in state [:players-by-id :rose :stash :small])))
-    (is (= 4 (get-in state [:pieces :stashes :rose :small])))
+    (is (= 3 (get-in state [:players-by-id :rose :stash :small])))
+    (is (= 3 (get-in state [:pieces :stashes :rose :small])))
     (is (= [{:type :cup/small-piece-created
              :player-id :rose
              :source {:kind :territory
@@ -382,7 +382,7 @@
 (deftest cup-move-can-use-cup-card-from-hand-as-source
   (let [deck-order (deck-starting-with ["cups2" "coins2"])
         state (:state (game-state/create-game player-specs {:deck-order deck-order}))
-        state (assoc-in state [:pieces :on-board] [rose-cup-minion])
+        state (game-state/with-board-pieces state [rose-cup-minion])
         command {:player-id :rose
                  :source {:kind :hand-card
                           :card-id "cups2"
@@ -559,13 +559,14 @@
 (deftest rod-command-normalizes-hand-card-source-and-piece-target
   (let [deck-order (deck-starting-with ["wands2"])
         state (:state (game-state/create-game player-specs {:deck-order deck-order}))
-        state (assoc-in state [:pieces :on-board]
-                        [rose-rod-minion
-                         {:id :indigo-rod-target
-                          :player-id :indigo
-                          :space-index 4
-                          :size :small
-                          :orientation :north}])
+        state (game-state/with-board-pieces
+               state
+               [rose-rod-minion
+                {:id :indigo-rod-target
+                 :player-id :indigo
+                 :space-index 4
+                 :size :small
+                 :orientation :north}])
         result (game-state/resolve-rod-command
                 state
                 {:player-id :rose
@@ -598,13 +599,14 @@
 (deftest rod-command-rejects-enemy-piece-reorientation
   (let [deck-order (deck-starting-with ["wands2"])
         state (:state (game-state/create-game player-specs {:deck-order deck-order}))
-        state (assoc-in state [:pieces :on-board]
-                        [rose-rod-minion
-                         {:id :indigo-rod-target
-                          :player-id :indigo
-                          :space-index 4
-                          :size :small
-                          :orientation :north}])
+        state (game-state/with-board-pieces
+               state
+               [rose-rod-minion
+                {:id :indigo-rod-target
+                 :player-id :indigo
+                 :space-index 4
+                 :size :small
+                 :orientation :north}])
         result (game-state/resolve-rod-command
                 state
                 {:player-id :rose
@@ -728,7 +730,7 @@
   (let [state (:state (game-state/create-game
                        player-specs
                        {:deck-order (deck-with-board-card 3 "wands2")}))
-        state (assoc-in state [:pieces :on-board] [rose-rod-minion])
+        state (game-state/with-board-pieces state [rose-rod-minion])
         command {:player-id :rose
                  :source {:kind :territory
                           :board-index 3
@@ -769,13 +771,14 @@
 (deftest rod-move-pushes-enemy-piece-and-discards-hand-source
   (let [deck-order (deck-starting-with ["wands2"])
         state (:state (game-state/create-game player-specs {:deck-order deck-order}))
-        state (assoc-in state [:pieces :on-board]
-                        [rose-rod-minion
-                         {:id :indigo-rod-target
-                          :player-id :indigo
-                          :space-index 4
-                          :size :small
-                          :orientation :north}])
+        state (game-state/with-board-pieces
+               state
+               [rose-rod-minion
+                {:id :indigo-rod-target
+                 :player-id :indigo
+                 :space-index 4
+                 :size :small
+                 :orientation :north}])
         command {:player-id :rose
                  :source {:kind :hand-card
                           :card-id "wands2"
@@ -824,7 +827,7 @@
         state (:state (game-state/create-game
                        player-specs
                        {:deck-order (deck-with-board-card 2 "wands2")}))
-        state (assoc-in state [:pieces :on-board] [rod-minion])
+        state (game-state/with-board-pieces state [rod-minion])
         command {:player-id :rose
                  :source {:kind :territory
                           :board-index 2
@@ -854,16 +857,17 @@
         state (:state (game-state/create-game player-specs {:deck-order deck-order}))
         target-card (get-in state [:board 5 :card])
         rod-minion (assoc rose-rod-minion :space-index 4)
-        state (assoc-in state [:pieces :on-board]
-                        [rod-minion
-                         (assoc rose-target-minion :space-index 5)
-                         {:id :rose-landing-minion
-                          :player-id :rose
-                          :space {:kind :wasteland
-                                  :row 1
-                                  :col 3}
-                          :size :small
-                          :orientation :west}])
+        state (game-state/with-board-pieces
+               state
+               [rod-minion
+                (assoc rose-target-minion :space-index 5)
+                {:id :rose-landing-minion
+                 :player-id :rose
+                 :space {:kind :wasteland
+                         :row 1
+                         :col 3}
+                 :size :small
+                 :orientation :west}])
         command {:player-id :rose
                  :source {:kind :hand-card
                           :card-id "wands2"
@@ -932,7 +936,7 @@
                  :space-index 5
                  :size :small
                  :orientation :north}]
-        state (assoc-in state [:pieces :on-board] pieces)
+        state (game-state/with-board-pieces state pieces)
         result (game-state/apply-rod-move
                 state
                 {:player-id :rose
@@ -962,7 +966,7 @@
                                        :col 3}
                                :size :small
                                :orientation :south}]
-        enemy-landing-state (assoc-in state [:pieces :on-board] enemy-landing-pieces)
+        enemy-landing-state (game-state/with-board-pieces state enemy-landing-pieces)
         enemy-landing-result (game-state/apply-rod-move
                               enemy-landing-state
                               {:player-id :rose
@@ -973,8 +977,9 @@
                                :target {:kind :territory
                                         :board-index 5}
                                :distance 1})
-        void-state (assoc-in state [:pieces :on-board]
-                             [(assoc rose-rod-minion :space-index 4)])
+        void-state (game-state/with-board-pieces
+                    state
+                    [(assoc rose-rod-minion :space-index 4)])
         void-result (game-state/apply-rod-move
                      void-state
                      {:player-id :rose
@@ -1014,7 +1019,7 @@
         full-state (:state (game-state/create-game
                             player-specs
                             {:deck-order (deck-with-board-card 3 "wands2")}))
-        full-state (assoc-in full-state [:pieces :on-board] full-pieces)
+        full-state (game-state/with-board-pieces full-state full-pieces)
         full-result (game-state/apply-rod-move
                      full-state
                      {:player-id :rose
@@ -1029,7 +1034,7 @@
         void-state (:state (game-state/create-game
                             player-specs
                             {:deck-order (deck-with-board-card 2 "wands2")}))
-        void-state (assoc-in void-state [:pieces :on-board] [void-minion])
+        void-state (game-state/with-board-pieces void-state [void-minion])
         void-result (game-state/apply-rod-move
                      void-state
                      {:player-id :rose

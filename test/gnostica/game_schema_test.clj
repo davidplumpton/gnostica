@@ -117,7 +117,7 @@
                              :space-index 99
                              :size :small
                              :orientation :up}
-        invalid-state (assoc-in state [:pieces :on-board] [missing-space-piece])
+        invalid-state (game-state/with-board-pieces state [missing-space-piece])
         explanation (game-schema/explain-game invalid-state)]
     (is (false? (game-schema/valid-game? invalid-state)))
     (is (= [{:code :piece-space-missing
@@ -126,6 +126,44 @@
                     :space-index 99
                     :board-indexes (vec (range board/board-card-count))}}]
            (:invariants explanation)))))
+
+(deftest rejects-stashes-that-do-not-account-for-active-pieces
+  (let [state (game-for 2)
+        piece {:id :rose-extra-small
+               :player-id :rose
+               :space-index 0
+               :size :small
+               :orientation :north}
+        invalid-state (assoc-in state [:pieces :on-board] [piece])
+        explanation (game-schema/explain-game invalid-state)]
+    (is (false? (game-schema/valid-game? invalid-state)))
+    (is (some #(= {:code :piece-count-mismatch
+                   :message "A player's stash plus active pieces must equal the starting stash size."
+                   :data {:player-id :rose
+                          :size :small
+                          :stash-count 5
+                          :active-piece-count 1
+                          :expected-total game-state/pieces-per-size-in-stash
+                          :actual-total 6}}
+                 %)
+              (:invariants explanation)))))
+
+(deftest rejects-diverged-player-and-piece-stash-mirrors
+  (let [state (game-for 2)
+        invalid-state (assoc-in state [:pieces :stashes :rose :small] 4)
+        explanation (game-schema/explain-game invalid-state)]
+    (is (false? (game-schema/valid-game? invalid-state)))
+    (is (some #(= {:code :stash-mirror-mismatch
+                   :message "Player stashes must match the pieces stash mirror."
+                   :data {:player-id :rose
+                          :player-stash {:small 5
+                                         :medium 5
+                                         :large 5}
+                          :piece-stash {:small 4
+                                        :medium 5
+                                        :large 5}}}
+                 %)
+              (:invariants explanation)))))
 
 (deftest assert-valid-game-throws-readable-ex-data
   (let [state (assoc-in (game-for 2) [:players 0 :hand] (vec (take 7 cards/deck)))]

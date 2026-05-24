@@ -285,6 +285,38 @@
            :players players
            :players-by-id (rebuild-players-by-id players))))
 
+(defn- board-piece-counts [board-pieces]
+  (reduce (fn [counts {:keys [player-id size]}]
+            (if (and player-id size)
+              (update-in counts [player-id size] (fnil inc 0))
+              counts))
+          {}
+          board-pieces))
+
+(defn- stash-after-board-pieces [piece-counts player-id]
+  (into {}
+        (map (fn [size]
+               [size (- pieces-per-size-in-stash
+                        (get-in piece-counts [player-id size] 0))]))
+        (keys pieces/piece-sizes)))
+
+(defn with-board-pieces
+  "Replace active pieces and rebuild both stash mirrors from the starting stash size."
+  [state board-pieces]
+  (let [board-pieces (vec board-pieces)
+        piece-counts (board-piece-counts board-pieces)
+        players (mapv (fn [player]
+                        (assoc player
+                               :stash (stash-after-board-pieces piece-counts
+                                                                 (:id player))))
+                      (:players state))]
+    (assoc state
+           :players players
+           :players-by-id (rebuild-players-by-id players)
+           :pieces (assoc (:pieces state)
+                          :on-board board-pieces
+                          :stashes (initial-stashes players)))))
+
 (defn- board-cell-by-index [state board-index]
   (some (fn [cell]
           (when (= board-index (:index cell))
