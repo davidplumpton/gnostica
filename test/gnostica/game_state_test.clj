@@ -100,6 +100,16 @@
 (defn- player-hand-ids [state player-id]
   (mapv :id (get-in state [:players-by-id player-id :hand])))
 
+(defn- replace-player-hand [state player-id hand]
+  (let [players (mapv (fn [player]
+                        (if (= player-id (:id player))
+                          (assoc player :hand (vec hand))
+                          player))
+                      (:players state))]
+    (assoc state
+           :players players
+           :players-by-id (into {} (map (juxt :id identity) players)))))
+
 (deftest creates-deterministic-initial-state
   (let [hand-count (hand-card-count (count player-specs))
         board-deck (drop hand-count cards/deck)
@@ -243,6 +253,99 @@
              :player-id :indigo
              :round 1}]
            events))))
+
+(deftest draw-move-discards-selected-cards-and-draws-to-hand
+  (let [initial-state (deterministic-game)
+        original-hand (get-in initial-state [:players-by-id :rose :hand])
+        discarded-cards (take 2 original-hand)
+        drawn-cards (take 2 (:draw-pile initial-state))
+        command {:player-id :rose
+                 :discard-card-ids (mapv :id discarded-cards)
+                 :draw-count 2
+                 :shuffle-fn identity}
+        {:keys [ok? state events]} (game-state/apply-draw-move initial-state command)]
+    (is ok?)
+    (is (= (mapv :id (concat (drop 2 original-hand) drawn-cards))
+           (player-hand-ids state :rose)))
+    (is (= (mapv :id discarded-cards)
+           (mapv :id (:discard-pile state))))
+    (is (= (mapv :id (drop 2 (:draw-pile initial-state)))
+           (mapv :id (:draw-pile state))))
+    (is (= [{:type :draw/cards-drawn
+             :player-id :rose
+             :discarded-card-ids (mapv :id discarded-cards)
+             :draw-count 2
+             :drawn-card-ids (mapv :id drawn-cards)
+             :reshuffled-discard? false}]
+           events))
+    (is (= events [(peek (:history state))]))
+    (is (= (count cards/deck) (count (all-card-ids state))))
+    (is (= (count cards/deck) (count (set (all-card-ids state)))))
+    (is (game-schema/valid-game? state))))
+
+(deftest draw-move-reshuffles-discard-pile-when-draw-pile-is-exhausted
+  (let [base-state (deterministic-game)
+        original-hand (get-in base-state [:players-by-id :rose :hand])
+        discarded-hand-cards (take 2 original-hand)
+        shortened-hand (vec (drop 2 original-hand))
+        first-draw-card (first (:draw-pile base-state))
+        prepared-discard (vec (concat discarded-hand-cards
+                                      (rest (:draw-pile base-state))))
+        state (-> base-state
+                  (replace-player-hand :rose shortened-hand)
+                  (assoc :draw-pile [first-draw-card]
+                         :discard-pile prepared-discard))
+        {:keys [ok? state events]} (game-state/apply-draw-move
+                                    state
+                                    {:player-id :rose
+                                     :draw-count 2
+                                     :shuffle-fn identity})
+        expected-drawn [first-draw-card (first discarded-hand-cards)]]
+    (is ok?)
+    (is (= (mapv :id (concat shortened-hand expected-drawn))
+           (player-hand-ids state :rose)))
+    (is (empty? (:discard-pile state)))
+    (is (= (mapv :id (concat (rest discarded-hand-cards)
+                             (rest (:draw-pile base-state))))
+           (mapv :id (:draw-pile state))))
+    (is (= {:type :draw/cards-drawn
+            :player-id :rose
+            :discarded-card-ids []
+            :draw-count 2
+            :drawn-card-ids (mapv :id expected-drawn)
+            :reshuffled-discard? true}
+           (first events)))
+    (is (= (count cards/deck) (count (all-card-ids state))))
+    (is (= (count cards/deck) (count (set (all-card-ids state)))))
+    (is (game-schema/valid-game? state))))
+
+(deftest draw-move-rejects-invalid-counts-and-discard-cards
+  (let [state (deterministic-game)
+        first-card-id (first (player-hand-ids state :rose))
+        too-many-result (game-state/apply-draw-move
+                         state
+                         {:player-id :rose
+                          :draw-count 1})
+        duplicate-result (game-state/apply-draw-move
+                          state
+                          {:player-id :rose
+                           :discard-card-ids [first-card-id first-card-id]
+                           :draw-count 1})
+        missing-result (game-state/apply-draw-move
+                        state
+                        {:player-id :rose
+                         :discard-card-ids ["not-in-hand"]
+                         :draw-count 1})]
+    (is (= :invalid-draw-count
+           (get-in too-many-result [:error :code])))
+    (is (= 0
+           (get-in too-many-result [:error :data :maximum])))
+    (is (= :duplicate-discard-cards
+           (get-in duplicate-result [:error :code])))
+    (is (= :invalid-discard-cards
+           (get-in missing-result [:error :code])))
+    (is (false? (:ok? too-many-result)))
+    (is (not (contains? too-many-result :state)))))
 
 (deftest cup-move-adds-current-players-small-piece-to-target-territory
   (let [state (state-with-pieces [rose-cup-minion])

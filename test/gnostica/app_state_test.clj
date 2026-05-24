@@ -73,6 +73,16 @@
   (some #(when (= board-index (:index %)) %)
         (app-state/board db)))
 
+(defn- replace-game-player-hand [db player-id hand]
+  (let [players (mapv (fn [player]
+                        (if (= player-id (:id player))
+                          (assoc player :hand (vec hand))
+                          player))
+                      (get-in db [:game :players]))]
+    (assoc-in (assoc-in db [:game :players] players)
+              [:game :players-by-id]
+              (into {} (map (juxt :id identity) players)))))
+
 (deftest initialize-builds-app-db-from-shared-game-state
   (let [hand-count (* game-state/starting-hand-size
                       (count app-state/default-player-specs))
@@ -190,6 +200,38 @@
     (is (:enabled? (source-option db :orient-piece)))
     (is (not (:enabled? (source-option db :draw-cards))))
     (is (not (:enabled? (source-option db :place-initial-small))))))
+
+(deftest drawing-cards-confirms-through-game-state
+  (let [initial-db (app-state/initialize {:player-specs test-player-specs
+                                          :game-options {:shuffle-fn identity}})
+        original-hand (app-state/current-player-hand initial-db)
+        discarded-card (last original-hand)
+        shortened-hand (vec (butlast original-hand))
+        draw-card (first (get-in initial-db [:game :draw-pile]))
+        db (-> initial-db
+               (replace-game-player-hand :rose shortened-hand)
+               (update-in [:game :discard-pile] conj discarded-card))
+        empty-draw-db (assoc-in db [:game :draw-pile] [])
+        source-db (app-state/select-move-source db :draw-cards)
+        confirmed-db (app-state/confirm-move source-db)
+        zones (app-state/card-zones confirmed-db)]
+    (is (:enabled? (source-option db :draw-cards)))
+    (is (= 1 (app-state/max-draw-count empty-draw-db)))
+    (is (= :confirm (:stage (app-state/move-selection source-db))))
+    (is (= {:draw-count 1}
+           (app-state/move-params source-db)))
+    (is (= {:source :draw-cards
+            :player-id :rose
+            :discard-card-ids []
+            :draw-count 1}
+           (app-state/move-command source-db)))
+    (is (:ok? (get-in confirmed-db [:move-selection :last-result])))
+    (is (= (mapv :id (conj shortened-hand draw-card))
+           (mapv :id (:hand zones))))
+    (is (= [(:id discarded-card)]
+           (mapv :id (:discard-pile zones))))
+    (is (= (dec (count (get-in db [:game :draw-pile])))
+           (:draw-count zones)))))
 
 (deftest activating-a-board-territory-uses-board-and-piece-selections
   (let [deck-order (deck-with-card-at (board-card-position test-player-specs 0)

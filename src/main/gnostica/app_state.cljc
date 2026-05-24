@@ -346,8 +346,9 @@
 (defn max-draw-count [db]
   (let [hand-slots (- game-state/starting-hand-size
                       (count (current-player-hand db)))
-        draw-cards (count (get-in db [:game :draw-pile] []))]
-    (max 0 (min hand-slots draw-cards))))
+        available-cards (+ (count (get-in db [:game :draw-pile] []))
+                           (count (get-in db [:game :discard-pile] [])))]
+    (max 0 (min hand-slots available-cards))))
 
 (defn draw-count-options [db]
   (vec (range 1 (inc (max-draw-count db)))))
@@ -999,14 +1000,28 @@
                  :rod (rod-command source params)
                  (cup-target-command params)))
 
+        :draw-cards
+        {:source :draw-cards
+         :player-id (current-player-id db)
+         :discard-card-ids (vec (:discard-card-ids params))
+         :draw-count (:draw-count params)}
+
         {:source source
          :player-id (current-player-id db)
          :params params}))))
 
 (defn- confirmed-move-result [db command]
-  (case (move-power db)
-    :cup (game-state/apply-cup-move (game db) command)
-    :rod (game-state/apply-rod-move (game db) command)
+  (cond
+    (= :draw-cards (:source command))
+    (game-state/apply-draw-move (game db) command)
+
+    (= :cup (move-power db))
+    (game-state/apply-cup-move (game db) command)
+
+    (= :rod (move-power db))
+    (game-state/apply-rod-move (game db) command)
+
+    :else
     (game-state/failure :move-transition-unavailable
                         "Move selection is complete, but this gameplay rule transition is not implemented yet."
                         {:command command})))
