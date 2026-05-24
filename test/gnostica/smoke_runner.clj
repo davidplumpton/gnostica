@@ -68,7 +68,7 @@
 
 (defn- launch-chrome! []
   (let [executable (or (chrome-executable)
-                       (throw (ex-info "Chrome or Chromium executable not found. Set SMOKE_CHROME to the browser path."
+                       (throw (ex-info "Chrome or Chromium executable not found. Set SMOKE_CHROME or CHROME_PATH to the browser path."
                                        {:checked-env ["SMOKE_CHROME" "CHROME_PATH"]})))
         port (free-port)
         profile-dir (Files/createTempDirectory "gnostica-smoke-chrome-"
