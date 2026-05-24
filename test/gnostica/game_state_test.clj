@@ -39,6 +39,17 @@
       (map cards/card-by-id card-ids)
       (remove #(contains? front-ids (:id %)) cards/deck)))))
 
+(defn- deck-with-board-card [board-index card-id]
+  (let [card (cards/card-by-id card-id)
+        other-cards (vec (remove #(= card-id (:id %)) cards/deck))
+        deck-index (+ (hand-card-count (count player-specs))
+                      board-index)]
+    (vec
+     (concat
+      (take deck-index other-cards)
+      [card]
+      (drop deck-index other-cards)))))
+
 (defn- state-with-pieces [pieces]
   (assoc-in (deterministic-game) [:pieces :on-board] (vec pieces)))
 
@@ -573,3 +584,179 @@
              :size :small
              :orientation :north}]
            (get-in state [:pieces :on-board])))))
+
+(deftest rod-move-moves-minion-to-territory-and-may-reorient-owned-piece
+  (let [state (:state (game-state/create-game
+                       player-specs
+                       {:deck-order (deck-with-board-card 3 "wands2")}))
+        state (assoc-in state [:pieces :on-board] [rose-rod-minion])
+        command {:player-id :rose
+                 :source {:kind :territory
+                          :board-index 3
+                          :piece-id :rose-rod-minion}
+                 :mode :move-minion
+                 :distance 2
+                 :orientation :south}
+        {:keys [ok? state events]} (game-state/apply-rod-move state command)
+        moved-piece (piece-by-id state :rose-rod-minion)]
+    (is ok?)
+    (is (= {:id :rose-rod-minion
+            :player-id :rose
+            :space-index 5
+            :size :medium
+            :orientation :south}
+           moved-piece))
+    (is (= [{:type :rod/minion-moved
+             :player-id :rose
+             :source {:kind :territory
+                      :board-index 3
+                      :piece-id :rose-rod-minion}
+             :target {:kind :piece
+                      :piece-id :rose-rod-minion
+                      :player-id :rose
+                      :row 1
+                      :col 0}
+             :destination {:kind :territory
+                           :board-index 5
+                           :row 1
+                           :col 2}
+             :distance 2
+             :direction :east
+             :piece moved-piece}]
+           events))
+    (is (= events [(peek (:history state))]))
+    (is (game-schema/valid-game? state))))
+
+(deftest rod-move-pushes-enemy-piece-and-discards-hand-source
+  (let [deck-order (deck-starting-with ["wands2"])
+        state (:state (game-state/create-game player-specs {:deck-order deck-order}))
+        state (assoc-in state [:pieces :on-board]
+                        [rose-rod-minion
+                         {:id :indigo-rod-target
+                          :player-id :indigo
+                          :space-index 4
+                          :size :small
+                          :orientation :north}])
+        command {:player-id :rose
+                 :source {:kind :hand-card
+                          :card-id "wands2"
+                          :piece-id :rose-rod-minion}
+                 :mode :push-piece
+                 :target {:kind :piece
+                          :piece-id :indigo-rod-target}
+                 :distance 1}
+        {:keys [ok? state events]} (game-state/apply-rod-move state command)
+        pushed-piece (piece-by-id state :indigo-rod-target)]
+    (is ok?)
+    (is (= {:id :indigo-rod-target
+            :player-id :indigo
+            :space-index 5
+            :size :small
+            :orientation :north}
+           pushed-piece))
+    (is (= ["wands2"] (mapv :id (:discard-pile state))))
+    (is (not (some #{"wands2"} (player-hand-ids state :rose))))
+    (is (= [{:type :rod/piece-pushed
+             :player-id :rose
+             :source {:kind :hand-card
+                      :card-id "wands2"
+                      :piece-id :rose-rod-minion}
+             :target {:kind :piece
+                      :piece-id :indigo-rod-target
+                      :player-id :indigo
+                      :row 1
+                      :col 1}
+             :destination {:kind :territory
+                           :board-index 5
+                           :row 1
+                           :col 2}
+             :distance 1
+             :direction :east
+             :piece pushed-piece}]
+           events))
+    (is (= (count cards/deck) (count (all-card-ids state))))
+    (is (= (count cards/deck) (count (set (all-card-ids state)))))
+    (is (game-schema/valid-game? state))))
+
+(deftest rod-move-represents-wasteland-destinations-as-wasteland-spaces
+  (let [rod-minion (assoc rose-rod-minion
+                          :space-index 2
+                          :orientation :east)
+        state (:state (game-state/create-game
+                       player-specs
+                       {:deck-order (deck-with-board-card 2 "wands2")}))
+        state (assoc-in state [:pieces :on-board] [rod-minion])
+        command {:player-id :rose
+                 :source {:kind :territory
+                          :board-index 2
+                          :piece-id :rose-rod-minion}
+                 :mode :move-minion
+                 :distance 1}
+        {:keys [ok? state events]} (game-state/apply-rod-move state command)
+        moved-piece (piece-by-id state :rose-rod-minion)]
+    (is ok?)
+    (is (= {:id :rose-rod-minion
+            :player-id :rose
+            :space {:kind :wasteland
+                    :row 0
+                    :col 3}
+            :size :medium
+            :orientation :east}
+           moved-piece))
+    (is (= {:kind :wasteland
+            :row 0
+            :col 3}
+           (get-in events [0 :destination])))
+    (is (not (contains? moved-piece :space-index)))
+    (is (game-schema/valid-game? state))))
+
+(deftest rod-move-rejects-void-and-full-territory-destinations_without_mutation
+  (let [full-pieces [rose-rod-minion
+                     rose-target-minion
+                     {:id :indigo-target-minion
+                      :player-id :indigo
+                      :space-index 4
+                      :size :small
+                      :orientation :north}
+                     {:id :indigo-target-guard
+                      :player-id :indigo
+                      :space-index 4
+                      :size :large
+                      :orientation :south}]
+        full-state (:state (game-state/create-game
+                            player-specs
+                            {:deck-order (deck-with-board-card 3 "wands2")}))
+        full-state (assoc-in full-state [:pieces :on-board] full-pieces)
+        full-result (game-state/apply-rod-move
+                     full-state
+                     {:player-id :rose
+                      :source {:kind :territory
+                               :board-index 3
+                               :piece-id :rose-rod-minion}
+                      :mode :move-minion
+                      :distance 1})
+        void-minion (assoc rose-rod-minion
+                           :space-index 2
+                           :orientation :east)
+        void-state (:state (game-state/create-game
+                            player-specs
+                            {:deck-order (deck-with-board-card 2 "wands2")}))
+        void-state (assoc-in void-state [:pieces :on-board] [void-minion])
+        void-result (game-state/apply-rod-move
+                     void-state
+                     {:player-id :rose
+                      :source {:kind :territory
+                               :board-index 2
+                               :piece-id :rose-rod-minion}
+                      :mode :move-minion
+                      :distance 2})]
+    (is (= :target-territory-full
+           (get-in full-result [:error :code])))
+    (is (= :rod-destination-void
+           (get-in void-result [:error :code])))
+    (is (not (contains? full-result :state)))
+    (is (not (contains? void-result :state)))
+    (is (= (get-in full-state [:pieces :on-board])
+           full-pieces))
+    (is (= [void-minion]
+           (get-in void-state [:pieces :on-board])))))

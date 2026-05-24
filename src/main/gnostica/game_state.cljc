@@ -932,6 +932,10 @@
                          piece))
                      board-pieces))))
 
+(defn- pieces-at-coordinate [state row col]
+  (filterv #(= [row col] (piece-coordinate state %))
+           (get-in state [:pieces :on-board])))
+
 (defn- next-board-index [state]
   (inc (apply max -1 (map :index (:board state)))))
 
@@ -998,6 +1002,109 @@
                            (move-wasteland-pieces-to-board-index row col board-index)
                            (append-history event))]
         (success next-state [event])))))
+
+(defn- rod-destination-space [state moved-piece {:keys [row col] :as destination}]
+  (cond
+    (not (and (int? row) (int? col)))
+    (failure :invalid-rod-destination
+             "Rod piece movement requires a destination coordinate."
+             {:piece-id (:id moved-piece)
+              :destination destination})
+
+    :else
+    (if-let [cell (board-cell-at state row col)]
+      (let [space-pieces (remove #(= (:id moved-piece) (:id %))
+                                 (pieces-at-coordinate state row col))]
+        (if (<= pieces/max-pieces-per-space (count space-pieces))
+          (failure :target-territory-full
+                   "Rod piece movement requires fewer than three pieces on the destination territory."
+                   {:piece-id (:id moved-piece)
+                    :board-index (:index cell)
+                    :row row
+                    :col col
+                    :piece-ids (mapv :id space-pieces)
+                    :maximum pieces/max-pieces-per-space})
+          {:ok? true
+           :piece-space {:space-index (:index cell)}
+           :destination {:kind :territory
+                         :board-index (:index cell)
+                         :row row
+                         :col col}}))
+      (let [target {:kind :wasteland
+                    :row row
+                    :col col}]
+        (if (wasteland-target? state target)
+          {:ok? true
+           :piece-space {:space target}
+           :destination target}
+          (failure :rod-destination-void
+                   "Rod piece movement cannot end in the void."
+                   {:piece-id (:id moved-piece)
+                    :destination destination}))))))
+
+(defn- move-piece-to-space [piece piece-space orientation]
+  (let [piece (cond-> piece
+                orientation (assoc :orientation orientation))]
+    (if-let [space-index (:space-index piece-space)]
+      (-> piece
+          (dissoc :space)
+          (assoc :space-index space-index))
+      (-> piece
+          (dissoc :space-index)
+          (assoc :space (:space piece-space))))))
+
+(defn- replace-piece [state piece]
+  (update-in state [:pieces :on-board]
+             (fn [board-pieces]
+               (mapv (fn [board-piece]
+                       (if (= (:id piece) (:id board-piece))
+                         piece
+                         board-piece))
+                     board-pieces))))
+
+(defn- apply-rod-piece-move [state player-id {:keys [command source-card target-piece]}]
+  (let [{:keys [mode source target distance direction]} command
+        destination-result (rod-destination-space state
+                                                  target-piece
+                                                  (:destination target))]
+    (if-not (:ok? destination-result)
+      destination-result
+      (let [moved-piece (move-piece-to-space target-piece
+                                             (:piece-space destination-result)
+                                             (:orientation target))
+            event {:type (case mode
+                           :move-minion :rod/minion-moved
+                           :push-piece :rod/piece-pushed)
+                   :player-id player-id
+                   :source source
+                   :target (select-keys target [:kind :piece-id :player-id :row :col])
+                   :destination (:destination destination-result)
+                   :distance distance
+                   :direction direction
+                   :piece moved-piece}
+            source-cost {:source-card source-card
+                         :discard-source-card? (= :hand-card (:kind source))}
+            next-state (-> state
+                           (apply-source-cost player-id source-cost)
+                           (replace-piece moved-piece)
+                           (append-history event))]
+        (success next-state [event])))))
+
+(defn apply-rod-move [state command]
+  (let [result (resolve-rod-command state command)]
+    (if-not (:ok? result)
+      result
+      (let [normalized-command (:command result)
+            player-id (:player-id normalized-command)]
+        (case (:mode normalized-command)
+          (:move-minion :push-piece)
+          (apply-rod-piece-move state player-id result)
+
+          :push-territory
+          (failure :move-transition-unavailable
+                   "Rod territory pushing is not implemented yet."
+                   {:mode :push-territory
+                    :command normalized-command}))))))
 
 (defn apply-cup-move [state command]
   (let [{:keys [player-id source target orientation one-point-card-id]} command]
