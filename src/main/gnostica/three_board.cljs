@@ -1,9 +1,9 @@
 (ns gnostica.three-board
   (:require [gnostica.board-layout :as layout]
-            [gnostica.icon-layout :as icon-layout]
             [gnostica.icon-view :as icon-view]
             [gnostica.icons :as icons]
             [gnostica.pieces :as pieces]
+            [gnostica.three-card-textures :as card-textures]
             [reagent.core :as r]))
 
 (def pointer-click-threshold 8)
@@ -22,12 +22,6 @@
 (def wasteland-outline-dash-size 0.035)
 (def wasteland-outline-gap-size 0.055)
 (def renderer-antialias-requested? true)
-(def card-texture-width icon-layout/card-texture-width)
-(def card-texture-height icon-layout/card-texture-height)
-(def card-icon-size icon-layout/texture-card-icon-size)
-(def card-icon-margin-x icon-layout/texture-card-icon-margin-x)
-(def card-icon-margin-y icon-layout/texture-card-icon-margin-y)
-(def card-icon-gap icon-layout/texture-card-icon-gap)
 (def controls-min-distance 3.2)
 (def controls-max-distance 10)
 (def controls-min-polar-angle 0.28)
@@ -106,372 +100,26 @@
                           (pieces/lying-correction-angle piece-size))))
   mesh)
 
-(defn- texture-cover! [texture]
-  (let [image (.-image texture)
-        image-width (.-width image)
-        image-height (.-height image)
-        card-aspect (/ layout/card-short layout/card-long)]
-    (when (and (pos? image-width) (pos? image-height))
-      (let [image-aspect (/ image-width image-height)
-            [repeat-x repeat-y] (if (> image-aspect card-aspect)
-                                  [(/ card-aspect image-aspect) 1]
-                                  [1 (/ image-aspect card-aspect)])]
-        (.set (.-repeat texture) repeat-x repeat-y)
-        (.set (.-offset texture)
-              (/ (- 1 repeat-x) 2)
-              (/ (- 1 repeat-y) 2)))))
-  texture)
+(defn- apply-card-texture! [material texture render!]
+  (set! (.-map material) texture)
+  (set! (.-needsUpdate material) true)
+  (when render!
+    (render!)))
 
-(defn- begin-path! [context]
-  (.beginPath context))
+(defn- mark-card-texture-load-error!
+  [material callbacks {:keys [image title error]} render!]
+  (js/console.error (str "Failed to load tarot texture for " title ": " image) error)
+  (.set (.-color material) 0xff8a7a)
+  (set! (.-needsUpdate material) true)
+  (invoke-callback callbacks :on-texture-error image)
+  (render!))
 
-(defn- stroke! [context]
-  (.stroke context))
-
-(defn- fill! [context]
-  (.fill context))
-
-(defn- polygon! [context points fill?]
-  (when-let [[[x y] & more-points] (seq points)]
-    (begin-path! context)
-    (.moveTo context x y)
-    (doseq [[point-x point-y] more-points]
-      (.lineTo context point-x point-y))
-    (.closePath context)
-    (if fill?
-      (fill! context)
-      (stroke! context))))
-
-(defn- path-lines! [context points]
-  (when-let [[[x y] & more-points] (seq points)]
-    (begin-path! context)
-    (.moveTo context x y)
-    (doseq [[point-x point-y] more-points]
-      (.lineTo context point-x point-y))
-    (stroke! context)))
-
-(defn- draw-cup! [context]
-  (begin-path! context)
-  (.moveTo context 28 24)
-  (.lineTo context 72 24)
-  (.lineTo context 65 56)
-  (.quadraticCurveTo context 50 67 35 56)
-  (.closePath context)
-  (stroke! context)
-  (path-lines! context [[50 66] [50 80]])
-  (path-lines! context [[36 82] [64 82]]))
-
-(defn- draw-rod! [context]
-  (path-lines! context [[34 76] [60 20]])
-  (begin-path! context)
-  (.moveTo context 53 34)
-  (.quadraticCurveTo context 70 32 74 45)
-  (.quadraticCurveTo context 61 47 53 34)
-  (stroke! context)
-  (begin-path! context)
-  (.moveTo context 47 48)
-  (.quadraticCurveTo context 33 45 30 34)
-  (.quadraticCurveTo context 43 34 47 48)
-  (stroke! context))
-
-(defn- draw-sword! [context]
-  (polygon! context [[31 73] [60 24] [70 17] [66 30] [37 78]] false)
-  (path-lines! context [[29 61] [47 76]])
-  (path-lines! context [[24 76] [40 84]]))
-
-(defn- draw-disc! [context]
-  (polygon! context [[50 16] [60 41] [87 41] [65 57] [73 84]
-                     [50 68] [27 84] [35 57] [13 41] [40 41]]
-            false))
-
-(defn- draw-triangle! [context points fill?]
-  (polygon! context points fill?))
-
-(defn- draw-card-stack! [context]
-  (doseq [[x y w h] [[28 25 30 43]]]
-    (begin-path! context)
-    (.rect context x y w h)
-    (stroke! context))
-  (path-lines! context [[34 22] [66 29] [58 72]])
-  (path-lines! context [[40 19] [72 29] [62 72]]))
-
-(defn- draw-curved-arrow! [context]
-  (begin-path! context)
-  (.moveTo context 26 36)
-  (.quadraticCurveTo context 51 12 75 34)
-  (stroke! context)
-  (path-lines! context [[71 21] [77 35] [62 35]]))
-
-(defn- draw-swap-arrows! [context]
-  (begin-path! context)
-  (.moveTo context 26 34)
-  (.quadraticCurveTo context 50 12 73 35)
-  (stroke! context)
-  (path-lines! context [[68 23] [74 36] [59 35]])
-  (begin-path! context)
-  (.moveTo context 74 66)
-  (.quadraticCurveTo context 50 88 27 65)
-  (stroke! context)
-  (path-lines! context [[32 77] [26 64] [41 65]]))
-
-(defn- draw-mini-triangles! [context]
-  (doseq [points [[[20 23] [28 41] [12 41]]
-                  [[80 23] [88 41] [72 41]]
-                  [[20 77] [28 59] [12 59]]
-                  [[80 77] [88 59] [72 59]]]]
-    (draw-triangle! context points true)))
-
-(defn- with-mini-symbol! [context x y scale draw!]
-  (.save context)
-  (.translate context x y)
-  (.scale context scale scale)
-  (.translate context -50 -50)
-  (draw! context)
-  (.restore context))
-
-(defn- draw-question-card! [context]
-  (begin-path! context)
-  (.rect context 30 22 40 56)
-  (stroke! context)
-  (.fillText context "?" 50 55))
-
-(defn- draw-icon-mark! [context icon-id]
-  (case icon-id
-    :question-card
-    (draw-question-card! context)
-
-    :wild-suits
-    (do
-      (path-lines! context [[20 78] [80 22]])
-      (path-lines! context [[20 22] [80 78]])
-      (with-mini-symbol! context 50 8 0.35 draw-cup!)
-      (with-mini-symbol! context 77 50 0.33 draw-sword!)
-      (with-mini-symbol! context 23 50 0.33 draw-rod!)
-      (with-mini-symbol! context 50 82 0.35 draw-disc!))
-
-    :draw-hand
-    (draw-card-stack! context)
-
-    :orient-minion
-    (do
-      (draw-triangle! context [[50 16] [77 76] [23 76]] false)
-      (draw-triangle! context [[64 48] [79 76] [49 76]] false)
-      (draw-curved-arrow! context))
-
-    :cup-unbounded
-    (do
-      (draw-mini-triangles! context)
-      (draw-cup! context))
-
-    :rod-unbounded
-    (do
-      (draw-mini-triangles! context)
-      (draw-rod! context))
-
-    :convert-piece
-    (do
-      (draw-triangle! context [[50 16] [77 76] [23 76]] true)
-      (draw-triangle! context [[68 22] [84 56] [52 56]] false)
-      (path-lines! context [[45 40] [65 40]])
-      (path-lines! context [[60 32] [68 40] [60 48]]))
-
-    :rod
-    (draw-rod! context)
-
-    :cup
-    (draw-cup! context)
-
-    :trade-hand
-    (do
-      (begin-path! context)
-      (.rect context 26 28 23 32)
-      (stroke! context)
-      (begin-path! context)
-      (.rect context 52 40 23 32)
-      (stroke! context)
-      (draw-swap-arrows! context))
-
-    :sword
-    (draw-sword! context)
-
-    :relocate
-    (do
-      (begin-path! context)
-      (.moveTo context 28 70)
-      (.quadraticCurveTo context 50 54 72 70)
-      (stroke! context)
-      (path-lines! context [[50 70] [50 23] [70 45]])
-      (path-lines! context [[50 23] [30 45]])
-      (begin-path! context)
-      (.moveTo context 30 45)
-      (.quadraticCurveTo context 18 42 14 30)
-      (.quadraticCurveTo context 30 31 39 51)
-      (stroke! context)
-      (begin-path! context)
-      (.moveTo context 70 45)
-      (.quadraticCurveTo context 82 42 86 30)
-      (.quadraticCurveTo context 70 31 61 51)
-      (stroke! context))
-
-    :wheel-cup
-    (do
-      (draw-cup! context)
-      (.fillText context "?" 50 51))
-
-    :disc
-    (draw-disc! context)
-
-    :orient-target
-    (do
-      (draw-triangle! context [[50 16] [77 76] [23 76]] true)
-      (draw-triangle! context [[68 30] [88 76] [48 76]] true)
-      (draw-curved-arrow! context))
-
-    :sword-from-discard
-    (do
-      (draw-swap-arrows! context)
-      (draw-sword! context))
-
-    :disc-from-discard
-    (do
-      (draw-swap-arrows! context)
-      (draw-disc! context))
-
-    :judgement
-    (do
-      (draw-card-stack! context)
-      (draw-triangle! context [[67 30] [83 66] [51 66]] false)
-      (path-lines! context [[76 75] [76 51]])
-      (path-lines! context [[68 59] [76 50] [84 59]]))
-
-    :world
-    (do
-      (begin-path! context)
-      (.save context)
-      (.translate context 50 50)
-      (.scale context 1 0.6)
-      (.arc context 0 0 35 0 (* 2 js/Math.PI))
-      (.restore context)
-      (stroke! context)
-      (path-lines! context [[16 50] [84 50]])
-      (begin-path! context)
-      (.moveTo context 32 37)
-      (.quadraticCurveTo context 50 48 68 37)
-      (stroke! context)
-      (begin-path! context)
-      (.moveTo context 32 63)
-      (.quadraticCurveTo context 50 52 68 63)
-      (stroke! context))
-
-    nil))
-
-(defn- draw-gnostica-icon! [context icon-id x y size]
-  (.save context)
-  (.translate context x y)
-  (.scale context (/ size 100) (/ size 100))
-  (set! (.-fillStyle context) "#fffaf0")
-  (set! (.-strokeStyle context) "#16100d")
-  (set! (.-lineWidth context) 5)
-  (begin-path! context)
-  (.arc context 50 50 45 0 (* 2 js/Math.PI))
-  (fill! context)
-  (stroke! context)
-  (set! (.-fillStyle context) "#16100d")
-  (set! (.-strokeStyle context) "#16100d")
-  (set! (.-lineWidth context) 6)
-  (set! (.-lineCap context) "round")
-  (set! (.-lineJoin context) "round")
-  (set! (.-font context) "700 52px Georgia, serif")
-  (set! (.-textAlign context) "center")
-  (set! (.-textBaseline context) "middle")
-  (draw-icon-mark! context icon-id)
-  (.restore context))
-
-(defn- draw-icon-stack! [context icon-ids]
-  (doseq [[position icon-id] (map-indexed vector (icons/present-icon-ids icon-ids))]
-    (draw-gnostica-icon! context
-                         icon-id
-                         card-icon-margin-x
-                         (+ card-icon-margin-y
-                            (* position (+ card-icon-size card-icon-gap)))
-                         card-icon-size)))
-
-(defn- draw-card-image-cover! [context image]
-  (let [image-width (.-width image)
-        image-height (.-height image)
-        image-aspect (/ image-width image-height)
-        card-aspect (/ card-texture-width card-texture-height)
-        [source-x source-y source-width source-height]
-        (if (> image-aspect card-aspect)
-          (let [width (* image-height card-aspect)]
-            [(/ (- image-width width) 2) 0 width image-height])
-          (let [height (/ image-width card-aspect)]
-            [0 (/ (- image-height height) 2) image-width height]))]
-    (.drawImage context
-                image
-                source-x
-                source-y
-                source-width
-                source-height
-                0
-                0
-                card-texture-width
-                card-texture-height)))
-
-(defn- create-card-canvas-texture! []
-  (let [canvas (.createElement js/document "canvas")
-        context (.getContext canvas "2d")
-        texture (js/THREE.Texture. canvas)]
-    (set! (.-width canvas) card-texture-width)
-    (set! (.-height canvas) card-texture-height)
-    (set! (.-fillStyle context) "#efe5d0")
-    (.fillRect context 0 0 card-texture-width card-texture-height)
-    (set! (.-encoding texture) js/THREE.sRGBEncoding)
-    (set! (.-minFilter texture) js/THREE.LinearFilter)
-    (set! (.-magFilter texture) js/THREE.LinearFilter)
-    (set! (.-needsUpdate texture) true)
-    {:context context
-     :texture texture}))
-
-(defn- load-card-icon-texture!
-  [material render! active? textures callbacks {:keys [image title gnostica-icons]}]
-  (let [unknown-icons (icons/unknown-icon-ids gnostica-icons)]
-    (if (seq unknown-icons)
-      (let [message (str "Missing Gnostica icon asset"
-                         (when (not= 1 (count unknown-icons)) "s")
-                         " for "
-                         title
-                         ": "
-                         (pr-str unknown-icons))]
-        (js/console.error message)
-        (.set (.-color material) 0xff8a7a)
-        (set! (.-needsUpdate material) true)
-        (invoke-callback callbacks :on-renderer-error message)
-        (render!))
-      (let [card-image (js/Image.)
-            {:keys [context texture]} (create-card-canvas-texture!)]
-        (swap! textures conj texture)
-        (set! (.-map material) texture)
-        (set! (.-needsUpdate material) true)
-        (set! (.-decoding card-image) "async")
-        (set! (.-onload card-image)
-              (fn []
-                (when @active?
-                  (.clearRect context 0 0 card-texture-width card-texture-height)
-                  (draw-card-image-cover! context card-image)
-                  (draw-icon-stack! context gnostica-icons)
-                  (set! (.-needsUpdate texture) true)
-                  (set! (.-needsUpdate material) true)
-                  (render!))))
-        (set! (.-onerror card-image)
-              (fn [error]
-                (when @active?
-                  (js/console.error (str "Failed to load tarot texture for " title ": " image) error)
-                  (.set (.-color material) 0xff8a7a)
-                  (set! (.-needsUpdate material) true)
-                  (invoke-callback callbacks :on-texture-error image)
-                  (render!))))
-        (set! (.-src card-image) image)))))
+(defn- mark-card-renderer-error! [material callbacks message render!]
+  (js/console.error message)
+  (.set (.-color material) 0xff8a7a)
+  (set! (.-needsUpdate material) true)
+  (invoke-callback callbacks :on-renderer-error message)
+  (render!))
 
 (defn- pointer-event->board-pointer! [pointer target event]
   (let [rect (.getBoundingClientRect target)
@@ -818,8 +466,7 @@
    card-icon-mode
    callbacks
    {:keys [index orientation card] :as cell}]
-  (let [{:keys [image title]} card
-        selection-geometry (js/THREE.PlaneGeometry.
+  (let [selection-geometry (js/THREE.PlaneGeometry.
                             (+ layout/card-short layout/selected-card-padding)
                             (+ layout/card-long layout/selected-card-padding))
         selection-material (js/THREE.MeshBasicMaterial. #js {:color 0x9ff7e7
@@ -847,27 +494,23 @@
     (swap! card-meshes conj mesh)
     (if (and (show-card-icon-overlays? card-icon-mode)
              (seq (icons/present-icon-ids (:gnostica-icons card))))
-      (load-card-icon-texture! material render! active? textures callbacks card)
-      (let [texture (.load loader
-                           image
-                           (fn [loaded-texture]
-                             (when @active?
-                               (texture-cover! loaded-texture)
-                               (set! (.-encoding loaded-texture) js/THREE.sRGBEncoding)
-                               (set! (.-minFilter loaded-texture) js/THREE.LinearFilter)
-                               (set! (.-magFilter loaded-texture) js/THREE.LinearFilter)
-                               (set! (.-needsUpdate loaded-texture) true)
-                               (set! (.-map material) loaded-texture)
-                               (set! (.-needsUpdate material) true)
-                               (render!)))
-                           nil
-                           (fn [error]
-                             (when @active?
-                               (js/console.error (str "Failed to load tarot texture for " title ": " image) error)
-                               (.set (.-color material) 0xff8a7a)
-                               (set! (.-needsUpdate material) true)
-                               (invoke-callback callbacks :on-texture-error image)
-                               (render!))))]
+      (let [{:keys [ok? texture error-message]}
+            (card-textures/load-card-icon-texture!
+             {:card card
+              :active? active?
+              :on-ready #(apply-card-texture! material % render!)
+              :on-error #(mark-card-texture-load-error! material callbacks % render!)})]
+        (if ok?
+          (do
+            (swap! textures conj texture)
+            (apply-card-texture! material texture nil))
+          (mark-card-renderer-error! material callbacks error-message render!)))
+      (let [texture (card-textures/load-card-art-texture!
+                     {:loader loader
+                      :card card
+                      :active? active?
+                      :on-ready #(apply-card-texture! material % render!)
+                      :on-error #(mark-card-texture-load-error! material callbacks % render!)})]
         (swap! textures conj texture)))))
 
 (defn- reset-view! [this]
@@ -1052,6 +695,7 @@
             state (r/state component)
             cells-by-index (layout/cells-by-index _cells)
             selected-card (get-in cells-by-index [_selected-index :card])
+            texture-metadata (card-textures/texture-renderer-metadata)
             popover-index (or (:hovered-index state)
                               (when (:board-focused? state)
                                 _selected-index))
@@ -1077,8 +721,11 @@
                                                          (get-in % [:card :gnostica-icons])))
                                                 _cells))
           :data-card-icon-mode (name card-icon-mode)
-          :data-card-icon-scale icon-layout/card-icon-scale
-          :data-card-icon-size card-icon-size
+          :data-card-icon-scale (:card-icon-scale texture-metadata)
+          :data-card-icon-size (:card-icon-size texture-metadata)
+          :data-card-texture-supported-icon-count (:supported-icon-count texture-metadata)
+          :data-card-texture-max-icon-count (:max-card-icon-count texture-metadata)
+          :data-card-texture-icon-stack-fits (:icon-stack-fits? texture-metadata)
           :data-wasteland-count (count (layout/wasteland-spaces _cells))
           :data-visible-piece-count (visible-piece-count _pieces)
           :data-piece-edge-outline-count (or (:piece-edge-outline-count state) 0)

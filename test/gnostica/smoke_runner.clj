@@ -347,6 +347,9 @@
        majorIconCount: board ? Number(board.dataset.majorIconCount || -1) : -1,
        cardIconScale: board ? Number(board.dataset.cardIconScale || -1) : -1,
        cardIconSize: board ? Number(board.dataset.cardIconSize || -1) : -1,
+       cardTextureSupportedIconCount: board ? Number(board.dataset.cardTextureSupportedIconCount || -1) : -1,
+       cardTextureMaxIconCount: board ? Number(board.dataset.cardTextureMaxIconCount || -1) : -1,
+       cardTextureIconStackFits: board ? board.dataset.cardTextureIconStackFits === 'true' : false,
        wastelandCount: board ? Number(board.dataset.wastelandCount || -1) : -1,
        visiblePieceCount: board ? Number(board.dataset.visiblePieceCount || -1) : -1,
        pieceEdgeOutlineCount: board ? Number(board.dataset.pieceEdgeOutlineCount || -1) : -1,
@@ -610,7 +613,12 @@
   (and (= icon-layout/card-icon-scale
           (long (or (get stats "cardIconScale") -1)))
        (= icon-layout/texture-card-icon-size
-          (long (or (get stats "cardIconSize") -1)))))
+          (long (or (get stats "cardIconSize") -1)))
+       (= (count icons/icon-ids)
+          (long (or (get stats "cardTextureSupportedIconCount") -1)))
+       (= icon-layout/max-card-icon-count
+          (long (or (get stats "cardTextureMaxIconCount") -1)))
+       (true? (get stats "cardTextureIconStackFits"))))
 
 (defn- happy-ready? [stats]
   (let [visible-piece-count (long (or (get stats "visiblePieceCount") -1))
