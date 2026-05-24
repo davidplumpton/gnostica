@@ -464,6 +464,46 @@
             :orientation :west}
            created-piece))))
 
+(deftest playing-a-cup-hand-card-can-create-an-enemy-piece
+  (let [db (app-state/initialize {:player-specs test-player-specs
+                                  :game-options {:deck-order (deck-starting-with ["cups2"])}
+                                  :demo-board-pieces [rose-hand-piece
+                                                      indigo-rod-target]})
+        piece-db (-> db
+                     (app-state/select-move-source :play-hand-card)
+                     (app-state/select-move-hand-card "cups2")
+                     (app-state/select-move-piece :rose-striker))
+        target-db (app-state/select-move-target-piece piece-db :indigo-rod-target)
+        confirmed-db (app-state/confirm-move target-db)
+        zones (app-state/card-zones confirmed-db)
+        created-piece (piece-by-id confirmed-db :indigo-small-1)]
+    (is (= [:indigo-rod-target]
+           (mapv :id (app-state/move-target-piece-options piece-db))))
+    (is (= :confirm (:stage (app-state/move-selection target-db))))
+    (is (= {:hand-card-id "cups2"
+            :piece-id :rose-striker
+            :target-piece-id :indigo-rod-target}
+           (app-state/move-params target-db)))
+    (is (= {:player-id :rose
+            :source {:kind :hand-card
+                     :card-id "cups2"
+                     :piece-id :rose-striker}
+            :target {:kind :piece
+                     :piece-id :indigo-rod-target}}
+           (app-state/move-command target-db)))
+    (is (:ok? (get-in confirmed-db [:move-selection :last-result])))
+    (is (= ["cups2"] (mapv :id (:discard-pile zones))))
+    (is (not (some #{"cups2"} (map :id (:hand zones)))))
+    (is (= {:id :indigo-small-1
+            :player-id :indigo
+            :space-index 4
+            :size :small
+            :orientation :north}
+           created-piece))
+    (is (= 3 (get-in confirmed-db [:game :pieces :stashes :indigo :small])))
+    (is (= 3 (get-in confirmed-db [:game :players-by-id :indigo :stash :small])))
+    (is (game-schema/valid-game? (app-state/game confirmed-db)))))
+
 (deftest playing-a-cup-hand-card-can-create-a_wasteland_territory
   (let [db (app-state/initialize {:player-specs test-player-specs
                                   :game-options {:deck-order (deck-starting-with ["cups2" "coins2"])}

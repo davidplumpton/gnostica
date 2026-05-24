@@ -1003,6 +1003,91 @@
   (filterv #(= [row col] (piece-coordinate state %))
            (get-in state [:pieces :on-board])))
 
+(defn- target-piece-territory-cell [state piece]
+  (if-let [space-index (:space-index piece)]
+    (board-cell-by-index state space-index)
+    (when-let [{:keys [row col]} (:space piece)]
+      (board-cell-at state row col))))
+
+(defn- create-enemy-small-piece [state player-id source target orientation]
+  (let [target-piece (piece-by-id state (:piece-id target))
+        target-cell (when target-piece
+                      (target-piece-territory-cell state target-piece))
+        target-player-id (:player-id target-piece)
+        target-space-pieces (when target-cell
+                              (pieces-at-coordinate state
+                                                    (:row target-cell)
+                                                    (:col target-cell)))]
+    (cond
+      (not (map? target))
+      (failure :invalid-cup-target
+               "Cup enemy-piece creation targets must be piece target maps."
+               {:target target})
+
+      (not= :piece (:kind target))
+      (failure :invalid-cup-target
+               "Cup enemy-piece creation targets an enemy piece."
+               {:target target})
+
+      (some? orientation)
+      (failure :invalid-orientation
+               "Cup enemy-piece creation preserves the target piece orientation."
+               {:orientation orientation
+                :piece-id (:piece-id target)})
+
+      (nil? target-piece)
+      (failure :invalid-target-piece
+               "Cup enemy-piece creation must reference a piece on the board."
+               {:target target})
+
+      (= player-id target-player-id)
+      (failure :target-piece-not-enemy
+               "Cup enemy-piece creation must target an enemy piece."
+               {:piece-id (:id target-piece)
+                :player-id player-id})
+
+      (nil? target-cell)
+      (failure :invalid-target-piece-space
+               "Cup enemy-piece creation must target an enemy piece on an existing territory."
+               {:piece-id (:id target-piece)
+                :space-index (:space-index target-piece)
+                :space (:space target-piece)})
+
+      (<= pieces/max-pieces-per-space (count target-space-pieces))
+      (failure :target-territory-full
+               "Cup enemy-piece creation requires fewer than three pieces on the target territory."
+               {:board-index (:index target-cell)
+                :piece-ids (mapv :id target-space-pieces)
+                :maximum pieces/max-pieces-per-space})
+
+      (not (pos? (small-stash-count state target-player-id)))
+      (failure :no-small-piece-available
+               "The target piece's player has no small pieces available in stash."
+               {:player-id target-player-id
+                :target-piece-id (:id target-piece)})
+
+      :else
+      (let [piece {:id (next-piece-id state target-player-id :small)
+                   :player-id target-player-id
+                   :space-index (:index target-cell)
+                   :size :small
+                   :orientation (:orientation target-piece)}
+            normalized-target {:kind :piece
+                               :piece-id (:id target-piece)
+                               :board-index (:index target-cell)}
+            event {:type :cup/enemy-small-piece-created
+                   :player-id player-id
+                   :source (source-summary (:source source))
+                   :target normalized-target
+                   :target-piece target-piece
+                   :piece piece}
+            next-state (-> state
+                           (apply-source-cost player-id source)
+                           (decrement-small-stash target-player-id)
+                           (update-in [:pieces :on-board] conj piece)
+                           (append-history event))]
+        (success next-state [event])))))
+
 (defn- next-board-index [state]
   (inc (apply max -1 (map :index (:board state)))))
 
@@ -1469,11 +1554,14 @@
             :territory
             (place-small-piece state player-id source-result target orientation)
 
+            :piece
+            (create-enemy-small-piece state player-id source-result target orientation)
+
             :wasteland
             (create-wasteland-territory state player-id source-result target one-point-card-id)
 
             (failure :invalid-cup-target
-                     "Cup move targets must be either :territory or :wasteland."
+                     "Cup move targets must be :territory, :piece, or :wasteland."
                      {:target target}))
           source-result)))))
 

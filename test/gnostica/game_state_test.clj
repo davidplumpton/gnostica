@@ -83,6 +83,13 @@
    :size :medium
    :orientation :up})
 
+(def indigo-cup-target
+  {:id :indigo-cup-target
+   :player-id :indigo
+   :space-index 4
+   :size :medium
+   :orientation :west})
+
 (defn- piece-by-id [state piece-id]
   (some #(when (= piece-id (:id %)) %)
         (get-in state [:pieces :on-board])))
@@ -494,6 +501,40 @@
     (is (= events [(peek (:history state))]))
     (is (game-schema/valid-game? state))))
 
+(deftest cup-move-can-create-an-enemy-small-piece-by-targeting-an-enemy-piece
+  (let [state (state-with-pieces [rose-cup-minion indigo-cup-target])
+        command {:player-id :rose
+                 :source {:kind :territory
+                          :board-index 3
+                          :piece-id :rose-cup-minion}
+                 :target {:kind :piece
+                          :piece-id :indigo-cup-target}}
+        {:keys [ok? state events]} (game-state/apply-cup-move state command)
+        created-piece (piece-by-id state :indigo-small-1)]
+    (is ok?)
+    (is (= {:id :indigo-small-1
+            :player-id :indigo
+            :space-index 4
+            :size :small
+            :orientation :west}
+           created-piece))
+    (is (= 4 (get-in state [:players-by-id :rose :stash :small])))
+    (is (= 4 (get-in state [:players-by-id :indigo :stash :small])))
+    (is (= 4 (get-in state [:pieces :stashes :indigo :small])))
+    (is (= [{:type :cup/enemy-small-piece-created
+             :player-id :rose
+             :source {:kind :territory
+                      :board-index 3
+                      :piece-id :rose-cup-minion}
+             :target {:kind :piece
+                      :piece-id :indigo-cup-target
+                      :board-index 4}
+             :target-piece indigo-cup-target
+             :piece created-piece}]
+           events))
+    (is (= events [(peek (:history state))]))
+    (is (game-schema/valid-game? state))))
+
 (deftest cup-move-can-use-cup-card-from-hand-as-source
   (let [deck-order (deck-starting-with ["cups2" "coins2"])
         state (:state (game-state/create-game player-specs {:deck-order deck-order}))
@@ -638,6 +679,61 @@
            (get-in result [:error :code])))
     (is (= [:indigo-wasteland-minion]
            (get-in result [:error :data :enemy-piece-ids])))))
+
+(deftest cup-move-rejects-invalid-enemy-piece-targets
+  (let [own-target-state (state-with-pieces [rose-cup-minion rose-target-minion])
+        own-target-result (game-state/apply-cup-move
+                           own-target-state
+                           {:player-id :rose
+                            :source {:kind :territory
+                                     :board-index 3
+                                     :piece-id :rose-cup-minion}
+                            :target {:kind :piece
+                                     :piece-id :rose-target-minion}})
+        no-small-state (state-with-pieces
+                        [rose-cup-minion
+                         indigo-cup-target
+                         {:id :indigo-small-a
+                          :player-id :indigo
+                          :space-index 0
+                          :size :small
+                          :orientation :north}
+                         {:id :indigo-small-b
+                          :player-id :indigo
+                          :space-index 1
+                          :size :small
+                          :orientation :east}
+                         {:id :indigo-small-c
+                          :player-id :indigo
+                          :space-index 2
+                          :size :small
+                          :orientation :south}
+                         {:id :indigo-small-d
+                          :player-id :indigo
+                          :space-index 5
+                          :size :small
+                          :orientation :west}
+                         {:id :indigo-small-e
+                          :player-id :indigo
+                          :space-index 6
+                          :size :small
+                          :orientation :up}])
+        no-small-result (game-state/apply-cup-move
+                         no-small-state
+                         {:player-id :rose
+                          :source {:kind :territory
+                                   :board-index 3
+                                   :piece-id :rose-cup-minion}
+                          :target {:kind :piece
+                                   :piece-id :indigo-cup-target}})]
+    (is (= :target-piece-not-enemy
+           (get-in own-target-result [:error :code])))
+    (is (= :no-small-piece-available
+           (get-in no-small-result [:error :code])))
+    (is (= :indigo
+           (get-in no-small-result [:error :data :player-id])))
+    (is (not (contains? own-target-result :state)))
+    (is (not (contains? no-small-result :state)))))
 
 (deftest rod-command-normalizes-territory-source
   (let [state (-> (state-with-pieces [rose-rod-minion])

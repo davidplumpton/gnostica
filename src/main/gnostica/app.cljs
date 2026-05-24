@@ -830,12 +830,14 @@
        distance])]])
 
 (defn- cup-move-controls
-  [params target-board-options target-wasteland-options one-point-card-options orientation-options]
+  [params board target-piece-options target-board-options target-wasteland-options
+   one-point-card-options orientation-options]
   [:<>
    [target-choice-grid target-board-options
     target-wasteland-options
     (:target-board-index params)
     (:target-wasteland params)]
+   [target-piece-choices board target-piece-options (:target-piece-id params)]
    (when (:target-board-index params)
      [orientation-choices orientation-options (:orientation params)])
    (when (:target-wasteland params)
@@ -905,6 +907,8 @@
                   orientation-options
                   orientation-required?]
             :cup [cup-move-controls params
+                  board
+                  target-piece-options
                   target-board-options
                   target-wasteland-options
                   one-point-card-options
@@ -929,6 +933,8 @@
                   orientation-options
                   orientation-required?]
             :cup [cup-move-controls params
+                  board
+                  target-piece-options
                   target-board-options
                   target-wasteland-options
                   one-point-card-options

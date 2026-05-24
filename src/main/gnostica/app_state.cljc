@@ -88,7 +88,8 @@
    :rod-mode "Choose a Rod move."
    :target-piece-id "Choose a target piece."
    :target-board-index "Choose a target territory."
-   :target-space "Choose a target territory or wasteland."
+   :target-space "Choose a target territory, enemy piece, or wasteland."
+   :initial-target-space "Choose an empty territory or wasteland."
    :one-point-card-id "Choose a one-point card from the current player's hand."
    :orientation "Choose an orientation."
    :distance "Choose a distance."
@@ -328,6 +329,16 @@
 (defn valid-board-index? [db index]
   (contains? (board db) index))
 
+(defn- cup-target-piece? [db piece]
+  (and piece
+       (not (current-player-piece? db piece))
+       (valid-board-index? db (:space-index piece))))
+
+(defn- cup-target-piece [db params]
+  (let [piece (piece-by-id db (:target-piece-id params))]
+    (when (cup-target-piece? db piece)
+      piece)))
+
 (defn- empty-board-target? [db index]
   (when-let [{:keys [row col]} (get (board db) index)]
     (empty? (pieces-at-coordinate db row col))))
@@ -360,10 +371,14 @@
         (valid-wasteland-target? db (:target-wasteland params)))
 
     (or (valid-board-index? db (:target-board-index params))
+        (some? (cup-target-piece db params))
         (valid-wasteland-target? db (:target-wasteland params)))))
 
 (defn- target-resolution-complete? [db source-id params]
   (cond
+    (some? (cup-target-piece db params))
+    true
+
     (valid-board-index? db (:target-board-index params))
     (contains? pieces/legal-orientations (:orientation params))
 
@@ -462,9 +477,17 @@
     (rod-distance-options-for-piece piece)))
 
 (defn move-target-piece-options [db]
-  (if (rod-move? db (move-source db) (move-params db))
-    (board-pieces db)
-    []))
+  (let [source (move-source db)
+        params (move-params db)]
+    (cond
+      (rod-move? db source params)
+      (board-pieces db)
+
+      (cup-move? db source params)
+      (filterv #(cup-target-piece? db %) (board-pieces db))
+
+      :else
+      [])))
 
 (defn- rod-target-piece [db params]
   (piece-by-id db (:target-piece-id params)))
@@ -640,9 +663,14 @@
       (nil? source) "Choose a move source."
       (= :confirm stage) "Confirm the selected move."
       (= :rejected stage) "Review or cancel the rejected move."
-      (= :target stage) (if (or (cup-move? db source (move-params db))
-                                (= :place-initial-small source))
+      (= :target stage) (cond
+                          (cup-move? db source (move-params db))
                           (:target-space requirement-prompts)
+
+                          (= :place-initial-small source)
+                          (:initial-target-space requirement-prompts)
+
+                          :else
                           (:target-board-index requirement-prompts))
       (= :one-point-card stage) (:one-point-card-id requirement-prompts)
       :else (get {:source-territory (:source-board-index requirement-prompts)
@@ -749,7 +777,7 @@
               :one-point-card-id
               :orientation))))
 
-(defn- set-rod-target-piece [params piece-id]
+(defn- set-target-piece [params piece-id]
   (let [next-params (assoc params :target-piece-id piece-id)]
     (if (= (:target-piece-id params) piece-id)
       next-params
@@ -898,19 +926,39 @@
                                         :options rod-mode-order}))))
 
 (defn select-move-target-piece [db piece-id]
-  (if-let [piece (piece-by-id db piece-id)]
-    (if (rod-move? db (move-source db) (move-params db))
-      (update-move-selection-success db update :params set-rod-target-piece (:id piece))
+  (let [source (move-source db)
+        params (move-params db)
+        piece (piece-by-id db piece-id)
+        selectable-piece? (some #(= piece-id (:id %))
+                                (move-target-piece-options db))]
+    (cond
+      (nil? piece)
       (update-move-selection db assoc
                              :error
                              (move-error :invalid-target-piece
-                                         "Target pieces are only available for Rod moves."
-                                         {:piece-id piece-id})))
-    (update-move-selection db assoc
-                           :error
-                           (move-error :invalid-target-piece
-                                       "Choose a piece on the board."
-                                       {:piece-id piece-id}))))
+                                         "Choose a piece on the board."
+                                         {:piece-id piece-id}))
+
+      (rod-move? db source params)
+      (update-move-selection-success db update :params set-target-piece (:id piece))
+
+      (and (cup-move? db source params)
+           selectable-piece?)
+      (update-move-selection-success db update :params set-target-piece (:id piece))
+
+      (cup-move? db source params)
+      (update-move-selection db assoc
+                             :error
+                             (move-error :invalid-target-piece
+                                         "Choose an enemy piece on an existing territory."
+                                         {:piece-id piece-id}))
+
+      :else
+      (update-move-selection db assoc
+                             :error
+                             (move-error :invalid-target-piece
+                                         "Target pieces are only available for Cup or Rod moves."
+                                         {:piece-id piece-id})))))
 
 (defn select-move-one-point-card [db card-id]
   (let [{:keys [source params]} (move-selection db)]
@@ -994,9 +1042,16 @@
         [:up :north :east :south :west]))
 
 (defn- cup-target-command [params]
-  (if-let [target-wasteland (:target-wasteland params)]
-    {:target (select-keys target-wasteland [:kind :row :col])
+  (cond
+    (:target-wasteland params)
+    {:target (select-keys (:target-wasteland params) [:kind :row :col])
      :one-point-card-id (:one-point-card-id params)}
+
+    (:target-piece-id params)
+    {:target {:kind :piece
+              :piece-id (:target-piece-id params)}}
+
+    :else
     {:target {:kind :territory
               :board-index (:target-board-index params)}
      :orientation (:orientation params)}))
