@@ -78,6 +78,17 @@
   (is (not (cards/one-point-card? (cards/card-by-id "cupsqueen"))))
   (is (not (cards/one-point-card? (cards/card-by-id "sun")))))
 
+(deftest rod-card-helper-identifies-rod-sources
+  (is (cards/rod-card? (cards/card-by-id "wands2")))
+  (is (cards/rod-card? (cards/card-by-id "chariot")))
+  (is (cards/rod-card? (cards/card-by-id "emperor")))
+  (is (cards/rod-card? (cards/card-by-id "magician")))
+  (is (cards/rod-card? {:id "wands3"
+                        :title "Three of Wands"
+                        :image "/images/wands3.png"}))
+  (is (not (cards/rod-card? (cards/card-by-id "cups2"))))
+  (is (not (cards/rod-card? (cards/card-by-id "sun")))))
+
 (defn -main [& _]
   (let [{:keys [fail error]} (run-tests 'gnostica.cards-test)]
     (System/exit (if (zero? (+ fail error)) 0 1))))

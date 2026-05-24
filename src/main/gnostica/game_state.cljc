@@ -308,6 +308,12 @@
   (filterv #(= board-index (:space-index %))
            (get-in state [:pieces :on-board])))
 
+(defn- piece-coordinate [state piece]
+  (if-let [{:keys [row col]} (:space piece)]
+    [row col]
+    (when-let [{:keys [row col]} (board-cell-by-index state (:space-index piece))]
+      [row col])))
+
 (defn- player-hand-card [state player-id card-id]
   (some (fn [card]
           (when (= card-id (:id card))
@@ -345,6 +351,419 @@
 
 (defn- current-player-id? [state player-id]
   (= player-id (get-in state [:turn :current-player-id])))
+
+(def rod-modes #{:move-minion
+                 :push-piece
+                 :push-territory})
+
+(def rod-direction-offsets
+  {:north [-1 0]
+   :east [0 1]
+   :south [1 0]
+   :west [0 -1]})
+
+(defn- coordinate-map [coordinate]
+  (cond
+    (map? coordinate)
+    (when (and (int? (:row coordinate))
+               (int? (:col coordinate)))
+      (select-keys coordinate [:row :col]))
+
+    (sequential? coordinate)
+    (let [[row col] coordinate]
+      (when (and (int? row) (int? col))
+        {:row row
+         :col col}))))
+
+(defn rod-destination-coordinate [coordinate direction distance]
+  (when-let [[row-offset col-offset] (get rod-direction-offsets direction)]
+    (when-let [{:keys [row col]} (coordinate-map coordinate)]
+      (when (int? distance)
+        {:row (+ row (* row-offset distance))
+         :col (+ col (* col-offset distance))}))))
+
+(defn- same-coordinate? [left right]
+  (= (coordinate-map left)
+     (coordinate-map right)))
+
+(defn- rod-targetable-coordinate? [actor-coordinate target-coordinate direction target-self?]
+  (or target-self?
+      (same-coordinate? target-coordinate
+                        (rod-destination-coordinate actor-coordinate direction 1))))
+
+(defn- target-summary [target]
+  (select-keys target [:kind :piece-id :board-index :row :col]))
+
+(defn- territory-target-cell [state target]
+  (cond
+    (not (map? target))
+    (failure :invalid-rod-target
+             "Rod territory targets require a target map."
+             {:target target})
+
+    (not= :territory (:kind target))
+    (failure :invalid-rod-target
+             "Rod territory targets must use :kind :territory."
+             {:target target})
+
+    (some? (:board-index target))
+    (if-let [cell (board-cell-by-index state (:board-index target))]
+      {:ok? true
+       :cell cell}
+      (failure :invalid-target-territory
+               "Rod territory targets must reference an existing board cell."
+               {:target target}))
+
+    (and (int? (:row target))
+         (int? (:col target)))
+    (if-let [cell (board-cell-at state (:row target) (:col target))]
+      {:ok? true
+       :cell cell}
+      (failure :invalid-target-territory
+               "Rod territory targets must reference an existing board cell."
+               {:target target}))
+
+    :else
+    (failure :invalid-rod-target
+             "Rod territory targets require a board index or row and column."
+             {:target target})))
+
+(defn- resolve-rod-source [state player-id source]
+  (let [piece (piece-by-id state (:piece-id source))
+        piece-coordinate (when piece
+                           (piece-coordinate state piece))]
+    (cond
+      (not (map? source))
+      (failure :invalid-rod-command
+               "Rod moves require a source map."
+               {:source source})
+
+      (nil? piece)
+      (failure :invalid-piece
+               "Rod moves require one of the player's pieces as the acting minion."
+               {:piece-id (:piece-id source)})
+
+      (not= player-id (:player-id piece))
+      (failure :invalid-piece
+               "The acting minion must belong to the move's player."
+               {:piece-id (:piece-id source)
+                :player-id player-id
+                :piece-player-id (:player-id piece)})
+
+      (nil? piece-coordinate)
+      (failure :invalid-piece-space
+               "Rod moves require an acting minion with a board coordinate."
+               {:piece-id (:piece-id source)
+                :space-index (:space-index piece)
+                :space (:space piece)})
+
+      (= :up (:orientation piece))
+      (failure :rod-minion-upright
+               "A piece standing upright may not use a Rod."
+               {:piece-id (:id piece)
+                :orientation (:orientation piece)})
+
+      (not (contains? pieces/cardinal-orientations (:orientation piece)))
+      (failure :invalid-rod-direction
+               "Rod moves require the acting minion to point in a cardinal direction."
+               {:piece-id (:id piece)
+                :orientation (:orientation piece)
+                :legal-directions pieces/cardinal-orientations})
+
+      (= :territory (:kind source))
+      (let [cell (board-cell-by-index state (:board-index source))]
+        (cond
+          (nil? cell)
+          (failure :invalid-source-territory
+                   "Rod territory sources must reference an existing board cell."
+                   {:board-index (:board-index source)})
+
+          (not= (:board-index source) (:space-index piece))
+          (failure :source-piece-mismatch
+                   "The acting minion must occupy the source territory."
+                   {:piece-id (:piece-id source)
+                    :piece-space-index (:space-index piece)
+                    :source-board-index (:board-index source)})
+
+          (not (cards/rod-card? (:card cell)))
+          (failure :source-card-not-rod
+                   "The source card does not provide a Rod power."
+                   {:card-id (get-in cell [:card :id])
+                    :source source})
+
+          :else
+          {:ok? true
+           :source source
+           :source-card (:card cell)
+           :piece piece
+           :piece-coordinate (coordinate-map piece-coordinate)
+           :direction (:orientation piece)}))
+
+      (= :hand-card (:kind source))
+      (let [card (player-hand-card state player-id (:card-id source))]
+        (cond
+          (nil? card)
+          (failure :invalid-hand-card
+                   "Rod hand-card sources must reference a card in the player's hand."
+                   {:card-id (:card-id source)
+                    :player-id player-id})
+
+          (not (cards/rod-card? card))
+          (failure :source-card-not-rod
+                   "The source card does not provide a Rod power."
+                   {:card-id (:id card)
+                    :source source})
+
+          :else
+          {:ok? true
+           :source source
+           :source-card card
+           :discard-source-card? true
+           :piece piece
+           :piece-coordinate (coordinate-map piece-coordinate)
+           :direction (:orientation piece)}))
+
+      :else
+      (failure :invalid-rod-command
+               "Rod move sources must be either :territory or :hand-card."
+               {:source source}))))
+
+(defn- resolve-rod-distance [piece distance]
+  (let [maximum (or (pieces/pips piece) 0)]
+    (cond
+      (not (int? distance))
+      (failure :invalid-rod-distance
+               "Rod moves require an integer distance."
+               {:distance distance
+                :maximum maximum})
+
+      (not (pos? distance))
+      (failure :invalid-rod-distance
+               "Rod moves cannot move zero spaces."
+               {:distance distance
+                :maximum maximum})
+
+      (< maximum distance)
+      (failure :invalid-rod-distance
+               "Rod moves cannot exceed the acting minion's pip count."
+               {:distance distance
+                :maximum maximum})
+
+      :else
+      {:ok? true
+       :distance distance
+       :maximum maximum})))
+
+(defn- resolve-rod-orientation [player-id moved-piece orientation]
+  (cond
+    (nil? orientation)
+    {:ok? true}
+
+    (not= player-id (:player-id moved-piece))
+    (failure :invalid-orientation
+             "Enemy pieces retain their original orientation when moved by a Rod."
+             {:piece-id (:id moved-piece)
+              :piece-player-id (:player-id moved-piece)
+              :orientation orientation})
+
+    (not (contains? pieces/legal-orientations orientation))
+    (failure :invalid-orientation
+             "Rod moves can only reorient current-player pieces to a legal orientation."
+             {:piece-id (:id moved-piece)
+              :orientation orientation
+              :legal-orientations pieces/legal-orientations})
+
+    :else
+    {:ok? true
+     :orientation orientation}))
+
+(defn- normalize-rod-piece-target [state player-id source-result target-piece distance orientation]
+  (let [{:keys [piece direction]
+         source-coordinate :piece-coordinate} source-result
+        target-coordinate (coordinate-map (piece-coordinate state target-piece))
+        target-self? (= (:id piece) (:id target-piece))]
+    (cond
+      (nil? target-coordinate)
+      (failure :invalid-piece-space
+               "Rod piece targets must have a board coordinate."
+               {:piece-id (:id target-piece)
+                :space-index (:space-index target-piece)
+                :space (:space target-piece)})
+
+      (not (rod-targetable-coordinate? source-coordinate target-coordinate direction target-self?))
+      (failure :invalid-rod-target
+               "Rod piece targets must be the minion itself or occupy the adjacent space in the minion direction."
+               {:piece-id (:id target-piece)
+                :direction direction
+                :source-coordinate source-coordinate
+                :target-coordinate target-coordinate
+                :expected-coordinate (rod-destination-coordinate source-coordinate direction 1)})
+
+      :else
+      (let [orientation-result (resolve-rod-orientation player-id target-piece orientation)]
+        (if (:ok? orientation-result)
+          {:ok? true
+           :target (cond-> {:kind :piece
+                            :piece-id (:id target-piece)
+                            :player-id (:player-id target-piece)
+                            :row (:row target-coordinate)
+                            :col (:col target-coordinate)
+                            :destination (rod-destination-coordinate target-coordinate
+                                                                     direction
+                                                                     distance)}
+                     (:orientation orientation-result)
+                     (assoc :orientation (:orientation orientation-result)))
+           :target-piece target-piece}
+          orientation-result)))))
+
+(defn- resolve-rod-target [state player-id source-result mode target distance orientation]
+  (case mode
+    :move-minion
+    (let [piece (:piece source-result)]
+      (if (and (some? target)
+               (not= {:kind :piece
+                      :piece-id (:id piece)}
+                     (target-summary target)))
+        (failure :invalid-rod-target
+                 "Move-minion Rod commands move the acting minion and do not need another target."
+                 {:target target
+                  :piece-id (:id piece)})
+        (normalize-rod-piece-target state
+                                    player-id
+                                    source-result
+                                    piece
+                                    distance
+                                    orientation)))
+
+    :push-piece
+    (cond
+      (not (map? target))
+      (failure :invalid-rod-target
+               "Push-piece Rod commands require a target piece map."
+               {:target target})
+
+      (not= :piece (:kind target))
+      (failure :invalid-rod-target
+               "Push-piece Rod commands target :kind :piece."
+               {:target target})
+
+      (nil? (:piece-id target))
+      (failure :invalid-rod-target
+               "Push-piece Rod commands require a target piece id."
+               {:target target})
+
+      :else
+      (if-let [target-piece (piece-by-id state (:piece-id target))]
+        (normalize-rod-piece-target state
+                                    player-id
+                                    source-result
+                                    target-piece
+                                    distance
+                                    orientation)
+        (failure :invalid-target-piece
+                 "Push-piece Rod commands must reference a piece on the board."
+                 {:target target})))
+
+    :push-territory
+    (if (some? orientation)
+      (failure :invalid-orientation
+               "Rod territory pushes do not take a piece orientation."
+               {:orientation orientation
+                :target target})
+      (let [cell-result (territory-target-cell state target)]
+        (if (:ok? cell-result)
+          (let [cell (:cell cell-result)
+                cell-coordinate (select-keys cell [:row :col])
+                {:keys [piece-coordinate direction]} source-result]
+            (if (rod-targetable-coordinate? piece-coordinate
+                                            cell-coordinate
+                                            direction
+                                            false)
+              {:ok? true
+               :target {:kind :territory
+                        :board-index (:index cell)
+                        :row (:row cell)
+                        :col (:col cell)
+                        :destination (rod-destination-coordinate cell-coordinate
+                                                                 direction
+                                                                 distance)}
+               :target-cell cell}
+              (failure :invalid-rod-target
+                       "Rod territory targets must occupy the adjacent space in the minion direction."
+                       {:target target
+                        :direction direction
+                        :source-coordinate piece-coordinate
+                        :target-coordinate cell-coordinate
+                        :expected-coordinate (rod-destination-coordinate piece-coordinate direction 1)})))
+          cell-result)))))
+
+(defn resolve-rod-command [state command]
+  (let [{:keys [player-id source mode target distance orientation direction]} command]
+    (cond
+      (not (map? command))
+      (failure :invalid-rod-command
+               "Rod moves require a command map."
+               {:command command})
+
+      (nil? (get-in state [:players-by-id player-id]))
+      (failure :unknown-player
+               "Rod moves require a participating player."
+               {:player-id player-id})
+
+      (not (current-player-id? state player-id))
+      (failure :not-current-player
+               "Only the current player can resolve a Rod move."
+               {:player-id player-id
+                :current-player-id (get-in state [:turn :current-player-id])})
+
+      (not (contains? rod-modes mode))
+      (failure :invalid-rod-mode
+               "Rod moves require a supported mode."
+               {:mode mode
+                :supported-modes rod-modes})
+
+      :else
+      (let [source-result (resolve-rod-source state player-id source)]
+        (if-not (:ok? source-result)
+          source-result
+          (let [minion-direction (:direction source-result)]
+            (cond
+              (and (some? direction)
+                   (not= direction minion-direction))
+              (failure :invalid-rod-direction
+                       "Rod command direction must match the acting minion orientation."
+                       {:direction direction
+                        :minion-direction minion-direction
+                        :piece-id (get-in source-result [:piece :id])})
+
+              :else
+              (let [distance-result (resolve-rod-distance (:piece source-result)
+                                                          distance)]
+                (if-not (:ok? distance-result)
+                  distance-result
+                  (let [target-result (resolve-rod-target state
+                                                          player-id
+                                                          source-result
+                                                          mode
+                                                          target
+                                                          (:distance distance-result)
+                                                          orientation)]
+                    (if-not (:ok? target-result)
+                      target-result
+                      (let [normalized-command (cond-> {:player-id player-id
+                                                        :source (source-summary source)
+                                                        :mode mode
+                                                        :target (:target target-result)
+                                                        :distance (:distance distance-result)
+                                                        :direction minion-direction}
+                                                 (:orientation (:target target-result))
+                                                 (assoc :orientation (:orientation (:target target-result))))]
+                        (merge {:ok? true
+                                :command normalized-command
+                                :source-card (:source-card source-result)
+                                :piece (:piece source-result)}
+                               (select-keys target-result
+                                            [:target-piece :target-cell]))))))))))))))
 
 (defn- resolve-cup-source [state player-id source]
   (let [piece (piece-by-id state (:piece-id source))]
@@ -494,12 +913,6 @@
            (and (= (:row target) (:row space))
                 (= (:col target) (:col space))))
          (board-layout/wasteland-spaces (:board state)))))
-
-(defn- piece-coordinate [state piece]
-  (if-let [{:keys [row col]} (:space piece)]
-    [row col]
-    (when-let [{:keys [row col]} (board-cell-by-index state (:space-index piece))]
-      [row col])))
 
 (defn- enemy-pieces-at-coordinate [state player-id row col]
   (->> (get-in state [:pieces :on-board])

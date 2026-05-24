@@ -42,12 +42,28 @@
 (defn- state-with-pieces [pieces]
   (assoc-in (deterministic-game) [:pieces :on-board] (vec pieces)))
 
+(defn- state-with-board-card [state board-index card-id]
+  (update state :board
+          (fn [cells]
+            (mapv (fn [cell]
+                    (if (= board-index (:index cell))
+                      (assoc cell :card (cards/card-by-id card-id))
+                      cell))
+                  cells))))
+
 (def rose-cup-minion
   {:id :rose-cup-minion
    :player-id :rose
    :space-index 3
    :size :small
    :orientation :north})
+
+(def rose-rod-minion
+  {:id :rose-rod-minion
+   :player-id :rose
+   :space-index 3
+   :size :medium
+   :orientation :east})
 
 (def rose-target-minion
   {:id :rose-target-minion
@@ -387,3 +403,173 @@
            (get-in result [:error :code])))
     (is (= [:indigo-wasteland-minion]
            (get-in result [:error :data :enemy-piece-ids])))))
+
+(deftest rod-command-normalizes-territory-source
+  (let [state (-> (state-with-pieces [rose-rod-minion])
+                  (state-with-board-card 3 "wands2"))
+        command {:player-id :rose
+                 :source {:kind :territory
+                          :board-index 3
+                          :piece-id :rose-rod-minion}
+                 :mode :move-minion
+                 :distance 2
+                 :orientation :south}
+        result (game-state/resolve-rod-command state command)]
+    (is (:ok? result))
+    (is (= {:player-id :rose
+            :source {:kind :territory
+                     :board-index 3
+                     :piece-id :rose-rod-minion}
+            :mode :move-minion
+            :target {:kind :piece
+                     :piece-id :rose-rod-minion
+                     :player-id :rose
+                     :row 1
+                     :col 0
+                     :destination {:row 1
+                                   :col 2}
+                     :orientation :south}
+            :distance 2
+            :direction :east
+            :orientation :south}
+           (:command result)))
+    (is (= "wands2" (get-in result [:source-card :id])))
+    (is (= rose-rod-minion (:piece result)))))
+
+(deftest rod-command-normalizes-hand-card-source-and-piece-target
+  (let [deck-order (deck-starting-with ["wands2"])
+        state (:state (game-state/create-game player-specs {:deck-order deck-order}))
+        state (assoc-in state [:pieces :on-board]
+                        [rose-rod-minion
+                         {:id :indigo-rod-target
+                          :player-id :indigo
+                          :space-index 4
+                          :size :small
+                          :orientation :north}])
+        result (game-state/resolve-rod-command
+                state
+                {:player-id :rose
+                 :source {:kind :hand-card
+                          :card-id "wands2"
+                          :piece-id :rose-rod-minion}
+                 :mode :push-piece
+                 :target {:kind :piece
+                          :piece-id :indigo-rod-target}
+                 :distance 1})]
+    (is (:ok? result))
+    (is (= {:player-id :rose
+            :source {:kind :hand-card
+                     :card-id "wands2"
+                     :piece-id :rose-rod-minion}
+            :mode :push-piece
+            :target {:kind :piece
+                     :piece-id :indigo-rod-target
+                     :player-id :indigo
+                     :row 1
+                     :col 1
+                     :destination {:row 1
+                                   :col 2}}
+            :distance 1
+            :direction :east}
+           (:command result)))
+    (is (= "wands2" (get-in result [:source-card :id])))
+    (is (= :indigo-rod-target (get-in result [:target-piece :id])))))
+
+(deftest rod-command-normalizes-territory-target-coordinates
+  (let [state (-> (state-with-pieces [rose-rod-minion])
+                  (state-with-board-card 3 "wands2"))
+        result (game-state/resolve-rod-command
+                state
+                {:player-id :rose
+                 :source {:kind :territory
+                          :board-index 3
+                          :piece-id :rose-rod-minion}
+                 :mode :push-territory
+                 :target {:kind :territory
+                          :row 1
+                          :col 1}
+                 :distance 1})]
+    (is (:ok? result))
+    (is (= {:kind :territory
+            :board-index 4
+            :row 1
+            :col 1
+            :destination {:row 1
+                          :col 2}}
+           (get-in result [:command :target])))
+    (is (= 4 (get-in result [:target-cell :index])))))
+
+(deftest rod-command-rejects-invalid-sources-and-upright-minions
+  (let [state (-> (state-with-pieces [rose-rod-minion])
+                  (state-with-board-card 3 "cups2"))
+        non-rod-result (game-state/resolve-rod-command
+                        state
+                        {:player-id :rose
+                         :source {:kind :territory
+                                  :board-index 3
+                                  :piece-id :rose-rod-minion}
+                         :mode :move-minion
+                         :distance 1})
+        upright-state (-> (state-with-pieces [(assoc rose-rod-minion
+                                                     :orientation :up)])
+                          (state-with-board-card 3 "wands2"))
+        upright-result (game-state/resolve-rod-command
+                        upright-state
+                        {:player-id :rose
+                         :source {:kind :territory
+                                  :board-index 3
+                                  :piece-id :rose-rod-minion}
+                         :mode :move-minion
+                         :distance 1})]
+    (is (= :source-card-not-rod
+           (get-in non-rod-result [:error :code])))
+    (is (= :rod-minion-upright
+           (get-in upright-result [:error :code])))))
+
+(deftest rod-command-rejects-invalid-direction-distance-and_targets_without_mutation
+  (let [state (-> (state-with-pieces [rose-rod-minion
+                                      {:id :indigo-off-axis-target
+                                       :player-id :indigo
+                                       :space-index 0
+                                       :size :small
+                                       :orientation :north}])
+                  (state-with-board-card 3 "wands2"))
+        base-command {:player-id :rose
+                      :source {:kind :territory
+                               :board-index 3
+                               :piece-id :rose-rod-minion}
+                      :mode :move-minion
+                      :distance 1}
+        zero-result (game-state/resolve-rod-command state
+                                                    (assoc base-command
+                                                           :distance 0))
+        too-far-result (game-state/resolve-rod-command state
+                                                       (assoc base-command
+                                                              :distance 3))
+        direction-result (game-state/resolve-rod-command state
+                                                         (assoc base-command
+                                                                :direction :north))
+        target-result (game-state/resolve-rod-command
+                       state
+                       (assoc base-command
+                              :mode :push-piece
+                              :target {:kind :piece
+                                       :piece-id :indigo-off-axis-target}))]
+    (is (= :invalid-rod-distance
+           (get-in zero-result [:error :code])))
+    (is (= :invalid-rod-distance
+           (get-in too-far-result [:error :code])))
+    (is (= 2 (get-in too-far-result [:error :data :maximum])))
+    (is (= :invalid-rod-direction
+           (get-in direction-result [:error :code])))
+    (is (= :invalid-rod-target
+           (get-in target-result [:error :code])))
+    (is (false? (:ok? zero-result)))
+    (is (not (contains? zero-result :state)))
+    (is (= [rose-rod-minion
+            {:id :indigo-off-axis-target
+             :player-id :indigo
+             :space-index 0
+             :size :small
+             :orientation :north}]
+           (get-in state [:pieces :on-board])))))

@@ -118,6 +118,8 @@
 
 (def cup-icon-ids #{:cup :cup-unbounded :wheel-cup :wild-suits})
 
+(def rod-icon-ids #{:rod :rod-unbounded :wild-suits})
+
 (def rank-titles
   {"1" "One"
    "2" "Two"
@@ -201,6 +203,12 @@
         [suit-key] (minor-parts card)]
     (or (= "cups" suit-key)
         (boolean (some cup-icon-ids (:gnostica-icons card))))))
+
+(defn rod-card? [card]
+  (let [card (known-card card)
+        [suit-key] (minor-parts card)]
+    (or (= "wands" suit-key)
+        (boolean (some rod-icon-ids (:gnostica-icons card))))))
 
 (defn one-point-card? [card]
   (let [card (known-card card)
