@@ -55,14 +55,43 @@
     :summary "Put your first small piece on the board."
     :requirements [:target-board-index :orientation]}})
 
+(def move-power-order
+  [:cup :rod])
+
+(def move-power-definitions
+  {:cup {:id :cup
+         :label "Cup"}
+   :rod {:id :rod
+         :label "Rod"}})
+
+(def rod-mode-order
+  [:move-minion
+   :push-piece
+   :push-territory])
+
+(def rod-modes
+  (set rod-mode-order))
+
+(def rod-mode-definitions
+  {:move-minion {:id :move-minion
+                 :label "Move minion"}
+   :push-piece {:id :push-piece
+                :label "Push piece"}
+   :push-territory {:id :push-territory
+                    :label "Push territory"}})
+
 (def requirement-prompts
   {:source-board-index "Choose a source territory with one of your pieces."
    :hand-card-id "Choose a card from the current player's hand."
+   :power "Choose the card power."
    :piece-id "Choose a minion."
+   :rod-mode "Choose a Rod move."
+   :target-piece-id "Choose a target piece."
    :target-board-index "Choose a target territory."
    :target-space "Choose a target territory or wasteland."
    :one-point-card-id "Choose a one-point card from the current player's hand."
    :orientation "Choose an orientation."
+   :distance "Choose a distance."
    :draw-count "Choose how many cards to draw."})
 
 (defn empty-move-selection []
@@ -221,12 +250,51 @@
   (some #(when (= card-id (:id %)) %)
         (current-player-hand db)))
 
-(defn- cup-move-source? [source]
+(defn- gameplay-move-source? [source]
   (contains? #{:activate-territory :play-hand-card} source))
 
 (defn- source-hand-card-id [source-id params]
   (when (= :play-hand-card source-id)
     (:hand-card-id params)))
+
+(defn- source-board-card [db params]
+  (:card (get (board db) (:source-board-index params))))
+
+(defn- source-card [db source-id params]
+  (case source-id
+    :activate-territory (source-board-card db params)
+    :play-hand-card (hand-card-by-id db (:hand-card-id params))
+    nil))
+
+(defn- move-power-ids-for-card [card]
+  (when card
+    (cond-> []
+      (cards/cup-card? card) (conj :cup)
+      (cards/rod-card? card) (conj :rod))))
+
+(defn- selected-power [db source-id params]
+  (when (gameplay-move-source? source-id)
+    (let [card (source-card db source-id params)
+          power-options (move-power-ids-for-card card)
+          selected (:power params)]
+      (cond
+        (contains? (set power-options) selected)
+        selected
+
+        (= 1 (count power-options))
+        (first power-options)
+
+        (and card (empty? power-options))
+        :cup
+
+        :else
+        nil))))
+
+(defn- cup-move? [db source-id params]
+  (= :cup (selected-power db source-id params)))
+
+(defn- rod-move? [db source-id params]
+  (= :rod (selected-power db source-id params)))
 
 (defn- one-point-card-options-for [db source-id params]
   (let [source-card-id (source-hand-card-id source-id params)]
@@ -271,6 +339,9 @@
 
     :else
     false))
+
+(defn- rod-distance-options-for-piece [piece]
+  (vec (range 1 (inc (or (pieces/pips piece) 0)))))
 
 (defn max-draw-count [db]
   (let [hand-slots (- game-state/starting-hand-size
@@ -337,6 +408,41 @@
 (defn move-params [db]
   (:params (move-selection db)))
 
+(defn move-power-options [db]
+  (let [{:keys [source params]} (move-selection db)
+        options (move-power-ids-for-card (source-card db source params))]
+    (mapv move-power-definitions
+          (filter #(contains? (set options) %)
+                  move-power-order))))
+
+(defn move-power [db]
+  (let [{:keys [source params]} (move-selection db)]
+    (selected-power db source params)))
+
+(defn move-rod-mode-options [_db]
+  (mapv rod-mode-definitions rod-mode-order))
+
+(defn move-distance-options [db]
+  (let [piece (piece-by-id db (get-in (move-selection db)
+                                      [:params :piece-id]))]
+    (rod-distance-options-for-piece piece)))
+
+(defn move-target-piece-options [db]
+  (if (rod-move? db (move-source db) (move-params db))
+    (board-pieces db)
+    []))
+
+(defn- rod-target-piece [db params]
+  (piece-by-id db (:target-piece-id params)))
+
+(defn move-rod-orientation-required? [db]
+  (let [{:keys [source params]} (move-selection db)]
+    (and (rod-move? db source params)
+         (case (:rod-mode params)
+           :move-minion true
+           :push-piece (current-player-piece? db (rod-target-piece db params))
+           false))))
+
 (defn- move-error [code message data]
   {:code code
    :message message
@@ -364,15 +470,25 @@
 
         false))
 
+    :power
+    (some? (selected-power db source-id params))
+
+    :rod-mode
+    (and (rod-move? db source-id params)
+         (contains? rod-modes (:rod-mode params)))
+
+    :target-piece-id
+    (some? (rod-target-piece db params))
+
     :target-board-index
     (valid-board-index? db (:target-board-index params))
 
     :target-space
-    (and (cup-move-source? source-id)
+    (and (cup-move? db source-id params)
          (target-space-complete? db params))
 
     :target-resolution
-    (and (cup-move-source? source-id)
+    (and (cup-move? db source-id params)
          (target-resolution-complete? db source-id params))
 
     :orientation
@@ -384,19 +500,63 @@
            (<= 1 draw-count)
            (<= draw-count (max-draw-count db))))
 
+    :distance
+    (some #{(:distance params)} (move-distance-options db))
+
     false))
+
+(defn- rod-requirements [db params]
+  (let [mode (:rod-mode params)]
+    (vec
+     (concat [:rod-mode]
+             (case mode
+               :move-minion [:distance]
+               :push-piece [:target-piece-id :distance]
+               :push-territory [:target-board-index :distance]
+               [])
+             (when (and (contains? rod-modes mode)
+                        (move-rod-orientation-required? db))
+               [:orientation])))))
+
+(defn- gameplay-source-requirements [db source-id params]
+  (let [base (case source-id
+               :activate-territory [:source-board-index :piece-id]
+               :play-hand-card [:hand-card-id :piece-id])
+        card (source-card db source-id params)
+        power (selected-power db source-id params)]
+    (vec
+     (concat base
+             (when (and card (nil? power))
+               [:power])
+             (case power
+               :cup [:target-space :target-resolution]
+               :rod (rod-requirements db params)
+               [])))))
+
+(defn- move-requirements [db source-id params]
+  (case source-id
+    (:activate-territory :play-hand-card)
+    (gameplay-source-requirements db source-id params)
+
+    (:draw-cards :orient-piece :place-initial-small)
+    (:requirements (get move-source-definitions source-id))
+
+    []))
 
 (defn- first-missing-requirement [db source-id params]
   (some (fn [requirement]
           (when-not (requirement-complete? db source-id params requirement)
             requirement))
-        (:requirements (get move-source-definitions source-id))))
+        (move-requirements db source-id params)))
 
 (defn- stage-for-requirement [db source-id params requirement]
   (case requirement
     :source-board-index :source-territory
     :hand-card-id :hand-card
+    :power :power
     :piece-id :piece
+    :rod-mode :rod-mode
+    :target-piece-id :target-piece
     :target-board-index :target
     :target-space :target
     :target-resolution (if (valid-wasteland-target? db (:target-wasteland params))
@@ -404,6 +564,7 @@
                          :orientation)
     :one-point-card-id :one-point-card
     :orientation :orientation
+    :distance :distance
     :draw-count :draw-count
     :confirm))
 
@@ -443,14 +604,18 @@
       (nil? source) "Choose a move source."
       (= :confirm stage) "Confirm the selected move."
       (= :rejected stage) "Review or cancel the rejected move."
-      (= :target stage) (if (cup-move-source? source)
+      (= :target stage) (if (cup-move? db source (move-params db))
                           (:target-space requirement-prompts)
                           (:target-board-index requirement-prompts))
       (= :one-point-card stage) (:one-point-card-id requirement-prompts)
       :else (get {:source-territory (:source-board-index requirement-prompts)
                   :hand-card (:hand-card-id requirement-prompts)
+                  :power (:power requirement-prompts)
                   :piece (:piece-id requirement-prompts)
+                  :rod-mode (:rod-mode requirement-prompts)
+                  :target-piece (:target-piece-id requirement-prompts)
                   :orientation (:orientation requirement-prompts)
+                  :distance (:distance requirement-prompts)
                   :draw-count (:draw-count requirement-prompts)}
                  stage
                  "Complete the move selection."))))
@@ -490,17 +655,72 @@
   (let [next-params (assoc params :source-board-index board-index)]
     (if (= (:source-board-index params) board-index)
       next-params
-      (dissoc next-params :piece-id))))
+      (dissoc next-params
+              :piece-id
+              :power
+              :rod-mode
+              :target-board-index
+              :target-wasteland
+              :target-piece-id
+              :one-point-card-id
+              :orientation
+              :distance))))
 
 (defn- set-territory-target [params board-index]
   (-> params
       (assoc :target-board-index board-index)
-      (dissoc :target-wasteland :one-point-card-id)))
+      (dissoc :target-wasteland :target-piece-id :one-point-card-id)))
 
 (defn- set-wasteland-target [params space]
   (-> params
       (assoc :target-wasteland (select-keys space [:kind :row :col]))
-      (dissoc :target-board-index :orientation :one-point-card-id)))
+      (dissoc :target-board-index :target-piece-id :orientation :one-point-card-id)))
+
+(defn- set-hand-card-source [params card-id]
+  (-> params
+      (assoc :hand-card-id card-id)
+      (dissoc :piece-id
+              :power
+              :rod-mode
+              :target-board-index
+              :target-wasteland
+              :target-piece-id
+              :one-point-card-id
+              :orientation
+              :distance)))
+
+(defn- set-acting-piece [params piece-id]
+  (let [next-params (assoc params :piece-id piece-id)]
+    (if (= (:piece-id params) piece-id)
+      next-params
+      (dissoc next-params
+              :target-board-index
+              :target-wasteland
+              :target-piece-id
+              :one-point-card-id
+              :orientation
+              :distance))))
+
+(defn- set-rod-mode-param [params mode]
+  (let [next-params (assoc params :rod-mode mode)]
+    (if (= (:rod-mode params) mode)
+      next-params
+      (dissoc next-params
+              :target-board-index
+              :target-wasteland
+              :target-piece-id
+              :one-point-card-id
+              :orientation))))
+
+(defn- set-rod-target-piece [params piece-id]
+  (let [next-params (assoc params :target-piece-id piece-id)]
+    (if (= (:target-piece-id params) piece-id)
+      next-params
+      (dissoc next-params
+              :target-board-index
+              :target-wasteland
+              :one-point-card-id
+              :orientation))))
 
 (defn select-board-for-active-move [db index]
   (if-not (valid-board-index? db index)
@@ -540,9 +760,10 @@
 
 (defn select-move-wasteland-target [db row col]
   (let [source (move-source db)
+        params (move-params db)
         space (wasteland-space-by-coordinate db row col)]
     (cond
-      (not (cup-move-source? source))
+      (not (cup-move? db source params))
       (update-move-selection db assoc
                              :error
                              (move-error :invalid-wasteland-target
@@ -582,10 +803,10 @@
           (nil? source-index)
           (-> db
               (update-move-selection-success assoc-in [:params :source-board-index] (:space-index piece))
-              (update-move-selection-success assoc-in [:params :piece-id] piece-id))
+              (update-move-selection-success update :params set-acting-piece piece-id))
 
           (= source-index (:space-index piece))
-          (update-move-selection-success db assoc-in [:params :piece-id] piece-id)
+          (update-move-selection-success db update :params set-acting-piece piece-id)
 
           :else
           (update-move-selection db assoc
@@ -596,7 +817,7 @@
                                               :source-board-index source-index}))))
 
       (contains? #{:play-hand-card :orient-piece} source)
-      (update-move-selection-success db assoc-in [:params :piece-id] piece-id)
+      (update-move-selection-success db update :params set-acting-piece piece-id)
 
       :else
       db)))
@@ -604,16 +825,52 @@
 (defn select-move-hand-card [db card-id]
   (if (and (= :play-hand-card (move-source db))
            (hand-card-by-id db card-id))
-    (update-move-selection-success db assoc-in [:params :hand-card-id] card-id)
+    (update-move-selection-success db update :params set-hand-card-source card-id)
     (update-move-selection db assoc
                            :error
                            (move-error :invalid-hand-card
                                        "Choose a card from the current player's hand."
                                        {:card-id card-id}))))
 
+(defn select-move-power [db power]
+  (let [power-ids (set (map :id (move-power-options db)))]
+    (if (contains? power-ids power)
+      (update-move-selection-success db assoc-in [:params :power] power)
+      (update-move-selection db assoc
+                             :error
+                             (move-error :invalid-move-power
+                                         "Choose a power provided by the selected card."
+                                         {:power power
+                                          :options (vec power-ids)})))))
+
+(defn select-move-rod-mode [db mode]
+  (if (contains? rod-modes mode)
+    (update-move-selection-success db update :params set-rod-mode-param mode)
+    (update-move-selection db assoc
+                           :error
+                           (move-error :invalid-rod-mode
+                                       "Choose a supported Rod move."
+                                       {:mode mode
+                                        :options rod-mode-order}))))
+
+(defn select-move-target-piece [db piece-id]
+  (if-let [piece (piece-by-id db piece-id)]
+    (if (rod-move? db (move-source db) (move-params db))
+      (update-move-selection-success db update :params set-rod-target-piece (:id piece))
+      (update-move-selection db assoc
+                             :error
+                             (move-error :invalid-target-piece
+                                         "Target pieces are only available for Rod moves."
+                                         {:piece-id piece-id})))
+    (update-move-selection db assoc
+                           :error
+                           (move-error :invalid-target-piece
+                                       "Choose a piece on the board."
+                                       {:piece-id piece-id}))))
+
 (defn select-move-one-point-card [db card-id]
   (let [{:keys [source params]} (move-selection db)]
-    (if (and (cup-move-source? source)
+    (if (and (cup-move? db source params)
              (one-point-card-by-id db source params card-id))
       (update-move-selection-success db assoc-in [:params :one-point-card-id] card-id)
       (update-move-selection db assoc
@@ -640,6 +897,16 @@
                                        "Choose a draw count the current player can take."
                                        {:draw-count draw-count
                                         :options (draw-count-options db)}))))
+
+(defn set-move-distance [db distance]
+  (if (some #{distance} (move-distance-options db))
+    (update-move-selection-success db assoc-in [:params :distance] distance)
+    (update-move-selection db assoc
+                           :error
+                           (move-error :invalid-distance
+                                       "Choose a distance the acting minion can move."
+                                       {:distance distance
+                                        :options (move-distance-options db)}))))
 
 (defn move-piece-options [db]
   (let [{:keys [source params]} (move-selection db)]
@@ -669,7 +936,7 @@
 
 (defn move-one-point-card-options [db]
   (let [{:keys [source params]} (move-selection db)]
-    (if (cup-move-source? source)
+    (if (cup-move? db source params)
       (one-point-card-options-for db source params)
       [])))
 
@@ -687,31 +954,59 @@
               :board-index (:target-board-index params)}
      :orientation (:orientation params)}))
 
+(defn- source-command [source params]
+  (case source
+    :activate-territory
+    {:kind :territory
+     :board-index (:source-board-index params)
+     :piece-id (:piece-id params)}
+
+    :play-hand-card
+    {:kind :hand-card
+     :card-id (:hand-card-id params)
+     :piece-id (:piece-id params)}))
+
+(defn- rod-target-command [params]
+  (case (:rod-mode params)
+    :move-minion {}
+    :push-piece {:target {:kind :piece
+                          :piece-id (:target-piece-id params)}}
+    :push-territory {:target {:kind :territory
+                              :board-index (:target-board-index params)}}))
+
+(defn- rod-command [source params]
+  (cond-> (merge {:mode (:rod-mode params)
+                  :distance (:distance params)}
+                 (rod-target-command params))
+    (:orientation params)
+    (assoc :orientation (:orientation params))))
+
 (defn move-command [db]
   (let [{:keys [source params]} (move-selection db)]
     (when source
       (case source
         :activate-territory
         (merge {:player-id (current-player-id db)
-                :source {:kind :territory
-                         :board-index (:source-board-index params)
-                         :piece-id (:piece-id params)}}
-               (cup-target-command params))
+                :source (source-command source params)}
+               (case (selected-power db source params)
+                 :rod (rod-command source params)
+                 (cup-target-command params)))
 
         :play-hand-card
         (merge {:player-id (current-player-id db)
-                :source {:kind :hand-card
-                         :card-id (:hand-card-id params)
-                         :piece-id (:piece-id params)}}
-               (cup-target-command params))
+                :source (source-command source params)}
+               (case (selected-power db source params)
+                 :rod (rod-command source params)
+                 (cup-target-command params)))
 
         {:source source
          :player-id (current-player-id db)
          :params params}))))
 
 (defn- confirmed-move-result [db command]
-  (if (cup-move-source? (move-source db))
-    (game-state/apply-cup-move (game db) command)
+  (case (move-power db)
+    :cup (game-state/apply-cup-move (game db) command)
+    :rod (game-state/apply-rod-move (game db) command)
     (game-state/failure :move-transition-unavailable
                         "Move selection is complete, but this gameplay rule transition is not implemented yet."
                         {:command command})))

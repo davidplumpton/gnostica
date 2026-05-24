@@ -47,9 +47,29 @@
    (app-state/select-move-one-point-card db card-id)))
 
 (rf/reg-event-db
+ ::select-move-power
+ (fn [db [_ power]]
+   (app-state/select-move-power db power)))
+
+(rf/reg-event-db
+ ::select-move-rod-mode
+ (fn [db [_ mode]]
+   (app-state/select-move-rod-mode db mode)))
+
+(rf/reg-event-db
+ ::select-move-target-piece
+ (fn [db [_ piece-id]]
+   (app-state/select-move-target-piece db piece-id)))
+
+(rf/reg-event-db
  ::set-move-orientation
  (fn [db [_ orientation]]
    (app-state/set-move-orientation db orientation)))
+
+(rf/reg-event-db
+ ::set-move-distance
+ (fn [db [_ distance]]
+   (app-state/set-move-distance db distance)))
 
 (rf/reg-event-db
  ::set-move-draw-count
@@ -215,6 +235,36 @@
  ::move-one-point-card-options
  (fn [db _]
    (app-state/move-one-point-card-options db)))
+
+(rf/reg-sub
+ ::move-power-options
+ (fn [db _]
+   (app-state/move-power-options db)))
+
+(rf/reg-sub
+ ::move-power
+ (fn [db _]
+   (app-state/move-power db)))
+
+(rf/reg-sub
+ ::move-rod-mode-options
+ (fn [db _]
+   (app-state/move-rod-mode-options db)))
+
+(rf/reg-sub
+ ::move-target-piece-options
+ (fn [db _]
+   (app-state/move-target-piece-options db)))
+
+(rf/reg-sub
+ ::move-distance-options
+ (fn [db _]
+   (app-state/move-distance-options db)))
+
+(rf/reg-sub
+ ::move-rod-orientation-required?
+ (fn [db _]
+   (app-state/move-rod-orientation-required? db)))
 
 (rf/reg-sub
  ::move-orientation-options
@@ -650,11 +700,49 @@
          (:title card)])]
      [:p.move-step__empty "No one-point cards available."])])
 
+(defn- power-choices [options selected-power]
+  (when (< 1 (count options))
+    [:div.move-step
+     [:div.move-step__header
+      [:span "Power"]
+      [:strong
+       (or (:label (some #(when (= selected-power (:id %)) %) options))
+           "None")]]
+     [:div.move-choice-list.is-compact
+      (for [{:keys [id label]} options]
+        ^{:key id}
+        [:button.move-chip
+         {:type "button"
+          :class (when (= selected-power id) "is-selected")
+          :aria-pressed (= selected-power id)
+          :on-click #(rf/dispatch [::select-move-power id])}
+         label])]]))
+
+(defn- rod-mode-choices [options selected-mode]
+  [:div.move-step
+   [:div.move-step__header
+    [:span "Rod move"]
+    [:strong
+     (or (:label (some #(when (= selected-mode (:id %)) %) options))
+         "None")]]
+   [:div.move-choice-list
+    (for [{:keys [id label]} options]
+      ^{:key id}
+      [:button.move-chip
+       {:type "button"
+        :class (when (= selected-mode id) "is-selected")
+        :aria-pressed (= selected-mode id)
+        :on-click #(rf/dispatch [::select-move-rod-mode id])}
+       label])]])
+
 (defn- piece-choice-label [board piece]
   (let [cell (get board (:space-index piece))]
     (str (piece-summary piece)
          " on "
-         (:title (:card cell)))))
+         (cond
+           cell (:title (:card cell))
+           (:space piece) (wasteland-label (:space piece))
+           :else "unknown space"))))
 
 (defn- piece-choices [board pieces selected-piece-id]
   [:div.move-step
@@ -675,6 +763,26 @@
           :on-click #(rf/dispatch [::select-move-piece (:id piece)])}
          (piece-choice-label board piece)])]
      [:p.move-step__empty "No pieces available."])])
+
+(defn- target-piece-choices [board pieces selected-piece-id]
+  [:div.move-step
+   [:div.move-step__header
+    [:span "Target piece"]
+    [:strong
+     (if-let [piece (some #(when (= selected-piece-id (:id %)) %) pieces)]
+       (piece-summary piece)
+       "None")]]
+   (if (seq pieces)
+     [:div.move-choice-list
+      (for [piece pieces]
+        ^{:key (:id piece)}
+        [:button.move-chip
+         {:type "button"
+          :class (when (= selected-piece-id (:id piece)) "is-selected")
+          :aria-pressed (= selected-piece-id (:id piece))
+          :on-click #(rf/dispatch [::select-move-target-piece (:id piece)])}
+         (piece-choice-label board piece)])]
+     [:p.move-step__empty "No target pieces available."])])
 
 (defn- orientation-choices [options selected-orientation]
   [:div.move-step
@@ -706,16 +814,77 @@
         :on-click #(rf/dispatch [::set-move-draw-count draw-count])}
        draw-count])]])
 
+(defn- distance-choices [options selected-distance]
+  [:div.move-step
+   [:div.move-step__header
+    [:span "Distance"]
+    [:strong (or selected-distance "None")]]
+   [:div.move-choice-list.is-compact
+    (for [distance options]
+      ^{:key distance}
+      [:button.move-chip
+       {:type "button"
+        :class (when (= selected-distance distance) "is-selected")
+        :aria-pressed (= selected-distance distance)
+        :on-click #(rf/dispatch [::set-move-distance distance])}
+       distance])]])
+
+(defn- cup-move-controls
+  [params target-board-options target-wasteland-options one-point-card-options orientation-options]
+  [:<>
+   [target-choice-grid target-board-options
+    target-wasteland-options
+    (:target-board-index params)
+    (:target-wasteland params)]
+   (when (:target-board-index params)
+     [orientation-choices orientation-options (:orientation params)])
+   (when (:target-wasteland params)
+     [one-point-card-choices one-point-card-options (:one-point-card-id params)])])
+
+(defn- rod-move-controls
+  [params board rod-mode-options target-piece-options target-board-options distance-options
+   orientation-options orientation-required?]
+  [:<>
+   [rod-mode-choices rod-mode-options (:rod-mode params)]
+   (case (:rod-mode params)
+     :move-minion
+     [:<>
+      [distance-choices distance-options (:distance params)]
+      (when (and orientation-required? (:distance params))
+        [orientation-choices orientation-options (:orientation params)])]
+
+     :push-piece
+     [:<>
+      [target-piece-choices board target-piece-options (:target-piece-id params)]
+      (when (:target-piece-id params)
+        [distance-choices distance-options (:distance params)])
+      (when (and orientation-required? (:distance params))
+        [orientation-choices orientation-options (:orientation params)])]
+
+     :push-territory
+     [:<>
+      [board-choice-grid "Target territory" target-board-options (:target-board-index params)]
+      (when (:target-board-index params)
+        [distance-choices distance-options (:distance params)])]
+
+     nil)])
+
 (defn- move-active-controls [selection]
   (let [{:keys [source params]} selection
         board @(rf/subscribe [::board])
+        power @(rf/subscribe [::move-power])
+        power-options @(rf/subscribe [::move-power-options])
+        rod-mode-options @(rf/subscribe [::move-rod-mode-options])
         piece-options @(rf/subscribe [::move-piece-options])
+        target-piece-options @(rf/subscribe [::move-target-piece-options])
         hand-options @(rf/subscribe [::move-hand-card-options])
         source-board-options @(rf/subscribe [::move-source-board-options])
         target-board-options @(rf/subscribe [::move-target-board-options])
         target-wasteland-options @(rf/subscribe [::move-target-wasteland-options])
         one-point-card-options @(rf/subscribe [::move-one-point-card-options])
         orientation-options @(rf/subscribe [::move-orientation-options])
+        orientation-required? @(rf/subscribe [::move-rod-orientation-required?])
+        distance-options @(rf/subscribe [::move-distance-options])
         draw-options @(rf/subscribe [::draw-count-options])]
     (case source
       :activate-territory
@@ -724,14 +893,23 @@
        (when (:source-board-index params)
          [piece-choices board piece-options (:piece-id params)])
        (when (:piece-id params)
-         [target-choice-grid target-board-options
-          target-wasteland-options
-          (:target-board-index params)
-          (:target-wasteland params)])
-       (when (:target-board-index params)
-         [orientation-choices orientation-options (:orientation params)])
-       (when (:target-wasteland params)
-         [one-point-card-choices one-point-card-options (:one-point-card-id params)])]
+         [:<>
+          [power-choices power-options power]
+          (case power
+            :rod [rod-move-controls params
+                  board
+                  rod-mode-options
+                  target-piece-options
+                  target-board-options
+                  distance-options
+                  orientation-options
+                  orientation-required?]
+            :cup [cup-move-controls params
+                  target-board-options
+                  target-wasteland-options
+                  one-point-card-options
+                  orientation-options]
+            nil)])]
 
       :play-hand-card
       [:<>
@@ -739,14 +917,23 @@
        (when (:hand-card-id params)
          [piece-choices board piece-options (:piece-id params)])
        (when (:piece-id params)
-         [target-choice-grid target-board-options
-          target-wasteland-options
-          (:target-board-index params)
-          (:target-wasteland params)])
-       (when (:target-board-index params)
-         [orientation-choices orientation-options (:orientation params)])
-       (when (:target-wasteland params)
-         [one-point-card-choices one-point-card-options (:one-point-card-id params)])]
+         [:<>
+          [power-choices power-options power]
+          (case power
+            :rod [rod-move-controls params
+                  board
+                  rod-mode-options
+                  target-piece-options
+                  target-board-options
+                  distance-options
+                  orientation-options
+                  orientation-required?]
+            :cup [cup-move-controls params
+                  target-board-options
+                  target-wasteland-options
+                  one-point-card-options
+                  orientation-options]
+            nil)])]
 
       :draw-cards
       [draw-count-choices draw-options (:draw-count params)]
