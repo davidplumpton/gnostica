@@ -9,12 +9,14 @@ Gnostica is a Clojure and ClojureScript tarot app using re-frame and shadow-cljs
 ```sh
 clojure -M:dev       # start the ClojureScript watcher
 clojure -M:release   # compile an optimized browser build
-clojure -M:server    # serve the released app with Clojure/Ring
+clojure -M:server    # serve existing released assets with Clojure/Ring
 clojure -M:test      # run Clojure tests for shared code
 clojure -M:smoke     # run the headless Chrome 3D board smoke check
 ```
 
 The shadow-cljs dev server serves the app at `http://localhost:8080/index.html`. The default workflow does not use npm.
+
+Run `clojure -M:release` before `clojure -M:server` or the default `clojure -M:smoke` path. Both serve the existing browser bundle from `src/main/resources/js/main.js`; neither command rebuilds stale or missing JavaScript assets. `SMOKE_URL` can point smoke at an already-running dev or release server instead.
 
 ## Shared Game State
 
@@ -48,7 +50,7 @@ The primary board renderer is `gnostica.three-board/scene` in `src/main/gnostica
 
 Browser-free board renderer math lives in `src/main/gnostica/board_layout.cljc`. Keep card positioning, wasteland detection, board-space bounds, outline segments, board-index lookup, visible piece slot limits, pip marker local positions, compass rotations, and piece height math there when the behavior can be tested without WebGL.
 
-For 3D board verification, run `clojure -M:test`, `clojure -M:release`, and `clojure -M:smoke`. The smoke command starts the released Ring app unless `SMOKE_URL` points at an existing dev or release server, uses a local headless Chrome/Chromium through the DevTools protocol without npm, and accepts `SMOKE_CHROME` for a nonstandard browser path. It checks desktop and mobile viewports, r128 Three.js/OrbitControls globals, a nonblank canvas screenshot with visible board content, antialiasing when the browser reports support, nine card texture loads, twelve initial wasteland outline targets, visible piece edge outline count, absence of happy-path texture/fallback status messages, reset control presence, WASD and arrow-key board movement metadata, `?` command help, `G` special move icon help, `I` hotkey icon-mode toggling without resetting a changed camera distance, 3D center-card selection updating the territory panel, and both CSS fallback paths: blocked pinned CDN scripts and an injected mismatched Three.js revision.
+For 3D board verification, run `clojure -M:test`, `clojure -M:release`, and `clojure -M:smoke`. The smoke command starts the released Ring app unless `SMOKE_URL` points at an existing dev or release server, so the default local smoke path requires a current `src/main/resources/js/main.js` produced by `clojure -M:release`. It uses a local headless Chrome/Chromium through the DevTools protocol without npm, and accepts `SMOKE_CHROME` for a nonstandard browser path. It checks desktop and mobile viewports, r128 Three.js/OrbitControls globals, a nonblank canvas screenshot with visible board content, antialiasing when the browser reports support, nine card texture loads, twelve initial wasteland outline targets, visible piece edge outline count, absence of happy-path texture/fallback status messages, reset control presence, WASD and arrow-key board movement metadata, `?` command help, `G` special move icon help, `I` hotkey icon-mode toggling without resetting a changed camera distance, 3D center-card selection updating the territory panel, and both CSS fallback paths: blocked pinned CDN scripts and an injected mismatched Three.js revision.
 
 The smoke check also verifies that the main card zones remain visible in the Three.js and fallback layouts: six current-player hand cards, a positive draw deck count, and an empty initial discard pile.
 
