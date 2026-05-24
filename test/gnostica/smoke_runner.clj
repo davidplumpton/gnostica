@@ -1,1008 +1,96 @@
 (ns gnostica.smoke-runner
-  (:require [clojure.data.json :as json]
-            [clojure.java.io :as io]
-            [clojure.string :as str]
-            [gnostica.icon-layout :as icon-layout]
-            [gnostica.icons :as icons]
-            [gnostica.server :as app-server]
-            [ring.adapter.jetty :as jetty])
-  (:import [java.io ByteArrayInputStream File]
-           [java.net ServerSocket URI URLEncoder]
-           [java.net.http HttpClient HttpRequest HttpRequest$BodyPublishers
-            HttpResponse$BodyHandlers WebSocket WebSocket$Listener]
-           [java.nio.charset StandardCharsets]
-           [java.nio.file Files]
-           [java.nio.file.attribute FileAttribute]
-           [java.time Duration]
-           [java.util Base64]
-           [java.util.concurrent CompletableFuture TimeUnit]
-           [java.util.concurrent.atomic AtomicLong]
-           [java.lang ProcessBuilder ProcessBuilder$Redirect]
-           [javax.imageio ImageIO]))
+  (:require [gnostica.server :as app-server]
+            [gnostica.smoke.browser :as browser]
+            [gnostica.smoke.page-stats :as stats]
+            [ring.adapter.jetty :as jetty]))
 
-(def cdp-timeout-ms 10000)
-(def wait-timeout-ms 20000)
-(def expected-table-surface-color "#1c0715")
-(def expected-table-clear-color "#0a0308")
-(def min-velvet-pixels 120)
-
-(def viewports
-  [{:name "desktop" :width 1280 :height 900 :mobile false}
-   {:name "mobile" :width 390 :height 844 :mobile true}])
-
-(defn- getenv [k]
-  (not-empty (System/getenv k)))
-
-(defn- executable-file? [path]
-  (when (seq path)
-    (let [file (io/file path)]
-      (when (and (.isFile file) (.canExecute file))
-        (.getAbsolutePath file)))))
-
-(defn- path-command [command]
-  (some executable-file?
-        (for [dir (str/split (or (System/getenv "PATH") "") #":")]
-          (str dir File/separator command))))
-
-(defn- chrome-executable []
-  (or (some executable-file?
-            [(getenv "SMOKE_CHROME")
-             (getenv "CHROME_PATH")
-             "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
-             "/Applications/Chromium.app/Contents/MacOS/Chromium"
-             "/Applications/Google Chrome Canary.app/Contents/MacOS/Google Chrome Canary"
-             "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe"
-             "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe"])
-      (some path-command
-            ["google-chrome" "google-chrome-stable" "chromium" "chromium-browser" "chrome"])))
-
-(defn- free-port []
-  (with-open [socket (ServerSocket. 0)]
-    (.getLocalPort socket)))
-
-(defn- delete-recursive! [path]
-  (let [file (.toFile path)]
-    (when (.exists file)
-      (doseq [child (reverse (file-seq file))]
-        (io/delete-file child true)))))
-
-(defn- launch-chrome! []
-  (let [executable (or (chrome-executable)
-                       (throw (ex-info "Chrome or Chromium executable not found. Set SMOKE_CHROME or CHROME_PATH to the browser path."
-                                       {:checked-env ["SMOKE_CHROME" "CHROME_PATH"]})))
-        port (free-port)
-        profile-dir (Files/createTempDirectory "gnostica-smoke-chrome-"
-                                               (make-array FileAttribute 0))
-        args [executable
-              "--headless=new"
-              "--remote-debugging-address=127.0.0.1"
-              (str "--remote-debugging-port=" port)
-              (str "--user-data-dir=" profile-dir)
-              "--no-first-run"
-              "--no-default-browser-check"
-              "--disable-background-networking"
-              "--disable-extensions"
-              "--disable-sync"
-              "--disable-dev-shm-usage"
-              "--hide-scrollbars"
-              "--window-size=1280,900"
-              "about:blank"]
-        process (-> (ProcessBuilder. args)
-                    (.redirectOutput ProcessBuilder$Redirect/DISCARD)
-                    (.redirectError ProcessBuilder$Redirect/DISCARD)
-                    .start)]
-    {:executable executable
-     :port port
-     :process process
-     :profile-dir profile-dir}))
-
-(defn- stop-chrome! [{:keys [process profile-dir]}]
-  (when process
-    (.destroy process)
-    (when-not (.waitFor process 5 TimeUnit/SECONDS)
-      (.destroyForcibly process)
-      (.waitFor process 5 TimeUnit/SECONDS)))
-  (when profile-dir
-    (delete-recursive! profile-dir)))
-
-(defn- request-builder [url]
-  (-> (HttpRequest/newBuilder (URI/create url))
-      (.timeout (Duration/ofSeconds 5))))
-
-(defn- http-json
-  ([client url]
-   (http-json client :get url))
-  ([client method url]
-   (let [builder (request-builder url)
-         request (case method
-                   :put (-> builder
-                            (.PUT (HttpRequest$BodyPublishers/noBody))
-                            .build)
-                   (-> builder .GET .build))
-         response (.send client request (HttpResponse$BodyHandlers/ofString))]
-     (when-not (<= 200 (.statusCode response) 299)
-       (throw (ex-info "Chrome DevTools HTTP request failed."
-                       {:url url
-                        :status (.statusCode response)
-                        :body (.body response)})))
-     (json/read-str (.body response)))))
-
-(defn- wait-for-cdp! [client {:keys [port process]}]
-  (let [version-url (str "http://127.0.0.1:" port "/json/version")
-        deadline (+ (System/currentTimeMillis) cdp-timeout-ms)]
-    (loop [last-error nil]
-      (cond
-        (not (.isAlive process))
-        (throw (ex-info "Chrome exited before the DevTools endpoint became available."
-                        {:port port
-                         :last-error (some-> last-error ex-message)}))
-
-        (> (System/currentTimeMillis) deadline)
-        (throw (ex-info "Timed out waiting for Chrome DevTools endpoint."
-                        {:url version-url
-                         :last-error (some-> last-error ex-message)}))
-
-        :else
-        (let [result (try
-                       (http-json client version-url)
-                       (catch Exception error
-                         error))]
-          (if (map? result)
-            result
-            (do
-              (Thread/sleep 100)
-              (recur result))))))))
-
-(defn- new-page-websocket! [client port]
-  (let [url (str "http://127.0.0.1:"
-                 port
-                 "/json/new?"
-                 (URLEncoder/encode "about:blank" StandardCharsets/UTF_8))
-        result (http-json client :put url)
-        websocket-url (get result "webSocketDebuggerUrl")]
-    (or websocket-url
-        (throw (ex-info "Chrome did not return a page WebSocket URL."
-                        {:response result})))))
-
-(defn- handle-cdp-message! [pending events text]
-  (let [message (json/read-str text)]
-    (if-let [id (get message "id")]
-      (when-let [response (get @pending id)]
-        (swap! pending dissoc id)
-        (deliver response message))
-      (swap! events conj message))))
-
-(defn- connect-cdp! [http-client websocket-url]
-  (let [next-id (AtomicLong. 0)
-        pending (atom {})
-        events (atom [])
-        partial (atom "")]
-    (let [listener (reify WebSocket$Listener
-                     (onOpen [_ websocket]
-                       (.request websocket 1))
-                     (onText [_ websocket data last?]
-                       (if last?
-                         (let [text (str @partial data)]
-                           (reset! partial "")
-                           (handle-cdp-message! pending events text))
-                         (swap! partial str data))
-                       (.request websocket 1)
-                       (CompletableFuture/completedFuture nil))
-                     (onError [_ _ error]
-                       (swap! events conj {"method" "gnostica.smoke/websocket-error"
-                                           "params" {"message" (.getMessage error)}}))
-                     (onClose [_ _ status-code reason]
-                       (swap! events conj {"method" "gnostica.smoke/websocket-closed"
-                                           "params" {"status" status-code
-                                                     "reason" reason}})
-                       (CompletableFuture/completedFuture nil)))
-          websocket (-> http-client
-                        .newWebSocketBuilder
-                        (.buildAsync (URI/create websocket-url) listener)
-                        .join)]
-      {:websocket websocket
-       :next-id next-id
-       :pending pending
-       :events events})))
-
-(defn- close-cdp! [{:keys [websocket]}]
-  (when websocket
-    (.join (.sendClose websocket WebSocket/NORMAL_CLOSURE "done"))))
-
-(defn- cdp-command!
-  ([client method]
-   (cdp-command! client method nil))
-  ([{:keys [websocket next-id pending]} method params]
-   (let [id (.incrementAndGet next-id)
-         response (promise)
-         payload (cond-> {"id" id
-                          "method" method}
-                   params (assoc "params" params))]
-     (swap! pending assoc id response)
-     (.join (.sendText websocket (json/write-str payload) true))
-     (let [message (deref response cdp-timeout-ms ::timeout)]
-       (swap! pending dissoc id)
-       (cond
-         (= ::timeout message)
-         (throw (ex-info "Timed out waiting for Chrome DevTools command response."
-                         {:method method
-                          :params params}))
-
-         (get message "error")
-         (throw (ex-info "Chrome DevTools command failed."
-                         {:method method
-                          :params params
-                          :error (get message "error")}))
-
-         :else
-         (get message "result"))))))
-
-(defn- evaluate! [client expression]
-  (let [result (cdp-command! client
-                             "Runtime.evaluate"
-                             {"expression" expression
-                              "returnByValue" true
-                              "awaitPromise" true})
-        exception (get result "exceptionDetails")]
-    (when exception
-      (throw (ex-info "Browser evaluation failed."
-                      {:expression expression
-                       :exception exception})))
-    (get-in result ["result" "value"])))
-
-(defn- wait-for! [client description expression ready?]
-  (let [deadline (+ (System/currentTimeMillis) wait-timeout-ms)]
-    (loop [last-value nil
-           last-error nil]
-      (if (> (System/currentTimeMillis) deadline)
-        (throw (ex-info (str "Timed out waiting for " description ".")
-                        {:last-value last-value
-                         :last-error (some-> last-error ex-message)}))
-        (let [[ok? value error] (try
-                                  [true (evaluate! client expression) nil]
-                                  (catch Exception error
-                                    [false nil error]))]
-          (cond
-            (and ok? (ready? value))
-            value
-
-            ok?
-            (do
-              (Thread/sleep 250)
-              (recur value nil))
-
-            :else
-            (do
-              (Thread/sleep 250)
-              (recur last-value error))))))))
-
-(defn- prepare-page!
-  ([client viewport blocked-urls]
-   (prepare-page! client viewport blocked-urls nil))
-  ([client {:keys [width height mobile]} blocked-urls init-script]
-   (cdp-command! client "Page.enable")
-   (cdp-command! client "Runtime.enable")
-   (cdp-command! client "Log.enable")
-   (cdp-command! client "Network.enable")
-   (cdp-command! client "Network.setCacheDisabled" {"cacheDisabled" (boolean (seq blocked-urls))})
-   (when (seq blocked-urls)
-     (cdp-command! client "Network.setBlockedURLs" {"urls" blocked-urls}))
-   (when init-script
-     (cdp-command! client
-                   "Page.addScriptToEvaluateOnNewDocument"
-                   {"source" init-script}))
-   (cdp-command! client
-                 "Emulation.setDeviceMetricsOverride"
-                 {"width" width
-                  "height" height
-                  "deviceScaleFactor" 1
-                  "mobile" (boolean mobile)})))
-
-(def app-ready-js
-  "Boolean(document.querySelector('.app-shell') || document.querySelector('.setup-error'))")
-
-(def happy-stats-js
-  "(() => {
-     const board = document.querySelector('.board-three');
-     const canvas = document.querySelector('.board-three__canvas');
-     const rect = canvas ? canvas.getBoundingClientRect() : null;
-     const antialiasSupported = (() => {
-       const probe = document.createElement('canvas');
-       const context = probe.getContext('webgl2', {antialias: true})
-         || probe.getContext('webgl', {antialias: true})
-         || probe.getContext('experimental-webgl', {antialias: true});
-       const attributes = context && context.getContextAttributes ? context.getContextAttributes() : null;
-       return Boolean(attributes && attributes.antialias);
-     })();
-     const cardZones = document.querySelector('.card-zones');
-     const cardZonesRect = cardZones ? cardZones.getBoundingClientRect() : null;
-     const status = Array.from(document.querySelectorAll('.board-3d-status.is-error')).map((node) => node.textContent.trim());
-     const imageResourceCount = performance.getEntriesByType('resource')
-       .filter((entry) => /\\/images\\/.*\\.png(?:$|\\?)/.test(entry.name)).length;
-     const iconMetrics = (selector) => {
-       const icon = document.querySelector(selector);
-       const stack = icon ? icon.closest('.gnostica-icon-stack') : null;
-       const face = icon ? icon.closest('.card-face') : null;
-       const iconRect = icon ? icon.getBoundingClientRect() : null;
-       const faceRect = face ? face.getBoundingClientRect() : null;
-       const stackStyle = stack ? getComputedStyle(stack) : null;
-       const gap = stackStyle ? Number.parseFloat(stackStyle.rowGap || stackStyle.gap || '') : -1;
-       return {
-         scale: stack ? Number(stack.dataset.iconScale || -1) : -1,
-         iconWidth: iconRect ? iconRect.width : 0,
-         faceWidth: faceRect ? faceRect.width : 0,
-         widthRatio: iconRect && faceRect && faceRect.width > 0 ? iconRect.width / faceRect.width : 0,
-         gap: Number.isFinite(gap) ? gap : -1
-       };
-     };
-     return {
-       url: location.href,
-       cardIconMode: (document.querySelector('.app-shell') || {}).dataset.cardIconMode || null,
-       threeRevision: window.THREE ? window.THREE.REVISION : null,
-       orbitControls: Boolean(window.THREE && window.THREE.OrbitControls),
-       board: Boolean(board),
-       boardCardIconMode: board ? board.dataset.cardIconMode : null,
-       boardCardCount: board ? Number(board.dataset.boardCardCount || -1) : -1,
-       majorIconCardCount: board ? Number(board.dataset.majorIconCardCount || -1) : -1,
-       majorIconCount: board ? Number(board.dataset.majorIconCount || -1) : -1,
-       cardIconScale: board ? Number(board.dataset.cardIconScale || -1) : -1,
-       cardIconSize: board ? Number(board.dataset.cardIconSize || -1) : -1,
-       cardTextureSupportedIconCount: board ? Number(board.dataset.cardTextureSupportedIconCount || -1) : -1,
-       cardTextureMaxIconCount: board ? Number(board.dataset.cardTextureMaxIconCount || -1) : -1,
-       cardTextureIconStackFits: board ? board.dataset.cardTextureIconStackFits === 'true' : false,
-       wastelandCount: board ? Number(board.dataset.wastelandCount || -1) : -1,
-       visiblePieceCount: board ? Number(board.dataset.visiblePieceCount || -1) : -1,
-       pieceEdgeOutlineCount: board ? Number(board.dataset.pieceEdgeOutlineCount || -1) : -1,
-       selectedIndex: board ? Number(board.dataset.selectedBoardIndex || -1) : -1,
-       tableSurfaceColor: board ? board.dataset.tableSurfaceColor : null,
-       tableClearColor: board ? board.dataset.tableClearColor : null,
-       textureErrorCount: board ? Number(board.dataset.textureErrorCount || -1) : -1,
-       fallback: Boolean(document.querySelector('.board-fallback')),
-       canvas: Boolean(canvas),
-       canvasWidth: canvas ? canvas.width : 0,
-       canvasHeight: canvas ? canvas.height : 0,
-       canvasClientWidth: rect ? Math.round(rect.width) : 0,
-       canvasClientHeight: rect ? Math.round(rect.height) : 0,
-       antialiasRequested: board ? board.dataset.antialiasRequested === 'true' : false,
-       antialiasEnabled: board ? board.dataset.antialiasEnabled === 'true' : false,
-       antialiasSupported,
-       minZoomDistance: board ? Number(board.dataset.minZoomDistance || -1) : -1,
-       maxZoomDistance: board ? Number(board.dataset.maxZoomDistance || -1) : -1,
-       cameraDistance: board ? Number(board.dataset.cameraDistance || -1) : -1,
-       cameraTargetX: board ? Number(board.dataset.cameraTargetX || -999) : -999,
-       cameraTargetY: board ? Number(board.dataset.cameraTargetY || -999) : -999,
-       reset: Boolean(document.querySelector('.board-three__reset')),
-       cardZones: Boolean(cardZones),
-       cardZonesVisible: Boolean(cardZonesRect && cardZonesRect.width > 0 && cardZonesRect.height > 0),
-       handCardCount: document.querySelectorAll('.hand-card').length,
-       handMajorIconStackCount: document.querySelectorAll('.hand-card .gnostica-icon-stack').length,
-       handMajorIconCount: document.querySelectorAll('.hand-card .gnostica-icon').length,
-       handIconMetrics: iconMetrics('.hand-card .gnostica-icon'),
-       drawCount: cardZones ? Number(cardZones.dataset.drawCount || -1) : -1,
-       discardCount: cardZones ? Number(cardZones.dataset.discardCount || -1) : -1,
-       status,
-       imageResourceCount
-     };
-   })()")
-
-(def canvas-rect-js
-  "(() => {
-     const canvas = document.querySelector('.board-three__canvas');
-     if (!canvas) return null;
-     const rect = canvas.getBoundingClientRect();
-     return {
-       x: rect.left,
-       y: rect.top,
-       width: rect.width,
-       height: rect.height,
-       centerX: rect.left + (rect.width / 2),
-       centerY: rect.top + (rect.height / 2)
-     };
-   })()")
-
-(def selection-js
-  "(() => {
-     const board = document.querySelector('.board-three');
-     const panel = document.querySelector('.territory-panel');
-     return {
-       selectedIndex: board ? Number(board.dataset.selectedBoardIndex || -1) : -1,
-       panelText: panel ? panel.innerText : ''
-     };
-   })()")
-
-(def fallback-stats-js
-  "(() => {
-     const status = document.querySelector('.board-3d-status');
-     const stage = document.querySelector('.board-fallback .board-stage');
-     const fallbackFace = document.querySelector('.board-fallback .card-face');
-     const cardZones = document.querySelector('.card-zones');
-     const cardZonesRect = cardZones ? cardZones.getBoundingClientRect() : null;
-     const iconMetrics = (selector) => {
-       const icon = document.querySelector(selector);
-       const stack = icon ? icon.closest('.gnostica-icon-stack') : null;
-       const face = icon ? icon.closest('.card-face') : null;
-       const iconRect = icon ? icon.getBoundingClientRect() : null;
-       const faceRect = face ? face.getBoundingClientRect() : null;
-       const stackStyle = stack ? getComputedStyle(stack) : null;
-       const gap = stackStyle ? Number.parseFloat(stackStyle.rowGap || stackStyle.gap || '') : -1;
-       return {
-         scale: stack ? Number(stack.dataset.iconScale || -1) : -1,
-         iconWidth: iconRect ? iconRect.width : 0,
-         faceWidth: faceRect ? faceRect.width : 0,
-         widthRatio: iconRect && faceRect && faceRect.width > 0 ? iconRect.width / faceRect.width : 0,
-         gap: Number.isFinite(gap) ? gap : -1
-       };
-     };
-     return {
-       cardIconMode: (document.querySelector('.app-shell') || {}).dataset.cardIconMode || null,
-       threeRevision: window.THREE ? window.THREE.REVISION : null,
-       orbitControls: Boolean(window.THREE && window.THREE.OrbitControls),
-       fallback: Boolean(document.querySelector('.board-fallback')),
-       boardCardIconMode: fallbackFace ? fallbackFace.dataset.iconMode : null,
-       cssCards: document.querySelectorAll('.board-fallback .board-card').length,
-       cssMajorIconStackCount: document.querySelectorAll('.board-fallback .board-card .gnostica-icon-stack').length,
-       cssMajorIconCount: document.querySelectorAll('.board-fallback .board-card .gnostica-icon').length,
-       cssBoardIconMetrics: iconMetrics('.board-fallback .board-card.is-portrait .gnostica-icon'),
-       cssWastelands: document.querySelectorAll('.board-fallback .board-wasteland').length,
-       canvas: Boolean(document.querySelector('.board-three__canvas')),
-       tableSurfaceColor: stage ? stage.dataset.tableSurfaceColor : null,
-       tableClearColor: stage ? stage.dataset.tableClearColor : null,
-       cardZones: Boolean(cardZones),
-       cardZonesVisible: Boolean(cardZonesRect && cardZonesRect.width > 0 && cardZonesRect.height > 0),
-       handCardCount: document.querySelectorAll('.hand-card').length,
-       handMajorIconStackCount: document.querySelectorAll('.hand-card .gnostica-icon-stack').length,
-       handMajorIconCount: document.querySelectorAll('.hand-card .gnostica-icon').length,
-       handIconMetrics: iconMetrics('.hand-card .gnostica-icon'),
-       drawCount: cardZones ? Number(cardZones.dataset.drawCount || -1) : -1,
-       discardCount: cardZones ? Number(cardZones.dataset.discardCount || -1) : -1,
-       statusText: status ? status.textContent.trim() : '',
-       panelText: (document.querySelector('.territory-panel') || {}).innerText || ''
-     };
-   })()")
-
-(def popup-mode-js
-  "(() => {
-     const visible = (node) => {
-       if (!node) return false;
-       const rect = node.getBoundingClientRect();
-       const style = getComputedStyle(node);
-       return rect.width > 0
-         && rect.height > 0
-         && style.visibility !== 'hidden'
-         && Number(style.opacity || 0) > 0.8;
-     };
-     const text = (node) => node ? node.textContent.trim() : '';
-     const focusStats = (target, popoverSelector) => {
-       if (target && target.focus) target.focus();
-       const popover = document.querySelector(popoverSelector);
-       return {
-         visible: visible(popover),
-         iconCount: popover ? popover.querySelectorAll('.gnostica-icon').length : 0,
-         itemCount: popover ? popover.querySelectorAll('.card-icon-popover__item').length : 0,
-         text: text(popover)
-       };
-     };
-     const shell = document.querySelector('.app-shell');
-     const board = document.querySelector('.board-three');
-     const fallback = document.querySelector('.board-fallback');
-     const fallbackFace = document.querySelector('.board-fallback .card-face');
-     const handFace = document.querySelector('.hand-card.has-gnostica-icons .card-face');
-     const fallbackTwoIconCard = document.querySelector('.board-fallback .board-card .card-icon-popover[data-icon-count=\"2\"]');
-     const fallbackThreeIconCard = document.querySelector('.board-fallback .board-card .card-icon-popover[data-icon-count=\"3\"]');
-     const hand = focusStats(handFace, '.hand-card.has-gnostica-icons .card-icon-popover');
-     const boardTwo = focusStats(
-       board || (fallbackTwoIconCard ? fallbackTwoIconCard.closest('.board-card') : null),
-       board ? '.board-three-icon-popover .card-icon-popover' : '.board-fallback .board-card .card-icon-popover[data-icon-count=\"2\"]'
-     );
-     const boardThree = focusStats(
-       fallbackThreeIconCard ? fallbackThreeIconCard.closest('.board-card') : null,
-       '.board-fallback .board-card .card-icon-popover[data-icon-count=\"3\"]'
-     );
-     return {
-       appMode: shell ? shell.dataset.cardIconMode : null,
-       boardMode: board ? board.dataset.cardIconMode : (fallbackFace ? fallbackFace.dataset.iconMode : null),
-       cameraDistance: board ? Number(board.dataset.cameraDistance || -1) : -1,
-       fallback: Boolean(fallback),
-       togglePressed: (document.querySelector('.card-icon-mode-toggle') || {}).getAttribute('aria-pressed'),
-       handStackCount: document.querySelectorAll('.hand-card .gnostica-icon-stack').length,
-       boardStackCount: document.querySelectorAll('.board-fallback .board-card .gnostica-icon-stack').length,
-       hand,
-       boardTwo,
-       boardThree
-     };
-   })()")
-
-(def hotkey-help-js
-  "(() => {
-     const visible = (node) => {
-       if (!node) return false;
-       const rect = node.getBoundingClientRect();
-       const style = getComputedStyle(node);
-       return rect.width > 0
-         && rect.height > 0
-         && style.visibility !== 'hidden'
-         && style.display !== 'none'
-         && Number(style.opacity || 1) > 0.8;
-     };
-     const dialog = document.querySelector('.hotkey-help-dialog');
-     const overlay = document.querySelector('.hotkey-help-overlay');
-     const keyLabels = Array.from(document.querySelectorAll('.hotkey-command kbd'))
-       .map((node) => node.textContent.trim());
-     return {
-       overlayVisible: visible(overlay),
-       dialogVisible: visible(dialog),
-       role: dialog ? dialog.getAttribute('role') : null,
-       ariaModal: dialog ? dialog.getAttribute('aria-modal') : null,
-       title: (document.querySelector('#hotkey-help-title') || {}).textContent || '',
-       commandCount: document.querySelectorAll('.hotkey-command').length,
-       keyLabels,
-       text: dialog ? dialog.textContent : ''
-     };
-   })()")
-
-(def icon-help-js
-  "(() => {
-     const visible = (node) => {
-       if (!node) return false;
-       const rect = node.getBoundingClientRect();
-       const style = getComputedStyle(node);
-       return rect.width > 0
-         && rect.height > 0
-         && style.visibility !== 'hidden'
-         && style.display !== 'none'
-         && Number(style.opacity || 1) > 0.8;
-     };
-     const dialog = document.querySelector('.icon-help-dialog');
-     const overlay = document.querySelector('.icon-help-overlay');
-     return {
-       overlayVisible: visible(overlay),
-       dialogVisible: visible(dialog),
-       role: dialog ? dialog.getAttribute('role') : null,
-       ariaModal: dialog ? dialog.getAttribute('aria-modal') : null,
-       title: (document.querySelector('#icon-help-title') || {}).textContent || '',
-       itemCount: document.querySelectorAll('.icon-help-item').length,
-       iconCount: document.querySelectorAll('.icon-help-item .gnostica-icon').length,
-       text: dialog ? dialog.textContent : ''
-     };
-   })()")
-
-(def mismatched-three-js
-  "window.THREE = {REVISION: '999', OrbitControls: function OrbitControls() {}};")
-
-(defn- velvet-pixel? [argb]
-  (let [r (bit-and (bit-shift-right argb 16) 0xff)
-        g (bit-and (bit-shift-right argb 8) 0xff)
-        b (bit-and argb 0xff)]
-    (and (>= r 24)
-         (>= b 18)
-         (<= g 80)
-         (<= b 130)
-         (> r g)
-         (> b g)
-         (>= (- r g) 12)
-         (>= (- b g) 4))))
-
-(defn- pixel-ok? [stats]
-  (and (true? (get stats "ok"))
-       (>= (long (or (get stats "sampledPixels") 0)) 100)
-       (>= (long (or (get stats "distinctColors") 0)) 16)
-       (>= (long (or (get stats "velvetPixels") 0)) min-velvet-pixels)))
-
-(defn- antialias-ready? [stats]
-  (and (true? (get stats "antialiasRequested"))
-       (or (false? (get stats "antialiasSupported"))
-           (true? (get stats "antialiasEnabled")))))
-
-(defn- roughly= [expected actual tolerance]
-  (<= (Math/abs (- (double expected) (double actual))) tolerance))
-
-(defn- dom-icon-layout-ready? [metrics]
-  (let [width-ratio (double (or (get metrics "widthRatio") 0))
-        gap (double (or (get metrics "gap") -1))
-        icon-width (double (or (get metrics "iconWidth") 0))]
-    (and (map? metrics)
-         (= icon-layout/card-icon-scale
-            (long (or (get metrics "scale") -1)))
-         (roughly= (/ icon-layout/dom-card-icon-width-percent 100.0)
-                   width-ratio
-                   0.03)
-         (roughly= icon-layout/dom-card-icon-gap-px gap 1.0)
-         (pos? icon-width))))
-
-(defn- three-icon-layout-ready? [stats]
-  (and (= icon-layout/card-icon-scale
-          (long (or (get stats "cardIconScale") -1)))
-       (= icon-layout/texture-card-icon-size
-          (long (or (get stats "cardIconSize") -1)))
-       (= (count icons/icon-ids)
-          (long (or (get stats "cardTextureSupportedIconCount") -1)))
-       (= icon-layout/max-card-icon-count
-          (long (or (get stats "cardTextureMaxIconCount") -1)))
-       (true? (get stats "cardTextureIconStackFits"))))
-
-(defn- happy-ready? [stats]
-  (let [visible-piece-count (long (or (get stats "visiblePieceCount") -1))
-        piece-edge-outline-count (long (or (get stats "pieceEdgeOutlineCount") -1))]
-    (and (= "128" (get stats "threeRevision"))
-         (= "always" (get stats "cardIconMode"))
-         (true? (get stats "orbitControls"))
-         (true? (get stats "board"))
-         (= "always" (get stats "boardCardIconMode"))
-         (= 2 (long (or (get stats "majorIconCardCount") -1)))
-         (= 5 (long (or (get stats "majorIconCount") -1)))
-         (three-icon-layout-ready? stats)
-         (= 12 (get stats "wastelandCount"))
-         (pos? visible-piece-count)
-         (= visible-piece-count piece-edge-outline-count)
-         (= expected-table-surface-color (get stats "tableSurfaceColor"))
-         (= expected-table-clear-color (get stats "tableClearColor"))
-         (false? (get stats "fallback"))
-         (true? (get stats "canvas"))
-         (pos? (long (or (get stats "canvasClientWidth") 0)))
-         (pos? (long (or (get stats "canvasClientHeight") 0)))
-         (antialias-ready? stats)
-         (roughly= 3.2 (double (or (get stats "minZoomDistance") -1)) 0.001)
-         (roughly= 10.0 (double (or (get stats "maxZoomDistance") -1)) 0.001)
-         (<= 3.2 (double (or (get stats "cameraDistance") -1)) 10.0)
-         (number? (get stats "cameraTargetX"))
-         (number? (get stats "cameraTargetY"))
-         (true? (get stats "reset"))
-         (true? (get stats "cardZones"))
-         (true? (get stats "cardZonesVisible"))
-         (= 6 (long (or (get stats "handCardCount") -1)))
-         (= 1 (long (or (get stats "handMajorIconStackCount") -1)))
-         (= 1 (long (or (get stats "handMajorIconCount") -1)))
-         (dom-icon-layout-ready? (get stats "handIconMetrics"))
-         (pos? (long (or (get stats "drawCount") 0)))
-         (zero? (long (or (get stats "discardCount") -1)))
-         (empty? (get stats "status"))
-         (>= (long (or (get stats "imageResourceCount") 0)) 9))))
-
-(defn- camera-distance-changed? [initial-stats stats]
-  (let [initial-distance (double (or (get initial-stats "cameraDistance") -1))
-        current-distance (double (or (get stats "cameraDistance") -1))]
-    (and (pos? initial-distance)
-         (pos? current-distance)
-         (not (roughly= initial-distance current-distance 0.05)))))
-
-(defn- camera-distance-preserved? [expected-stats stats]
-  (let [expected-distance (double (or (get expected-stats "cameraDistance") -1))
-        current-distance (double (or (get stats "cameraDistance") -1))]
-    (and (pos? expected-distance)
-         (pos? current-distance)
-         (roughly= expected-distance current-distance 0.02))))
-
-(defn- camera-target-x-changed? [initial-stats stats]
-  (let [initial-x (double (or (get initial-stats "cameraTargetX") -999))
-        current-x (double (or (get stats "cameraTargetX") -999))]
-    (not (roughly= initial-x current-x 0.05))))
-
-(defn- camera-target-y-changed? [initial-stats stats]
-  (let [initial-y (double (or (get initial-stats "cameraTargetY") -999))
-        current-y (double (or (get stats "cameraTargetY") -999))]
-    (not (roughly= initial-y current-y 0.05))))
-
-(defn- fallback-ready? [stats]
-  (and (nil? (get stats "threeRevision"))
-       (= "always" (get stats "cardIconMode"))
-       (false? (get stats "orbitControls"))
-       (true? (get stats "fallback"))
-       (= "always" (get stats "boardCardIconMode"))
-       (false? (get stats "canvas"))
-       (= expected-table-surface-color (get stats "tableSurfaceColor"))
-       (= expected-table-clear-color (get stats "tableClearColor"))
-       (= 9 (get stats "cssCards"))
-       (= 2 (long (or (get stats "cssMajorIconStackCount") -1)))
-       (= 5 (long (or (get stats "cssMajorIconCount") -1)))
-       (dom-icon-layout-ready? (get stats "cssBoardIconMetrics"))
-       (= 12 (get stats "cssWastelands"))
-       (true? (get stats "cardZones"))
-       (true? (get stats "cardZonesVisible"))
-       (= 6 (long (or (get stats "handCardCount") -1)))
-       (= 1 (long (or (get stats "handMajorIconStackCount") -1)))
-       (= 1 (long (or (get stats "handMajorIconCount") -1)))
-       (dom-icon-layout-ready? (get stats "handIconMetrics"))
-       (pos? (long (or (get stats "drawCount") 0)))
-       (zero? (long (or (get stats "discardCount") -1)))
-       (str/includes? (or (get stats "statusText") "") "Three.js is unavailable")))
-
-(defn- mismatch-ready? [stats]
-  (and (= "999" (get stats "threeRevision"))
-       (= "always" (get stats "cardIconMode"))
-       (true? (get stats "orbitControls"))
-       (true? (get stats "fallback"))
-       (= "always" (get stats "boardCardIconMode"))
-       (false? (get stats "canvas"))
-       (= expected-table-surface-color (get stats "tableSurfaceColor"))
-       (= expected-table-clear-color (get stats "tableClearColor"))
-       (= 9 (get stats "cssCards"))
-       (= 2 (long (or (get stats "cssMajorIconStackCount") -1)))
-       (= 5 (long (or (get stats "cssMajorIconCount") -1)))
-       (dom-icon-layout-ready? (get stats "cssBoardIconMetrics"))
-       (= 12 (get stats "cssWastelands"))
-       (true? (get stats "cardZones"))
-       (true? (get stats "cardZonesVisible"))
-       (= 6 (long (or (get stats "handCardCount") -1)))
-       (= 1 (long (or (get stats "handMajorIconStackCount") -1)))
-       (= 1 (long (or (get stats "handMajorIconCount") -1)))
-       (dom-icon-layout-ready? (get stats "handIconMetrics"))
-       (pos? (long (or (get stats "drawCount") 0)))
-       (zero? (long (or (get stats "discardCount") -1)))
-       (str/includes? (or (get stats "statusText") "") "revision 999 is incompatible")))
-
-(defn- popup-mode-ready? [stats]
-  (let [hand (get stats "hand")
-        board-two (get stats "boardTwo")
-        board-three (get stats "boardThree")
-        fallback? (true? (get stats "fallback"))]
-    (and (= "popup" (get stats "appMode"))
-         (= "popup" (get stats "boardMode"))
-         (= "false" (get stats "togglePressed"))
-         (zero? (long (or (get stats "handStackCount") -1)))
-         (true? (get hand "visible"))
-         (= 1 (long (or (get hand "iconCount") -1)))
-         (str/includes? (or (get hand "text") "") "Sword, rod, cup, or disc")
-         (true? (get board-two "visible"))
-         (= 2 (long (or (get board-two "iconCount") -1)))
-         (str/includes? (or (get board-two "text") "") "Rod")
-         (or (not fallback?)
-             (and (true? (get board-three "visible"))
-                  (= 3 (long (or (get board-three "iconCount") -1)))
-                  (str/includes? (or (get board-three "text") "")
-                                 "Orient a target piece"))))))
-
-(defn- hotkey-help-open-ready? [stats]
-  (let [labels (set (get stats "keyLabels"))]
-    (and (true? (get stats "overlayVisible"))
-         (true? (get stats "dialogVisible"))
-         (= "dialog" (get stats "role"))
-         (= "true" (get stats "ariaModal"))
-         (str/includes? (get stats "title") "Keyboard Commands")
-         (= 5 (long (or (get stats "commandCount") -1)))
-         (contains? labels "?")
-         (contains? labels "G")
-         (contains? labels "I")
-         (contains? labels "W/A/S/D")
-         (contains? labels "Arrow keys")
-         (contains? labels "Esc")
-         (str/includes? (or (get stats "text") "") "Move the 3D board view"))))
-
-(defn- icon-help-open-ready? [stats]
-  (and (true? (get stats "overlayVisible"))
-       (true? (get stats "dialogVisible"))
-       (= "dialog" (get stats "role"))
-       (= "true" (get stats "ariaModal"))
-       (str/includes? (get stats "title") "Special Move Icons")
-       (= (count icons/icon-ids) (long (or (get stats "itemCount") -1)))
-       (= (count icons/icon-ids) (long (or (get stats "iconCount") -1)))
-       (str/includes? (or (get stats "text") "") "Create a small piece")
-       (str/includes? (or (get stats "text") "") "Any major arcana power")))
-
-(defn- icon-help-closed-ready? [stats]
-  (and (false? (get stats "overlayVisible"))
-       (false? (get stats "dialogVisible"))
-       (zero? (long (or (get stats "itemCount") -1)))))
-
-(defn- hotkey-help-closed-ready? [stats]
-  (and (false? (get stats "overlayVisible"))
-       (false? (get stats "dialogVisible"))
-       (zero? (long (or (get stats "commandCount") -1)))))
-
-(defn- browser-diagnostics [client]
-  (->> @(:events client)
-       (filter (fn [event]
-                 (#{"Log.entryAdded"
-                    "Network.loadingFailed"
-                    "Runtime.consoleAPICalled"
-                    "Runtime.exceptionThrown"
-                    "gnostica.smoke/websocket-error"}
-                  (get event "method"))))
-       (take-last 20)
-       vec))
-
-(defn- screenshot-pixel-stats! [client {:strs [x y width height]}]
-  (let [result (cdp-command! client
-                             "Page.captureScreenshot"
-                             {"format" "png"
-                              "clip" {"x" x
-                                      "y" y
-                                      "width" width
-                                      "height" height
-                                      "scale" 1}})
-        bytes (.decode (Base64/getDecoder) ^String (get result "data"))
-        image (ImageIO/read (ByteArrayInputStream. bytes))]
-    (if-not image
-      {"ok" false
-       "error" "Chrome returned screenshot bytes that ImageIO could not decode."}
-      (let [image-width (.getWidth image)
-            image-height (.getHeight image)
-            step-x (max 1 (quot image-width 80))
-            step-y (max 1 (quot image-height 80))
-            colors (volatile! (transient #{}))
-            velvet-pixels (volatile! 0)
-            sampled (volatile! 0)]
-        (doseq [sample-x (range 0 image-width step-x)
-                sample-y (range 0 image-height step-y)]
-          (vswap! sampled inc)
-          (let [argb (.getRGB image sample-x sample-y)]
-            (when (velvet-pixel? argb)
-              (vswap! velvet-pixels inc))
-            (vswap! colors conj! argb)))
-        {"ok" true
-         "width" image-width
-         "height" image-height
-         "sampledPixels" @sampled
-         "velvetPixels" @velvet-pixels
-         "distinctColors" (count (persistent! @colors))}))))
-
-(defn- open-page!
+(defn- open-gnostica-page!
   ([http-client chrome viewport url blocked-urls]
-   (open-page! http-client chrome viewport url blocked-urls nil))
+   (open-gnostica-page! http-client chrome viewport url blocked-urls nil))
   ([http-client chrome viewport url blocked-urls init-script]
-   (let [websocket-url (new-page-websocket! http-client (:port chrome))
-         client (connect-cdp! http-client websocket-url)]
-     (prepare-page! client viewport blocked-urls init-script)
-     (cdp-command! client "Page.navigate" {"url" url})
-     (wait-for! client "the Gnostica app shell" app-ready-js true?)
-     client)))
-
-(defn- major-icons-smoke-url [url]
-  (str url
-       (if (str/includes? url "?") "&" "?")
-       "gnostica-smoke=major-icons"))
-
-(defn- dispatch-click! [client {:strs [x y]}]
-  (doseq [event-type ["mouseMoved" "mousePressed" "mouseReleased"]]
-    (cdp-command! client
-                  "Input.dispatchMouseEvent"
-                  (cond-> {"type" event-type
-                           "x" x
-                           "y" y}
-                    (not= "mouseMoved" event-type)
-                    (assoc "button" "left"
-                           "clickCount" 1)))))
-
-(defn- dispatch-center-click! [client {:strs [centerX centerY]}]
-  (dispatch-click! client {"x" centerX
-                           "y" centerY}))
-
-(defn- dispatch-wheel! [client {:strs [centerX centerY]} delta-y]
-  (cdp-command! client
-                "Input.dispatchMouseEvent"
-                {"type" "mouseMoved"
-                 "x" centerX
-                 "y" centerY})
-  (cdp-command! client
-                "Input.dispatchMouseEvent"
-                {"type" "mouseWheel"
-                 "x" centerX
-                 "y" centerY
-                 "deltaX" 0
-                 "deltaY" delta-y}))
-
-(defn- dispatch-key! [client {:keys [key code key-code modifiers]}]
-  (doseq [event-type ["keyDown" "keyUp"]]
-    (cdp-command! client
-                  "Input.dispatchKeyEvent"
-                  (cond-> {"type" event-type
-                           "key" key
-                           "code" code
-                           "windowsVirtualKeyCode" key-code
-                           "nativeVirtualKeyCode" key-code}
-                    modifiers
-                    (assoc "modifiers" modifiers)))))
-
-(defn- dispatch-i-key! [client]
-  (dispatch-key! client {:key "i"
-                         :code "KeyI"
-                         :key-code 73}))
-
-(defn- dispatch-g-key! [client]
-  (dispatch-key! client {:key "g"
-                         :code "KeyG"
-                         :key-code 71}))
-
-(defn- dispatch-w-key! [client]
-  (dispatch-key! client {:key "w"
-                         :code "KeyW"
-                         :key-code 87}))
-
-(defn- dispatch-arrow-right-key! [client]
-  (dispatch-key! client {:key "ArrowRight"
-                         :code "ArrowRight"
-                         :key-code 39}))
-
-(defn- dispatch-question-mark-key! [client]
-  (dispatch-key! client {:key "?"
-                         :code "Slash"
-                         :key-code 191
-                         :modifiers 8}))
-
-(defn- dispatch-escape-key! [client]
-  (dispatch-key! client {:key "Escape"
-                         :code "Escape"
-                         :key-code 27}))
-
-(defn- focus-three-board! [client]
-  (when-not (true? (evaluate! client
-                              "(() => {
-                                 const board = document.querySelector('.board-three');
-                                 if (!board) return false;
-                                 board.focus();
-                                 return document.activeElement === board;
-                               })()"))
-    (throw (ex-info "The Three.js board could not be focused for keyboard movement."
-                    {}))))
+   (browser/open-page! http-client
+                       chrome
+                       viewport
+                       {:url url
+                        :blocked-urls blocked-urls
+                        :init-script init-script
+                        :ready-description "the Gnostica app shell"
+                        :ready-expression stats/app-ready-js
+                        :ready? true?})))
 
 (defn- run-happy-viewport! [http-client chrome url viewport]
   (println (format "Smoke checking %s viewport at %dx%d."
                    (:name viewport)
                    (:width viewport)
                    (:height viewport)))
-  (let [client (open-page! http-client chrome viewport (major-icons-smoke-url url) nil)]
+  (let [client (open-gnostica-page! http-client
+                                    chrome
+                                    viewport
+                                    (stats/major-icons-smoke-url url)
+                                    nil)]
     (try
-      (let [stats (wait-for! client
-                             (str (:name viewport) " Three.js board render")
-                             happy-stats-js
-                             happy-ready?)
-            rect (evaluate! client canvas-rect-js)
+      (let [initial-stats (browser/wait-for! client
+                                             (str (:name viewport) " Three.js board render")
+                                             stats/happy-stats-js
+                                             stats/happy-ready?)
+            rect (browser/evaluate! client stats/canvas-rect-js)
             pixel-stats (when rect
-                          (screenshot-pixel-stats! client rect))]
+                          (stats/screenshot-pixel-stats! client rect))]
         (when-not rect
           (throw (ex-info "Three.js canvas bounds could not be measured."
                           {:viewport viewport
-                           :stats stats})))
-        (when-not (pixel-ok? pixel-stats)
+                           :stats initial-stats})))
+        (when-not (stats/pixel-ok? pixel-stats)
           (throw (ex-info "Three.js canvas screenshot did not contain visible board content."
                           {:viewport viewport
-                           :stats stats
+                           :stats initial-stats
                            :pixel-stats pixel-stats})))
-        (focus-three-board! client)
-        (dispatch-w-key! client)
-        (let [wasd-stats (wait-for! client
-                                    (str (:name viewport) " WASD board movement")
-                                    happy-stats-js
-                                    #(and (happy-ready? %)
-                                          (camera-target-y-changed? stats %)))
-              _ (dispatch-arrow-right-key! client)
-              keyboard-stats (wait-for! client
-                                        (str (:name viewport) " arrow-key board movement")
-                                        happy-stats-js
-                                        #(and (happy-ready? %)
-                                              (camera-target-x-changed? wasd-stats %)))]
-          (dispatch-wheel! client rect -720)
-          (let [zoomed-stats (wait-for! client
-                                        (str (:name viewport) " changed 3D camera distance")
-                                        happy-stats-js
-                                        #(and (happy-ready? %)
-                                              (camera-distance-changed? keyboard-stats %)))]
-            (dispatch-question-mark-key! client)
-            (let [hotkey-help (wait-for! client
-                                         (str (:name viewport) " hotkey help dialog")
-                                         hotkey-help-js
-                                         hotkey-help-open-ready?)]
-              (dispatch-escape-key! client)
-              (wait-for! client
-                         (str (:name viewport) " hotkey help close")
-                         hotkey-help-js
-                         hotkey-help-closed-ready?)
-              (dispatch-g-key! client)
-              (let [icon-help (wait-for! client
-                                         (str (:name viewport) " icon help dialog")
-                                         icon-help-js
-                                         icon-help-open-ready?)]
-                (dispatch-escape-key! client)
-                (wait-for! client
-                           (str (:name viewport) " icon help close")
-                           icon-help-js
-                           icon-help-closed-ready?)
-                (dispatch-i-key! client)
-                (let [popup-stats (wait-for! client
-                                             (str (:name viewport) " popup icon mode")
-                                             popup-mode-js
-                                             popup-mode-ready?)
-                      updated-rect (evaluate! client canvas-rect-js)]
-                  (when-not (camera-distance-preserved? zoomed-stats popup-stats)
+        (stats/focus-three-board! client)
+        (browser/dispatch-w-key! client)
+        (let [wasd-stats (browser/wait-for! client
+                                            (str (:name viewport) " WASD board movement")
+                                            stats/happy-stats-js
+                                            #(and (stats/happy-ready? %)
+                                                  (stats/camera-target-y-changed? initial-stats %)))
+              _ (browser/dispatch-arrow-right-key! client)
+              keyboard-stats (browser/wait-for! client
+                                                (str (:name viewport) " arrow-key board movement")
+                                                stats/happy-stats-js
+                                                #(and (stats/happy-ready? %)
+                                                      (stats/camera-target-x-changed? wasd-stats %)))]
+          (browser/dispatch-wheel! client rect -720)
+          (let [zoomed-stats (browser/wait-for! client
+                                                (str (:name viewport) " changed 3D camera distance")
+                                                stats/happy-stats-js
+                                                #(and (stats/happy-ready? %)
+                                                      (stats/camera-distance-changed? keyboard-stats %)))]
+            (browser/dispatch-question-mark-key! client)
+            (let [hotkey-help (browser/wait-for! client
+                                                 (str (:name viewport) " hotkey help dialog")
+                                                 stats/hotkey-help-js
+                                                 stats/hotkey-help-open-ready?)]
+              (browser/dispatch-escape-key! client)
+              (browser/wait-for! client
+                                 (str (:name viewport) " hotkey help close")
+                                 stats/hotkey-help-js
+                                 stats/hotkey-help-closed-ready?)
+              (browser/dispatch-g-key! client)
+              (let [icon-help (browser/wait-for! client
+                                                 (str (:name viewport) " icon help dialog")
+                                                 stats/icon-help-js
+                                                 stats/icon-help-open-ready?)]
+                (browser/dispatch-escape-key! client)
+                (browser/wait-for! client
+                                   (str (:name viewport) " icon help close")
+                                   stats/icon-help-js
+                                   stats/icon-help-closed-ready?)
+                (browser/dispatch-i-key! client)
+                (let [popup-stats (browser/wait-for! client
+                                                     (str (:name viewport) " popup icon mode")
+                                                     stats/popup-mode-js
+                                                     stats/popup-mode-ready?)
+                      updated-rect (browser/evaluate! client stats/canvas-rect-js)]
+                  (when-not (stats/camera-distance-preserved? zoomed-stats popup-stats)
                     (throw (ex-info "The I hotkey reset the 3D camera view."
                                     {:viewport viewport
                                      :zoomed-stats zoomed-stats
@@ -1010,16 +98,15 @@
                   (when-not updated-rect
                     (throw (ex-info "Three.js canvas bounds could not be remeasured after popup mode."
                                     {:viewport viewport
-                                     :stats stats
+                                     :stats initial-stats
                                      :popup-stats popup-stats})))
-                  (dispatch-center-click! client updated-rect)
-                  (let [selection (wait-for! client
-                                             (str (:name viewport) " center-card selection")
-                                             selection-js
-                                             #(str/includes? (or (get % "panelText") "")
-                                                            "Row 2, Column 2"))]
+                  (browser/dispatch-center-click! client updated-rect)
+                  (let [selection (browser/wait-for! client
+                                                     (str (:name viewport) " center-card selection")
+                                                     stats/selection-js
+                                                     stats/center-card-selected?)]
                     {:viewport (:name viewport)
-                     :stats stats
+                     :stats initial-stats
                      :keyboard-stats keyboard-stats
                      :zoomed-stats zoomed-stats
                      :hotkey-help hotkey-help
@@ -1031,92 +118,90 @@
         (throw (ex-info (str "3D board smoke failed in the " (:name viewport) " viewport.")
                         {:viewport viewport
                          :url url
-                         :browser-diagnostics (browser-diagnostics client)
+                         :browser-diagnostics (browser/browser-diagnostics client)
                          :cause (ex-message error)
                          :data (ex-data error)}
                         error)))
       (finally
-        (close-cdp! client)))))
+        (browser/close-cdp! client)))))
 
 (defn- run-missing-three-fallback! [http-client chrome url]
   (println "Smoke checking missing-Three.js fallback path.")
-  (let [client (open-page! http-client
-                           chrome
-                           (first viewports)
-                           (major-icons-smoke-url url)
-                           ["*cdn.jsdelivr.net/npm/three@0.128.0*"])]
+  (let [client (open-gnostica-page! http-client
+                                    chrome
+                                    (first stats/viewports)
+                                    (stats/major-icons-smoke-url url)
+                                    ["*cdn.jsdelivr.net/npm/three@0.128.0*"])]
     (try
-      (wait-for! client
-                 "CSS fallback after blocked Three.js CDN globals"
-                 fallback-stats-js
-                 fallback-ready?)
-      (dispatch-i-key! client)
-      (wait-for! client
-                 "CSS fallback popup icon mode"
-                 popup-mode-js
-                 popup-mode-ready?)
+      (browser/wait-for! client
+                         "CSS fallback after blocked Three.js CDN globals"
+                         stats/fallback-stats-js
+                         stats/fallback-ready?)
+      (browser/dispatch-i-key! client)
+      (browser/wait-for! client
+                         "CSS fallback popup icon mode"
+                         stats/popup-mode-js
+                         stats/popup-mode-ready?)
       (catch Exception error
         (throw (ex-info "3D board fallback smoke failed when Three.js CDN scripts were blocked."
                         {:url url
-                         :browser-diagnostics (browser-diagnostics client)
+                         :browser-diagnostics (browser/browser-diagnostics client)
                          :cause (ex-message error)
                          :data (ex-data error)}
                         error)))
       (finally
-        (close-cdp! client)))))
+        (browser/close-cdp! client)))))
 
 (defn- run-mismatched-three-fallback! [http-client chrome url]
   (println "Smoke checking mismatched-Three.js fallback path.")
-  (let [client (open-page! http-client
-                           chrome
-                           (first viewports)
-                           (major-icons-smoke-url url)
-                           ["*cdn.jsdelivr.net/npm/three@0.128.0*"]
-                           mismatched-three-js)]
+  (let [client (open-gnostica-page! http-client
+                                    chrome
+                                    (first stats/viewports)
+                                    (stats/major-icons-smoke-url url)
+                                    ["*cdn.jsdelivr.net/npm/three@0.128.0*"]
+                                    stats/mismatched-three-js)]
     (try
-      (wait-for! client
-                 "CSS fallback after mismatched Three.js globals"
-                 fallback-stats-js
-                 mismatch-ready?)
+      (browser/wait-for! client
+                         "CSS fallback after mismatched Three.js globals"
+                         stats/fallback-stats-js
+                         stats/mismatch-ready?)
       (catch Exception error
         (throw (ex-info "3D board fallback smoke failed when mismatched Three.js globals were present."
                         {:url url
-                         :browser-diagnostics (browser-diagnostics client)
+                         :browser-diagnostics (browser/browser-diagnostics client)
                          :cause (ex-message error)
                          :data (ex-data error)}
                         error)))
       (finally
-        (close-cdp! client)))))
+        (browser/close-cdp! client)))))
 
 (defn- start-local-server! []
-  (let [port (free-port)
+  (let [port (browser/free-port)
         server (jetty/run-jetty #'app-server/app {:port port :join? false})]
     {:url (str "http://127.0.0.1:" port "/index.html")
      :stop #(.stop server)}))
 
 (defn- target-url! []
-  (if-let [url (getenv "SMOKE_URL")]
+  (if-let [url (browser/getenv "SMOKE_URL")]
     {:url url
      :stop (constantly nil)}
     (start-local-server!)))
 
 (defn- run-smoke! []
-  (let [http-client (-> (HttpClient/newBuilder)
-                        (.connectTimeout (Duration/ofSeconds 5))
-                        .build)
+  (let [http-client (browser/http-client)
         target (target-url!)]
     (try
-      (let [chrome (launch-chrome!)]
+      (let [chrome (browser/launch-chrome!)]
         (try
-          (wait-for-cdp! http-client chrome)
+          (browser/wait-for-cdp! http-client chrome)
           (println (str "Smoke target: " (:url target)))
-          (doseq [viewport viewports]
+          (doseq [viewport stats/viewports]
             (run-happy-viewport! http-client chrome (:url target) viewport))
           (run-missing-three-fallback! http-client chrome (:url target))
           (run-mismatched-three-fallback! http-client chrome (:url target))
           (println "3D board smoke passed.")
           (finally
-            (stop-chrome! chrome))))
+            (browser/stop-chrome! chrome))))
       (finally
         ((:stop target))))))
 
@@ -1128,6 +213,6 @@
         (println (str "3D board smoke failed: " (ex-message error)))
         (when-let [data (ex-data error)]
           (println (pr-str data)))
-        (when (getenv "SMOKE_DEBUG")
+        (when (browser/getenv "SMOKE_DEBUG")
           (.printStackTrace error)))
       (System/exit 1))))
