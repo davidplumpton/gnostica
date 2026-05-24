@@ -80,6 +80,15 @@
    :push-territory {:id :push-territory
                     :label "Push territory"}})
 
+(def territory-card-source-order
+  [:hand :draw-pile-top])
+
+(def territory-card-source-definitions
+  {:hand {:id :hand
+          :label "Hand one-point card"}
+   :draw-pile-top {:id :draw-pile-top
+                   :label "Top draw-pile card"}})
+
 (def requirement-prompts
   {:source-board-index "Choose a source territory with one of your pieces."
    :hand-card-id "Choose a card from the current player's hand."
@@ -90,6 +99,7 @@
    :target-board-index "Choose a target territory."
    :target-space "Choose a target territory, enemy piece, or wasteland."
    :initial-target-space "Choose an empty territory or wasteland."
+   :territory-card-source "Choose where the new territory card comes from."
    :one-point-card-id "Choose a one-point card from the current player's hand."
    :orientation "Choose an orientation."
    :distance "Choose a distance."
@@ -312,6 +322,16 @@
 (defn- cup-move? [db source-id params]
   (= :cup (selected-power db source-id params)))
 
+(defn- selected-cup-variant [db source-id params]
+  (when (cup-move? db source-id params)
+    (cards/cup-variant (source-card db source-id params))))
+
+(defn- territory-card-source-option-ids [db source-id params]
+  (when (cup-move? db source-id params)
+    (if (= :wheel-cup (selected-cup-variant db source-id params))
+      territory-card-source-order
+      [:hand])))
+
 (defn- rod-move? [db source-id params]
   (= :rod (selected-power db source-id params)))
 
@@ -383,7 +403,23 @@
     (contains? pieces/legal-orientations (:orientation params))
 
     (valid-wasteland-target? db (:target-wasteland params))
-    (some? (one-point-card-by-id db source-id params (:one-point-card-id params)))
+    (let [cup-variant (selected-cup-variant db source-id params)
+          selected-source (:territory-card-source params)
+          territory-card-source (or selected-source :hand)
+          source-options (set (territory-card-source-option-ids db source-id params))]
+      (cond
+        (and (= :wheel-cup cup-variant)
+             (nil? selected-source))
+        false
+
+        (not (contains? source-options territory-card-source))
+        false
+
+        (= :draw-pile-top territory-card-source)
+        true
+
+        :else
+        (some? (one-point-card-by-id db source-id params (:one-point-card-id params)))))
 
     :else
     false))
@@ -618,10 +654,19 @@
     :target-piece-id :target-piece
     :target-board-index :target
     :target-space :target
-    :target-resolution (if (valid-wasteland-target? db (:target-wasteland params))
+    :target-resolution (cond
+                         (and (valid-wasteland-target? db (:target-wasteland params))
+                              (= :wheel-cup (selected-cup-variant db source-id params))
+                              (nil? (:territory-card-source params)))
+                         :territory-card-source
+
+                         (valid-wasteland-target? db (:target-wasteland params))
                          :one-point-card
+
+                         :else
                          :orientation)
     :one-point-card-id :one-point-card
+    :territory-card-source :territory-card-source
     :orientation :orientation
     :distance :distance
     :draw-count :draw-count
@@ -672,6 +717,7 @@
 
                           :else
                           (:target-board-index requirement-prompts))
+      (= :territory-card-source stage) (:territory-card-source requirement-prompts)
       (= :one-point-card stage) (:one-point-card-id requirement-prompts)
       :else (get {:source-territory (:source-board-index requirement-prompts)
                   :hand-card (:hand-card-id requirement-prompts)
@@ -720,72 +766,84 @@
   (let [next-params (assoc params :source-board-index board-index)]
     (if (= (:source-board-index params) board-index)
       next-params
-      (dissoc next-params
-              :piece-id
-              :power
-              :rod-mode
-              :target-board-index
-              :target-wasteland
-              :target-piece-id
-              :one-point-card-id
-              :orientation
-              :distance))))
+	      (dissoc next-params
+	              :piece-id
+	              :power
+	              :rod-mode
+	              :target-board-index
+	              :target-wasteland
+	              :target-piece-id
+	              :territory-card-source
+	              :one-point-card-id
+	              :orientation
+	              :distance))))
 
 (defn- set-territory-target [params board-index]
   (-> params
       (assoc :target-board-index board-index)
-      (dissoc :target-wasteland :target-piece-id :one-point-card-id)))
+      (dissoc :target-wasteland
+              :target-piece-id
+              :territory-card-source
+              :one-point-card-id)))
 
 (defn- set-wasteland-target [params space]
   (-> params
       (assoc :target-wasteland (select-keys space [:kind :row :col]))
-      (dissoc :target-board-index :target-piece-id :orientation :one-point-card-id)))
+      (dissoc :target-board-index
+              :target-piece-id
+              :orientation
+              :territory-card-source
+              :one-point-card-id)))
 
 (defn- set-hand-card-source [params card-id]
   (-> params
       (assoc :hand-card-id card-id)
-      (dissoc :piece-id
-              :power
-              :rod-mode
-              :target-board-index
-              :target-wasteland
-              :target-piece-id
-              :one-point-card-id
-              :orientation
-              :distance)))
+	      (dissoc :piece-id
+	              :power
+	              :rod-mode
+	              :target-board-index
+	              :target-wasteland
+	              :target-piece-id
+	              :territory-card-source
+	              :one-point-card-id
+	              :orientation
+	              :distance)))
 
 (defn- set-acting-piece [params piece-id]
   (let [next-params (assoc params :piece-id piece-id)]
     (if (= (:piece-id params) piece-id)
-      next-params
-      (dissoc next-params
-              :target-board-index
-              :target-wasteland
-              :target-piece-id
-              :one-point-card-id
-              :orientation
-              :distance))))
+	      next-params
+	      (dissoc next-params
+	              :target-board-index
+	              :target-wasteland
+	              :target-piece-id
+	              :territory-card-source
+	              :one-point-card-id
+	              :orientation
+	              :distance))))
 
 (defn- set-rod-mode-param [params mode]
   (let [next-params (assoc params :rod-mode mode)]
     (if (= (:rod-mode params) mode)
-      next-params
-      (dissoc next-params
-              :target-board-index
-              :target-wasteland
-              :target-piece-id
-              :one-point-card-id
-              :orientation))))
+	      next-params
+	      (dissoc next-params
+	              :target-board-index
+	              :target-wasteland
+	              :target-piece-id
+	              :territory-card-source
+	              :one-point-card-id
+	              :orientation))))
 
 (defn- set-target-piece [params piece-id]
   (let [next-params (assoc params :target-piece-id piece-id)]
     (if (= (:target-piece-id params) piece-id)
-      next-params
-      (dissoc next-params
-              :target-board-index
-              :target-wasteland
-              :one-point-card-id
-              :orientation))))
+	      next-params
+	      (dissoc next-params
+	              :target-board-index
+	              :target-wasteland
+	              :territory-card-source
+	              :one-point-card-id
+	              :orientation))))
 
 (defn select-board-for-active-move [db index]
   (if-not (valid-board-index? db index)
@@ -954,11 +1012,32 @@
                                          {:piece-id piece-id}))
 
       :else
+	      (update-move-selection db assoc
+	                             :error
+	                             (move-error :invalid-target-piece
+	                                         "Target pieces are only available for Cup or Rod moves."
+	                                         {:piece-id piece-id})))))
+
+(defn- set-territory-card-source [params territory-card-source]
+  (cond-> (assoc params :territory-card-source territory-card-source)
+    (= :draw-pile-top territory-card-source)
+    (dissoc :one-point-card-id)))
+
+(defn select-move-territory-card-source [db territory-card-source]
+  (let [{:keys [source params]} (move-selection db)
+        option-ids (set (territory-card-source-option-ids db source params))]
+    (if (contains? option-ids territory-card-source)
+      (update-move-selection-success db
+                                     update
+                                     :params
+                                     set-territory-card-source
+                                     territory-card-source)
       (update-move-selection db assoc
                              :error
-                             (move-error :invalid-target-piece
-                                         "Target pieces are only available for Cup or Rod moves."
-                                         {:piece-id piece-id})))))
+                             (move-error :invalid-territory-card-source
+                                         "Choose an available territory card source."
+                                         {:territory-card-source territory-card-source
+                                          :options (vec option-ids)})))))
 
 (defn select-move-one-point-card [db card-id]
   (let [{:keys [source params]} (move-selection db)]
@@ -1031,9 +1110,15 @@
 
 (defn move-one-point-card-options [db]
   (let [{:keys [source params]} (move-selection db)]
-    (if (cup-move? db source params)
+    (if (and (cup-move? db source params)
+             (not= :draw-pile-top (:territory-card-source params)))
       (one-point-card-options-for db source params)
       [])))
+
+(defn move-territory-card-source-options [db]
+  (let [{:keys [source params]} (move-selection db)]
+    (mapv territory-card-source-definitions
+          (territory-card-source-option-ids db source params))))
 
 (defn move-orientation-options [_db]
   (mapv (fn [orientation]
@@ -1044,8 +1129,11 @@
 (defn- cup-target-command [params]
   (cond
     (:target-wasteland params)
-    {:target (select-keys (:target-wasteland params) [:kind :row :col])
-     :one-point-card-id (:one-point-card-id params)}
+    (let [territory-card-source (or (:territory-card-source params) :hand)]
+      (cond-> {:target (select-keys (:target-wasteland params) [:kind :row :col])
+               :territory-card-source territory-card-source}
+        (= :hand territory-card-source)
+        (assoc :one-point-card-id (:one-point-card-id params))))
 
     (:target-piece-id params)
     {:target {:kind :piece
@@ -1055,6 +1143,10 @@
     {:target {:kind :territory
               :board-index (:target-board-index params)}
      :orientation (:orientation params)}))
+
+(defn- cup-command [db source params]
+  (assoc (cup-target-command params)
+         :cup-variant (selected-cup-variant db source params)))
 
 (defn- initial-placement-target-command [params]
   (if-let [target-wasteland (:target-wasteland params)]
@@ -1092,20 +1184,20 @@
 (defn move-command [db]
   (let [{:keys [source params]} (move-selection db)]
     (when source
-      (case source
-        :activate-territory
-        (merge {:player-id (current-player-id db)
-                :source (source-command source params)}
-               (case (selected-power db source params)
-                 :rod (rod-command source params)
-                 (cup-target-command params)))
+	      (case source
+	        :activate-territory
+	        (merge {:player-id (current-player-id db)
+	                :source (source-command source params)}
+	               (case (selected-power db source params)
+	                 :rod (rod-command source params)
+	                 (cup-command db source params)))
 
-        :play-hand-card
-        (merge {:player-id (current-player-id db)
-                :source (source-command source params)}
-               (case (selected-power db source params)
-                 :rod (rod-command source params)
-                 (cup-target-command params)))
+	        :play-hand-card
+	        (merge {:player-id (current-player-id db)
+	                :source (source-command source params)}
+	               (case (selected-power db source params)
+	                 :rod (rod-command source params)
+	                 (cup-command db source params)))
 
         :draw-cards
         {:source :draw-cards

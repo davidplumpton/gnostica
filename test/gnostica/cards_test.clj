@@ -65,8 +65,15 @@
 (deftest cup-and-one-point-card-helpers-identify-move-cards
   (is (cards/cup-card? (cards/card-by-id "cups2")))
   (is (cards/cup-card? (cards/card-by-id "sun")))
+  (is (cards/cup-card? (cards/card-by-id "empress")))
+  (is (cards/cup-card? (cards/card-by-id "wheeloffortune")))
   (is (cards/cup-card? (cards/card-by-id "magician")))
   (is (not (cards/cup-card? (cards/card-by-id "coins2"))))
+  (is (= [:cup] (cards/cup-variants (cards/card-by-id "cups2"))))
+  (is (= [:cup] (cards/cup-variants (cards/card-by-id "sun"))))
+  (is (= [:cup-unbounded] (cards/cup-variants (cards/card-by-id "empress"))))
+  (is (= [:wheel-cup] (cards/cup-variants (cards/card-by-id "wheeloffortune"))))
+  (is (= [:wild-suits] (cards/cup-variants (cards/card-by-id "magician"))))
   (is (cards/cup-card? {:id "cups3"
                         :title "Three of Cups"
                         :image "/images/cups3.png"}))

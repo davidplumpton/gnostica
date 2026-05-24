@@ -116,7 +116,15 @@
 
 (def one-point-rank-keys #{"ace" "2" "3" "4" "5" "6" "7" "8" "9" "10"})
 
-(def cup-icon-ids #{:cup :cup-unbounded :wheel-cup :wild-suits})
+(def cup-icon-variants
+  {:cup :cup
+   :cup-unbounded :cup-unbounded
+   :wheel-cup :wheel-cup
+   :wild-suits :wild-suits})
+
+(def cup-variant-ids (set (vals cup-icon-variants)))
+
+(def cup-icon-ids (set (keys cup-icon-variants)))
 
 (def rod-icon-ids #{:rod :rod-unbounded :wild-suits})
 
@@ -198,11 +206,24 @@
            [suit-key (subs (:id card) (count suit-key))]))
        suit-prefixes))))
 
-(defn cup-card? [card]
+(defn- conj-new [values value]
+  (if (some #{value} values)
+    values
+    (conj values value)))
+
+(defn cup-variants [card]
   (let [card (known-card card)
         [suit-key] (minor-parts card)]
-    (or (= "cups" suit-key)
-        (boolean (some cup-icon-ids (:gnostica-icons card))))))
+    (reduce conj-new
+            (cond-> []
+              (= "cups" suit-key) (conj :cup))
+            (keep cup-icon-variants (:gnostica-icons card)))))
+
+(defn cup-variant [card]
+  (first (cup-variants card)))
+
+(defn cup-card? [card]
+  (boolean (seq (cup-variants card))))
 
 (defn rod-card? [card]
   (let [card (known-card card)

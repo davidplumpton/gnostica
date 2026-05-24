@@ -489,11 +489,12 @@
            created-piece))
     (is (= 3 (get-in state [:players-by-id :rose :stash :small])))
     (is (= 3 (get-in state [:pieces :stashes :rose :small])))
-    (is (= [{:type :cup/small-piece-created
-             :player-id :rose
-             :source {:kind :territory
-                      :board-index 3
-                      :piece-id :rose-cup-minion}
+	    (is (= [{:type :cup/small-piece-created
+	             :player-id :rose
+	             :cup-variant :cup
+	             :source {:kind :territory
+	                      :board-index 3
+	                      :piece-id :rose-cup-minion}
              :target {:kind :territory
                       :board-index 4}
              :piece created-piece}]
@@ -521,11 +522,12 @@
     (is (= 4 (get-in state [:players-by-id :rose :stash :small])))
     (is (= 4 (get-in state [:players-by-id :indigo :stash :small])))
     (is (= 4 (get-in state [:pieces :stashes :indigo :small])))
-    (is (= [{:type :cup/enemy-small-piece-created
-             :player-id :rose
-             :source {:kind :territory
-                      :board-index 3
-                      :piece-id :rose-cup-minion}
+	    (is (= [{:type :cup/enemy-small-piece-created
+	             :player-id :rose
+	             :cup-variant :cup
+	             :source {:kind :territory
+	                      :board-index 3
+	                      :piece-id :rose-cup-minion}
              :target {:kind :piece
                       :piece-id :indigo-cup-target
                       :board-index 4}
@@ -576,17 +578,19 @@
             :card (cards/card-by-id "coins2")}
            created-cell))
     (is (not (some #{"coins2"} (player-hand-ids state :rose))))
-    (is (= [{:type :cup/territory-created
-             :player-id :rose
-             :source {:kind :territory
-                      :board-index 3
-                      :piece-id :rose-cup-minion}
+	    (is (= [{:type :cup/territory-created
+	             :player-id :rose
+	             :cup-variant :cup
+	             :source {:kind :territory
+	                      :board-index 3
+	                      :piece-id :rose-cup-minion}
              :target {:kind :wasteland
                       :row 0
-                      :col 3}
-             :board-index 9
-             :card-id "coins2"}]
-           events))
+	                      :col 3}
+	             :board-index 9
+	             :card-id "coins2"
+	             :territory-card-source :hand}]
+	           events))
     (is (= (count cards/deck) (count (all-card-ids state))))
     (is (= (count cards/deck) (count (set (all-card-ids state)))))
     (is (game-schema/valid-game? state))))
@@ -643,6 +647,61 @@
     (is (= :target-territory-full
            (get-in result [:error :code])))))
 
+(deftest cup-unbounded-variant-ignores-full-target-territory-limit
+  (let [state (:state (game-state/create-game
+                       player-specs
+                       {:deck-order (deck-with-board-card 3 "empress")}))
+        state (game-state/with-board-pieces
+               state
+               [rose-cup-minion
+                rose-target-minion
+                indigo-cup-target
+                {:id :rose-target-small
+                 :player-id :rose
+                 :space-index 4
+                 :size :small
+                 :orientation :east}])
+        command {:player-id :rose
+                 :source {:kind :territory
+                          :board-index 3
+                          :piece-id :rose-cup-minion}
+                 :cup-variant :cup-unbounded
+                 :target {:kind :territory
+                          :board-index 4}
+                 :orientation :up}
+        {:keys [ok? state events]} (game-state/apply-cup-move state command)
+        target-piece-ids (->> (get-in state [:pieces :on-board])
+                              (filter #(= 4 (:space-index %)))
+                              (mapv :id))]
+    (is ok?)
+    (is (= [:rose-target-minion
+            :indigo-cup-target
+            :rose-target-small
+            :rose-small-1]
+           target-piece-ids))
+    (is (= :cup-unbounded (:cup-variant (first events))))
+    (is (game-schema/valid-game? state))))
+
+(deftest cup-move-rejects-unavailable-variants
+  (let [state (:state (game-state/create-game
+                       player-specs
+                       {:deck-order (deck-with-board-card 3 "empress")}))
+        state (game-state/with-board-pieces state [rose-cup-minion])
+        result (game-state/apply-cup-move
+                state
+                {:player-id :rose
+                 :source {:kind :territory
+                          :board-index 3
+                          :piece-id :rose-cup-minion}
+                 :cup-variant :cup
+                 :target {:kind :territory
+                          :board-index 4}
+                 :orientation :up})]
+    (is (= :cup-variant-unavailable
+           (get-in result [:error :code])))
+    (is (= [:cup-unbounded]
+           (get-in result [:error :data :available-variants])))))
+
 (deftest cup-move-rejects-invalid-wasteland-territory-cards
   (let [state (state-with-pieces [rose-cup-minion])
         result (game-state/apply-cup-move state
@@ -655,6 +714,58 @@
                                                     :col 3}
                                            :one-point-card-id "chariot"})]
     (is (= :invalid-one-point-card
+           (get-in result [:error :code])))))
+
+(deftest wheel-cup-can-create-wasteland-territory-from-draw-pile
+  (let [initial-state (:state (game-state/create-game
+                               player-specs
+                               {:deck-order (deck-with-board-card 3 "wheeloffortune")}))
+        draw-pile-card (first (:draw-pile initial-state))
+        state (game-state/with-board-pieces initial-state [rose-cup-minion])
+        command {:player-id :rose
+                 :source {:kind :territory
+                          :board-index 3
+                          :piece-id :rose-cup-minion}
+                 :cup-variant :wheel-cup
+                 :target {:kind :wasteland
+                          :row 0
+                          :col 3}
+                 :territory-card-source :draw-pile-top}
+        {:keys [ok? state events]} (game-state/apply-cup-move state command)
+        created-cell (board-cell-by-index state 9)]
+    (is ok?)
+    (is (= draw-pile-card (:card created-cell)))
+    (is (= (mapv :id (rest (:draw-pile initial-state)))
+           (mapv :id (:draw-pile state))))
+    (is (= [{:type :cup/territory-created
+             :player-id :rose
+             :cup-variant :wheel-cup
+             :source {:kind :territory
+                      :board-index 3
+                      :piece-id :rose-cup-minion}
+             :target {:kind :wasteland
+                      :row 0
+                      :col 3}
+             :board-index 9
+             :card-id (:id draw-pile-card)
+             :territory-card-source :draw-pile-top}]
+           events))
+    (is (game-schema/valid-game? state))))
+
+(deftest non-wheel-cups-reject-draw-pile-territory-source
+  (let [state (state-with-pieces [rose-cup-minion])
+        result (game-state/apply-cup-move
+                state
+                {:player-id :rose
+                 :source {:kind :territory
+                          :board-index 3
+                          :piece-id :rose-cup-minion}
+                 :cup-variant :cup
+                 :target {:kind :wasteland
+                          :row 0
+                          :col 3}
+                 :territory-card-source :draw-pile-top})]
+    (is (= :cup-variant-option-unavailable
            (get-in result [:error :code])))))
 
 (deftest cup-move-rejects-wastelands-occupied-by-enemy-pieces

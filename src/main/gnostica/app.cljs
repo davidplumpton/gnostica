@@ -47,6 +47,11 @@
    (app-state/select-move-one-point-card db card-id)))
 
 (rf/reg-event-db
+ ::select-move-territory-card-source
+ (fn [db [_ territory-card-source]]
+   (app-state/select-move-territory-card-source db territory-card-source)))
+
+(rf/reg-event-db
  ::select-move-power
  (fn [db [_ power]]
    (app-state/select-move-power db power)))
@@ -235,6 +240,11 @@
  ::move-one-point-card-options
  (fn [db _]
    (app-state/move-one-point-card-options db)))
+
+(rf/reg-sub
+ ::move-territory-card-source-options
+ (fn [db _]
+   (app-state/move-territory-card-source-options db)))
 
 (rf/reg-sub
  ::move-power-options
@@ -700,6 +710,24 @@
          (:title card)])]
      [:p.move-step__empty "No one-point cards available."])])
 
+(defn- territory-card-source-choices [options selected-source]
+  (when (< 1 (count options))
+    [:div.move-step
+     [:div.move-step__header
+      [:span "Territory card"]
+      [:strong
+       (or (:label (some #(when (= selected-source (:id %)) %) options))
+           "None")]]
+     [:div.move-choice-list.is-compact
+      (for [{:keys [id label]} options]
+        ^{:key id}
+        [:button.move-chip
+         {:type "button"
+          :class (when (= selected-source id) "is-selected")
+          :aria-pressed (= selected-source id)
+          :on-click #(rf/dispatch [::select-move-territory-card-source id])}
+         label])]]))
+
 (defn- power-choices [options selected-power]
   (when (< 1 (count options))
     [:div.move-step
@@ -831,7 +859,7 @@
 
 (defn- cup-move-controls
   [params board target-piece-options target-board-options target-wasteland-options
-   one-point-card-options orientation-options]
+   territory-card-source-options one-point-card-options orientation-options]
   [:<>
    [target-choice-grid target-board-options
     target-wasteland-options
@@ -841,6 +869,11 @@
    (when (:target-board-index params)
      [orientation-choices orientation-options (:orientation params)])
    (when (:target-wasteland params)
+     [territory-card-source-choices territory-card-source-options
+      (:territory-card-source params)])
+   (when (and (:target-wasteland params)
+              (or (= 1 (count territory-card-source-options))
+                  (= :hand (:territory-card-source params))))
      [one-point-card-choices one-point-card-options (:one-point-card-id params)])])
 
 (defn- rod-move-controls
@@ -883,6 +916,7 @@
         source-board-options @(rf/subscribe [::move-source-board-options])
         target-board-options @(rf/subscribe [::move-target-board-options])
         target-wasteland-options @(rf/subscribe [::move-target-wasteland-options])
+        territory-card-source-options @(rf/subscribe [::move-territory-card-source-options])
         one-point-card-options @(rf/subscribe [::move-one-point-card-options])
         orientation-options @(rf/subscribe [::move-orientation-options])
         orientation-required? @(rf/subscribe [::move-rod-orientation-required?])
@@ -911,6 +945,7 @@
                   target-piece-options
                   target-board-options
                   target-wasteland-options
+                  territory-card-source-options
                   one-point-card-options
                   orientation-options]
             nil)])]
@@ -937,6 +972,7 @@
                   target-piece-options
                   target-board-options
                   target-wasteland-options
+                  territory-card-source-options
                   one-point-card-options
                   orientation-options]
             nil)])]

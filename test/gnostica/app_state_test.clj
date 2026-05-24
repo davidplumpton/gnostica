@@ -484,13 +484,14 @@
             :piece-id :rose-striker
             :target-piece-id :indigo-rod-target}
            (app-state/move-params target-db)))
-    (is (= {:player-id :rose
-            :source {:kind :hand-card
-                     :card-id "cups2"
-                     :piece-id :rose-striker}
-            :target {:kind :piece
-                     :piece-id :indigo-rod-target}}
-           (app-state/move-command target-db)))
+	    (is (= {:player-id :rose
+	            :source {:kind :hand-card
+	                     :card-id "cups2"
+	                     :piece-id :rose-striker}
+	            :cup-variant :cup
+	            :target {:kind :piece
+	                     :piece-id :indigo-rod-target}}
+	           (app-state/move-command target-db)))
     (is (:ok? (get-in confirmed-db [:move-selection :last-result])))
     (is (= ["cups2"] (mapv :id (:discard-pile zones))))
     (is (not (some #{"cups2"} (map :id (:hand zones)))))
@@ -528,15 +529,17 @@
               (mapv :id (app-state/move-one-point-card-options wasteland-db))))
     (is (not (some #{"cups2"}
                    (mapv :id (app-state/move-one-point-card-options wasteland-db)))))
-    (is (= {:player-id :rose
-            :source {:kind :hand-card
-                     :card-id "cups2"
-                     :piece-id :rose-striker}
-            :target {:kind :wasteland
-                     :row 0
-                     :col 3}
-            :one-point-card-id "coins2"}
-           (app-state/move-command one-point-db)))
+	    (is (= {:player-id :rose
+	            :source {:kind :hand-card
+	                     :card-id "cups2"
+	                     :piece-id :rose-striker}
+	            :cup-variant :cup
+	            :target {:kind :wasteland
+	                     :row 0
+	                     :col 3}
+	            :territory-card-source :hand
+	            :one-point-card-id "coins2"}
+	           (app-state/move-command one-point-db)))
     (is (= :confirm (:stage (app-state/move-selection one-point-db))))
     (is (:ok? (get-in confirmed-db [:move-selection :last-result])))
     (is (= ["cups2"] (mapv :id (:discard-pile zones))))
@@ -549,6 +552,90 @@
             :face :up
             :card (cards/card-by-id "coins2")}
            created-cell))))
+
+(deftest cup-unbounded-board-source-can-place-into-full-territory
+  (let [deck-order (deck-with-card-at (board-card-position test-player-specs 0)
+                                      "empress")
+        db (app-state/initialize
+            {:player-specs test-player-specs
+             :game-options {:deck-order deck-order}
+             :demo-board-pieces [rose-source-piece
+                                 indigo-rod-target
+                                 {:id :rose-target-small
+                                  :player-id :rose
+                                  :space-index 4
+                                  :size :small
+                                  :orientation :north}
+                                 {:id :indigo-target-large
+                                  :player-id :indigo
+                                  :space-index 4
+                                  :size :large
+                                  :orientation :west}]})
+        oriented-db (-> db
+                        (app-state/select-move-source :activate-territory)
+                        (app-state/select-move-piece :rose-scout)
+                        (app-state/select-board-card 4)
+                        (app-state/set-move-orientation :up))
+        confirmed-db (app-state/confirm-move oriented-db)
+        target-piece-ids (->> (app-state/board-pieces confirmed-db)
+                              (filter #(= 4 (:space-index %)))
+                              (mapv :id))]
+    (is (= :cup (app-state/move-power oriented-db)))
+    (is (= {:player-id :rose
+            :source {:kind :territory
+                     :board-index 0
+                     :piece-id :rose-scout}
+            :cup-variant :cup-unbounded
+            :target {:kind :territory
+                     :board-index 4}
+            :orientation :up}
+           (app-state/move-command oriented-db)))
+    (is (:ok? (get-in confirmed-db [:move-selection :last-result])))
+    (is (= [:indigo-rod-target
+            :rose-target-small
+            :indigo-target-large
+            :rose-small-1]
+           target-piece-ids))
+    (is (game-schema/valid-game? (app-state/game confirmed-db)))))
+
+(deftest wheel-cup-hand-card-can-use_top_draw_pile_for_wasteland_territory
+  (let [db (app-state/initialize {:player-specs test-player-specs
+                                  :game-options {:deck-order (deck-starting-with ["wheeloffortune"])}
+                                  :demo-board-pieces [rose-hand-piece]})
+        draw-card (first (get-in db [:game :draw-pile]))
+        wasteland-db (-> db
+                         (app-state/select-move-source :play-hand-card)
+                         (app-state/select-move-hand-card "wheeloffortune")
+                         (app-state/select-move-piece :rose-striker)
+                         (app-state/select-move-wasteland-target 0 3))
+        draw-source-db (app-state/select-move-territory-card-source
+                        wasteland-db
+                        :draw-pile-top)
+        confirmed-db (app-state/confirm-move draw-source-db)
+        zones (app-state/card-zones confirmed-db)
+        created-cell (last (app-state/board confirmed-db))]
+    (is (= :territory-card-source
+           (:stage (app-state/move-selection wasteland-db))))
+    (is (= [:hand :draw-pile-top]
+           (mapv :id (app-state/move-territory-card-source-options wasteland-db))))
+    (is (= :confirm (:stage (app-state/move-selection draw-source-db))))
+    (is (= {:player-id :rose
+            :source {:kind :hand-card
+                     :card-id "wheeloffortune"
+                     :piece-id :rose-striker}
+            :cup-variant :wheel-cup
+            :target {:kind :wasteland
+                     :row 0
+                     :col 3}
+            :territory-card-source :draw-pile-top}
+           (app-state/move-command draw-source-db)))
+    (is (:ok? (get-in confirmed-db [:move-selection :last-result])))
+    (is (= draw-card (:card created-cell)))
+    (is (= ["wheeloffortune"] (mapv :id (:discard-pile zones))))
+    (is (not (some #{"wheeloffortune"} (map :id (:hand zones)))))
+    (is (= (dec (count (get-in db [:game :draw-pile])))
+           (:draw-count zones)))
+    (is (game-schema/valid-game? (app-state/game confirmed-db)))))
 
 (deftest rejected-cup-confirmation-keeps-staged-selection
   (let [db (app-state/initialize {:player-specs test-player-specs
