@@ -22,8 +22,8 @@
 
 (def cdp-timeout-ms 10000)
 (def wait-timeout-ms 20000)
-(def expected-table-surface-color "#2a1020")
-(def expected-table-clear-color "#12070f")
+(def expected-table-surface-color "#1c0715")
+(def expected-table-clear-color "#0a0308")
 (def min-velvet-pixels 120)
 
 (def viewports
