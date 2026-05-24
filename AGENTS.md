@@ -40,7 +40,7 @@ Keyboard shortcut UI state also stays browser-free in `src/main/gnostica/app_sta
 
 ## Gameplay Feature Tests
 
-Gherkin-style gameplay scenarios live under `features/` and run through the custom `gnostica.feature-runner` as part of `clojure -M:test` with the normal Clojure unit tests. Keep step definitions in `test/gnostica/feature_steps.clj` and reusable world helpers in `test/gnostica/feature_world.clj`; those helpers are the shared place for deterministic deck order, player setup, pure action application, state lookup, and Malli validation checks. Failing steps should return `gnostica.feature-runner/fail` with enough state summary or schema explanation for the scenario and step text to identify the broken rule.
+Gherkin-style gameplay scenarios live under `features/` and run through the custom `gnostica.feature-runner` as part of `clojure -M:test` with the normal Clojure unit tests. Keep step definitions in `test/gnostica/feature_steps.clj` and reusable world helpers in `test/gnostica/feature_world.clj`; those helpers are the shared place for deterministic deck order, player setup, pure action application, state lookup, and Malli validation checks. Current feature coverage includes deterministic setup plus Rod minion movement, piece pushing, territory pushing, distance and destination rejection, enemy-occupied territory-push rejection, own-wasteland landing behavior, and owned/enemy orientation rules. Failing steps should return `gnostica.feature-runner/fail` with enough state summary or schema explanation for the scenario and step text to identify the broken rule.
 
 ## Browser JavaScript Globals
 

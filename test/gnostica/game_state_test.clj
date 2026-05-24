@@ -492,6 +492,36 @@
     (is (= "wands2" (get-in result [:source-card :id])))
     (is (= :indigo-rod-target (get-in result [:target-piece :id])))))
 
+(deftest rod-command-rejects-enemy-piece-reorientation
+  (let [deck-order (deck-starting-with ["wands2"])
+        state (:state (game-state/create-game player-specs {:deck-order deck-order}))
+        state (assoc-in state [:pieces :on-board]
+                        [rose-rod-minion
+                         {:id :indigo-rod-target
+                          :player-id :indigo
+                          :space-index 4
+                          :size :small
+                          :orientation :north}])
+        result (game-state/resolve-rod-command
+                state
+                {:player-id :rose
+                 :source {:kind :hand-card
+                          :card-id "wands2"
+                          :piece-id :rose-rod-minion}
+                 :mode :push-piece
+                 :target {:kind :piece
+                          :piece-id :indigo-rod-target}
+                 :distance 1
+                 :orientation :west})]
+    (is (= :invalid-orientation
+           (get-in result [:error :code])))
+    (is (= {:piece-id :indigo-rod-target
+            :piece-player-id :indigo
+            :orientation :west}
+           (get-in result [:error :data])))
+    (is (false? (:ok? result)))
+    (is (not (contains? result :state)))))
+
 (deftest rod-command-normalizes-territory-target-coordinates
   (let [state (-> (state-with-pieces [rose-rod-minion])
                   (state-with-board-card 3 "wands2"))

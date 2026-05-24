@@ -5,12 +5,19 @@
             [gnostica.feature-runner :as feature-runner]
             [gnostica.feature-steps :as feature-steps]))
 
-(def setup-feature
-  (str (io/file "features" "game_setup.feature")))
+(def feature-files
+  (->> (file-seq (io/file "features"))
+       (filter #(.isFile %))
+       (filter #(str/ends-with? (.getName %) ".feature"))
+       (map str)
+       sort
+       vec))
 
-(deftest initial-game-setup-feature
-  (feature-runner/assert-results-pass
-   (feature-runner/run-feature-file setup-feature feature-steps/steps)))
+(deftest gameplay-features
+  (is (seq feature-files) "Expected at least one gameplay feature file.")
+  (doseq [feature-file feature-files]
+    (feature-runner/assert-results-pass
+     (feature-runner/run-feature-file feature-file feature-steps/steps))))
 
 (deftest feature-failure-output-includes-scenario-and-step
   (let [result (feature-runner/run-scenario
