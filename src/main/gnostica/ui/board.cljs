@@ -81,12 +81,12 @@
 
 (defn board-stage []
   (let [{:keys [cells board-pieces pieces-by-space wastelands space-bounds
-                selected-index card-icon-mode texture-errors renderer-error]}
-        @(rf/subscribe [events/board-view])
-        runtime-status (three-board/runtime-status)]
+                selected-index card-icon-mode texture-errors three-revision
+                three-renderer-available? three-renderer-message]}
+        @(rf/subscribe [events/board-view])]
     [:section.board-area
-     {:data-three-revision (or (three-board/three-revision) "unavailable")}
-     (if (and (three-board/available?) (not renderer-error))
+     {:data-three-revision (or three-revision "unavailable")}
+     (if three-renderer-available?
        [three-board/scene
         cells
         board-pieces
@@ -99,9 +99,7 @@
          :on-texture-error #(rf/dispatch [events/three-texture-error %])}]
        [:div.board-fallback
         [:p.board-3d-status.is-error
-         (if renderer-error
-           (str "Three.js WebGL rendering is unavailable; using the CSS board. " renderer-error)
-           (:message runtime-status))]
+         three-renderer-message]
         [:div.board-stage
          {:role "group"
           :aria-label "Gnostica board"

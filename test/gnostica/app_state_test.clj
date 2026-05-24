@@ -107,7 +107,9 @@
     (is (= :always
            (app-state/card-icon-mode db)))
     (is (false? (app-state/hotkey-help-open? db)))
-    (is (false? (app-state/icon-help-open? db)))))
+    (is (false? (app-state/icon-help-open? db)))
+    (is (= app-state/default-three-runtime-status
+           (app-state/three-runtime-status db)))))
 
 (deftest initialize-event-handler-is-deterministic-with-injected-seed
   (let [opts {:player-specs test-player-specs}
@@ -220,7 +222,38 @@
     (is (= app-state/default-selected-board-index
            (:selected-index view)))
     (is (= :always (:card-icon-mode view)))
-    (is (= "No WebGL" (:renderer-error view)))))
+    (is (= "No WebGL" (:renderer-error view)))
+    (is (false? (:three-renderer-available? view)))
+    (is (= "Three.js WebGL rendering is unavailable; using the CSS board. No WebGL"
+           (:three-renderer-message view)))))
+
+(deftest board-view-model-uses-stored-three-runtime-status
+  (let [runtime-status {:ok? true
+                        :code :ready
+                        :revision "128"
+                        :expected-revision "128"
+                        :message "Three.js r128 runtime is ready."}
+        db (app-state/initialize {:player-specs test-player-specs
+                                  :game-options {:shuffle-fn identity}
+                                  :three-runtime-status runtime-status})
+        view (app-state/board-view db)
+        fallback-view (app-state/board-view
+                       (app-state/set-three-runtime-status
+                        db
+                        {:ok? false
+                         :code :three-revision-mismatch
+                         :revision "999"
+                         :expected-revision "128"
+                         :message "Three.js revision 999 is incompatible."}))]
+    (is (= runtime-status (:three-runtime-status view)))
+    (is (true? (:three-renderer-available? view)))
+    (is (= "128" (:three-revision view)))
+    (is (= "Three.js r128 runtime is ready."
+           (:three-renderer-message view)))
+    (is (false? (:three-renderer-available? fallback-view)))
+    (is (= "999" (:three-revision fallback-view)))
+    (is (= "Three.js revision 999 is incompatible."
+           (:three-renderer-message fallback-view)))))
 
 (deftest selecting-an-unknown-board-card-is-ignored
   (let [db (app-state/initialize {:game-options {:shuffle-fn identity}})]

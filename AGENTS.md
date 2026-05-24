@@ -54,6 +54,8 @@ Gherkin-style gameplay scenarios live under `features/` and run through the cust
 
 `src/main/resources/index.html` loads Three.js and OrbitControls from pinned `three@0.128.0` CDN URLs before `/js/main.js`. The script tags carry SRI hashes and `crossorigin="anonymous"`. This keeps the default workflow npm-free while exposing the browser globals `THREE` and `THREE.OrbitControls` to `gnostica.three-board`, which only enables the 3D renderer when `THREE.REVISION` is `"128"` and OrbitControls is present.
 
+`src/main/gnostica/app/events.cljs` captures Three.js runtime capability through the re-frame initialization coeffect boundary and stores it under app-db `:three-runtime-status`. Keep CSS fallback decisions in `:gnostica.app/board-view` subscription data instead of reading browser globals from view render paths. Renderer lifecycle code may still guard WebGL setup defensively before mounting Three.js resources.
+
 `src/main/externs/three.ext.js` declares the current `THREE` global, OrbitControls, and the Three.js APIs used by the app for advanced compilation, including the small circle geometries used for pyramid pip markers and the edge/line APIs used for black pyramid outlines. Keep any future Three.js add-ons on the same `three@0.128.0` release line and use CDN scripts compatible with the global build. If the CDN URLs change, update the SRI hashes, the runtime revision gate in `src/main/gnostica/three_board/runtime.cljs`, and the smoke checks together.
 
 ## 3D Board Verification

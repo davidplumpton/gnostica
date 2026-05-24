@@ -18,7 +18,7 @@ The shadow-cljs dev server serves the app at `http://localhost:8080/index.html`.
 
 For the released Ring server path, run `clojure -M:release` first. `clojure -M:server` serves the existing files under `src/main/resources`, including the compiled browser bundle at `src/main/resources/js/main.js`; it does not rebuild stale or missing JavaScript assets.
 
-The browser runtime loads Three.js and OrbitControls from pinned `three@0.128.0` CDN scripts with SRI hashes and `crossorigin="anonymous"` before the compiled ClojureScript bundle. This keeps browser builds npm-free while still exposing the global `THREE` and `THREE.OrbitControls` values used by the `gnostica.three-board` renderer. The app only enables the 3D renderer when `THREE.REVISION` is `"128"` and OrbitControls is present.
+The browser runtime loads Three.js and OrbitControls from pinned `three@0.128.0` CDN scripts with SRI hashes and `crossorigin="anonymous"` before the compiled ClojureScript bundle. This keeps browser builds npm-free while still exposing the global `THREE` and `THREE.OrbitControls` values used by the `gnostica.three-board` renderer. The re-frame initialization boundary captures the runtime capability status into app-db, and the board view-model enables the 3D renderer only when `THREE.REVISION` is `"128"` and OrbitControls is present.
 
 ## 3D Board View
 
@@ -28,7 +28,7 @@ Wasteland spaces are the empty orthogonal neighbors of current territory cards. 
 
 Icehouse pieces are represented in shared state by `gnostica.pieces`. The local browser startup opts into demo board pieces from `gnostica.fixtures` so the renderer can display player color, size/pips, up/cardinal orientation, and up to three pieces on one territory without making fixtures part of the production piece model. Three.js renders these as lit four-sided cone meshes over the cards with black edge outlines and one, two, or three pale pip markers near the base; the CSS fallback renders matching color/orientation/pip markers and remains clickable.
 
-If either CDN global is missing, if the loaded Three.js revision is not r128, or if the browser cannot create a WebGL renderer, the app falls back to the CSS board so the game remains usable while surfacing a runtime warning. Advanced compilation support for the CDN global is declared in `src/main/externs/three.ext.js`, including the geometry and line APIs used for piece edge outlines; keep future Three.js add-ons on the same `three@0.128.0` release line unless the CDN scripts, SRI hashes, revision gate, smoke checks, and externs are updated together.
+If either CDN global is missing, if the loaded Three.js revision is not r128, or if the browser cannot create a WebGL renderer, the app falls back to the CSS board so the game remains usable while surfacing a runtime warning from subscription data. Advanced compilation support for the CDN global is declared in `src/main/externs/three.ext.js`, including the geometry and line APIs used for piece edge outlines; keep future Three.js add-ons on the same `three@0.128.0` release line unless the CDN scripts, SRI hashes, revision gate, smoke checks, and externs are updated together.
 
 ## Shared Game State
 

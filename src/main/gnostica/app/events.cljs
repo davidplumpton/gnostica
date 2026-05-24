@@ -3,6 +3,7 @@
             [gnostica.app.handlers :as handlers]
             [gnostica.game-state :as game-state]
             [gnostica.pieces :as piece-model]
+            [gnostica.three-board.runtime :as three-runtime]
             [re-frame.core :as rf]))
 
 (def initialize :gnostica.app/initialize)
@@ -30,6 +31,7 @@
 (def clear-three-texture-errors :gnostica.app/clear-three-texture-errors)
 (def three-texture-error :gnostica.app/three-texture-error)
 (def three-renderer-error :gnostica.app/three-renderer-error)
+(def refresh-three-runtime-status :gnostica.app/refresh-three-runtime-status)
 
 (def game :gnostica.app/game)
 (def setup-error :gnostica.app/setup-error)
@@ -39,6 +41,7 @@
 (def current-player :gnostica.app/current-player)
 (def card-zones :gnostica.app/card-zones)
 (def three-texture-errors :gnostica.app/three-texture-errors)
+(def three-runtime-status :gnostica.app/three-runtime-status)
 (def selected-board-cell :gnostica.app/selected-board-cell)
 (def selected-board-pieces :gnostica.app/selected-board-pieces)
 (def move-selection :gnostica.app/move-selection)
@@ -73,6 +76,7 @@
 (def help-dialogs-view :gnostica.app/help-dialogs-view)
 
 (def shuffle-seed :gnostica.app/shuffle-seed)
+(def three-runtime-detection :gnostica.app/three-runtime-detection)
 
 (def ^:private max-browser-seed 4294967296)
 
@@ -84,11 +88,18 @@
  (fn [coeffects _]
    (assoc coeffects shuffle-seed (browser-shuffle-seed))))
 
+(rf/reg-cofx
+ three-runtime-detection
+ (fn [coeffects _]
+   (assoc coeffects three-runtime-status (three-runtime/runtime-status))))
+
 (rf/reg-event-fx
  initialize
- [(rf/inject-cofx shuffle-seed)]
+ [(rf/inject-cofx shuffle-seed)
+  (rf/inject-cofx three-runtime-detection)]
  (fn [coeffects [_ opts]]
-   {:db (handlers/initialize-db opts {:shuffle-seed (get coeffects shuffle-seed)})}))
+   {:db (-> (handlers/initialize-db opts {:shuffle-seed (get coeffects shuffle-seed)})
+            (app-state/set-three-runtime-status (get coeffects three-runtime-status)))}))
 
 (rf/reg-event-db
  select-board-card
@@ -212,6 +223,13 @@
  (fn [db [_ message]]
    (assoc db :three-renderer-error message)))
 
+(rf/reg-event-fx
+ refresh-three-runtime-status
+ [(rf/inject-cofx three-runtime-detection)]
+ (fn [coeffects _]
+   {:db (app-state/set-three-runtime-status (:db coeffects)
+                                            (get coeffects three-runtime-status))}))
+
 (rf/reg-sub
  game
  (fn [db _]
@@ -255,6 +273,11 @@
  three-texture-errors
  (fn [db _]
    (:three-texture-errors db)))
+
+(rf/reg-sub
+ three-runtime-status
+ (fn [db _]
+   (app-state/three-runtime-status db)))
 
 (rf/reg-sub
  three-renderer-error
@@ -411,14 +434,17 @@
  :<- [card-icon-mode]
  :<- [three-texture-errors]
  :<- [three-renderer-error]
- (fn [[cells board-pieces selected-index card-icon-mode texture-errors renderer-error] _]
+ :<- [three-runtime-status]
+ (fn [[cells board-pieces selected-index card-icon-mode texture-errors
+       renderer-error runtime-status] _]
    (app-state/board-view-model
     {:cells cells
      :board-pieces board-pieces
      :selected-index selected-index
      :card-icon-mode card-icon-mode
      :texture-errors texture-errors
-     :renderer-error renderer-error})))
+     :renderer-error renderer-error
+     :three-runtime-status runtime-status})))
 
 (rf/reg-sub
  card-zones-view

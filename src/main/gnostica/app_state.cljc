@@ -15,6 +15,13 @@
 
 (def default-icon-help-open? false)
 
+(def default-three-runtime-status
+  {:ok? false
+   :code :three-unchecked
+   :revision nil
+   :expected-revision nil
+   :message "Three.js runtime status has not been checked yet."})
+
 (def card-icon-modes
   #{:always :popup})
 
@@ -30,9 +37,16 @@
     mode
     default-card-icon-mode))
 
+(defn normalize-three-runtime-status [status]
+  (let [status (if (map? status) status {})]
+    (merge default-three-runtime-status
+           (select-keys status [:code :revision :expected-revision :message])
+           {:ok? (true? (:ok? status))})))
+
 (defn initialize
   ([] (initialize {}))
-  ([{:keys [player-specs game-options selected-board-index card-icon-mode]
+  ([{:keys [player-specs game-options selected-board-index card-icon-mode
+            three-runtime-status]
      :as opts
      :or {player-specs default-player-specs
           game-options {}
@@ -44,6 +58,7 @@
                   :hotkey-help-open? default-hotkey-help-open?
                   :icon-help-open? default-icon-help-open?
                   :move-selection (empty-move-selection)
+                  :three-runtime-status (normalize-three-runtime-status three-runtime-status)
                   :three-texture-errors []}]
      (if (:ok? result)
        (assoc base-db :game (state-with-demo-board-pieces (:state result) opts))
@@ -130,6 +145,12 @@
 (defn discard-top-card [db]
   (peek (discard-pile db)))
 
+(defn three-runtime-status [db]
+  (normalize-three-runtime-status (:three-runtime-status db)))
+
+(defn set-three-runtime-status [db status]
+  (assoc db :three-runtime-status (normalize-three-runtime-status status)))
+
 (defn card-zones [db]
   {:hand (current-player-hand db)
    :draw-pile (draw-pile db)
@@ -139,8 +160,10 @@
    :discard-top-card (discard-top-card db)})
 
 (defn board-view-model
-  [{:keys [cells board-pieces selected-index card-icon-mode texture-errors renderer-error]}]
-  (let [wastelands (layout/wasteland-spaces cells)]
+  [{:keys [cells board-pieces selected-index card-icon-mode texture-errors
+           renderer-error three-runtime-status]}]
+  (let [wastelands (layout/wasteland-spaces cells)
+        runtime-status (normalize-three-runtime-status three-runtime-status)]
     {:cells cells
      :board-pieces board-pieces
      :pieces-by-space (pieces/pieces-by-space board-pieces)
@@ -149,7 +172,15 @@
      :selected-index selected-index
      :card-icon-mode card-icon-mode
      :texture-errors texture-errors
-     :renderer-error renderer-error}))
+     :renderer-error renderer-error
+     :three-runtime-status runtime-status
+     :three-revision (:revision runtime-status)
+     :three-renderer-available? (and (:ok? runtime-status)
+                                     (not renderer-error))
+     :three-renderer-message (if renderer-error
+                               (str "Three.js WebGL rendering is unavailable; using the CSS board. "
+                                    renderer-error)
+                               (:message runtime-status))}))
 
 (defn board-view [db]
   (board-view-model
@@ -158,7 +189,8 @@
     :selected-index (selected-board-index db)
     :card-icon-mode (card-icon-mode db)
     :texture-errors (:three-texture-errors db)
-    :renderer-error (:three-renderer-error db)}))
+    :renderer-error (:three-renderer-error db)
+    :three-runtime-status (three-runtime-status db)}))
 
 (defn card-zones-view-model
   [{:keys [current-player card-icon-mode zones]}]
