@@ -4,6 +4,7 @@
             [gnostica.board-layout-test]
             [gnostica.board-test]
             [gnostica.cards-test]
+            [gnostica.fixtures-test]
             [gnostica.gameplay-feature-test]
             [gnostica.game-schema-test]
             [gnostica.game-state-test]
@@ -15,6 +16,7 @@
                                         'gnostica.board-test
                                         'gnostica.board-layout-test
                                         'gnostica.app-state-test
+                                        'gnostica.fixtures-test
                                         'gnostica.pieces-test
                                         'gnostica.game-schema-test
                                         'gnostica.game-state-test

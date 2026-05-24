@@ -1,7 +1,7 @@
 (ns gnostica.app
   (:require [gnostica.app.events :as events]
             [gnostica.app.keyboard :as keyboard]
-            [gnostica.app.smoke :as smoke]
+            [gnostica.fixtures :as fixtures]
             [gnostica.ui.board :as board-ui]
             [gnostica.ui.card-zones :as card-zones-ui]
             [gnostica.ui.header :as header-ui]
@@ -47,5 +47,5 @@
   (mount!))
 
 (defn init []
-  (rf/dispatch-sync [events/initialize (smoke/init-options)])
+  (rf/dispatch-sync [events/initialize (fixtures/browser-init-options)])
   (mount!))

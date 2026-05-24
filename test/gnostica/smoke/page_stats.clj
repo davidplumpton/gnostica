@@ -1,5 +1,6 @@
 (ns gnostica.smoke.page-stats
   (:require [clojure.string :as str]
+            [gnostica.fixtures :as fixtures]
             [gnostica.icon-layout :as icon-layout]
             [gnostica.icons :as icons]
             [gnostica.smoke.browser :as browser])
@@ -289,7 +290,9 @@
 (defn major-icons-smoke-url [url]
   (str url
        (if (str/includes? url "?") "&" "?")
-       "gnostica-smoke=major-icons"))
+       fixtures/smoke-query-param
+       "="
+       fixtures/smoke-major-icons-mode))
 
 (defn velvet-pixel? [argb]
   (let [r (bit-and (bit-shift-right argb 16) 0xff)

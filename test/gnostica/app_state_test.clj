@@ -3,6 +3,7 @@
             [gnostica.app-state :as app-state]
             [gnostica.board :as board]
             [gnostica.cards :as cards]
+            [gnostica.fixtures :as fixtures]
             [gnostica.game-schema :as game-schema]
             [gnostica.game-state :as game-state]
             [gnostica.pieces :as pieces]))
@@ -92,10 +93,9 @@
     (is (nil? (app-state/setup-error db)))
     (is (= (board/initial-board board-deck identity)
            (app-state/board db)))
-    (is (= pieces/initial-pieces
-           (app-state/board-pieces db)))
-    (is (= 4 (get-in db [:game :players-by-id :rose :stash :small])))
-    (is (= 4 (get-in db [:game :players-by-id :rose :stash :medium])))
+    (is (empty? (app-state/board-pieces db)))
+    (is (= 5 (get-in db [:game :players-by-id :rose :stash :small])))
+    (is (= 5 (get-in db [:game :players-by-id :rose :stash :medium])))
     (is (= (get-in db [:game :players-by-id :rose :stash])
            (get-in db [:game :pieces :stashes :rose])))
     (is (game-schema/valid-game? (app-state/game db)))
@@ -107,9 +107,22 @@
     (is (false? (app-state/hotkey-help-open? db)))
     (is (false? (app-state/icon-help-open? db)))))
 
-(deftest initialize-default-demo-pieces-follow-participating-players
+(deftest initialize-applies-explicit-demo-pieces
+  (let [db (app-state/initialize
+            (fixtures/merge-init-options
+             {:game-options {:shuffle-fn identity}}
+             (fixtures/demo-init-options app-state/default-player-specs)))]
+    (is (= fixtures/demo-board-pieces
+           (app-state/board-pieces db)))
+    (is (= 4 (get-in db [:game :players-by-id :rose :stash :small])))
+    (is (= 4 (get-in db [:game :players-by-id :rose :stash :medium])))
+    (is (game-schema/valid-game? (app-state/game db)))))
+
+(deftest explicit-demo-pieces-follow-participating-players
   (let [db (app-state/initialize {:player-specs test-player-specs
-                                  :game-options {:shuffle-fn identity}})]
+                                  :game-options {:shuffle-fn identity}
+                                  :demo-board-pieces (fixtures/demo-board-pieces-for
+                                                      test-player-specs)})]
     (is (= #{:rose :indigo}
            (set (map :player-id (app-state/board-pieces db)))))
     (is (game-schema/valid-game? (app-state/game db)))))
@@ -161,12 +174,13 @@
     (is (empty? (app-state/board-pieces db)))))
 
 (deftest selecting-board-card-updates-selected-territory
-  (let [db (app-state/initialize {:game-options {:shuffle-fn identity}})
+  (let [db (app-state/initialize {:game-options {:shuffle-fn identity}
+                                  :demo-board-pieces fixtures/demo-board-pieces})
         selected-db (app-state/select-board-card db 4)]
     (is (= 4 (app-state/selected-board-index selected-db)))
     (is (= (get (app-state/board db) 4)
            (app-state/selected-board-cell selected-db)))
-    (is (= (pieces/pieces-for-space pieces/initial-pieces 4)
+    (is (= (pieces/pieces-for-space fixtures/demo-board-pieces 4)
            (app-state/selected-board-pieces selected-db)))))
 
 (deftest selecting-an-unknown-board-card-is-ignored
@@ -207,7 +221,8 @@
         (app-state/move-source-options db)))
 
 (deftest move-source-options-reflect-current-game-state
-  (let [db (app-state/initialize {:game-options {:shuffle-fn identity}})]
+  (let [db (app-state/initialize {:game-options {:shuffle-fn identity}
+                                  :demo-board-pieces fixtures/demo-board-pieces})]
     (is (:enabled? (source-option db :activate-territory)))
     (is (:enabled? (source-option db :play-hand-card)))
     (is (:enabled? (source-option db :orient-piece)))
@@ -705,7 +720,8 @@
            (app-state/game confirmed-db)))))
 
 (deftest incomplete-moves-report_recoverable_errors
-  (let [db (app-state/initialize {:game-options {:shuffle-fn identity}})
+  (let [db (app-state/initialize {:game-options {:shuffle-fn identity}
+                                  :demo-board-pieces fixtures/demo-board-pieces})
         source-db (app-state/select-move-source db :activate-territory)
         confirmed-db (app-state/confirm-move source-db)
         recovered-db (app-state/select-move-piece confirmed-db :rose-scout)]

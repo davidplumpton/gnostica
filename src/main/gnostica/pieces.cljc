@@ -61,33 +61,6 @@
 
 (def legal-orientations (conj cardinal-orientations :up))
 
-(def initial-pieces
-  [{:id :rose-scout
-    :player-id :rose
-    :space-index 0
-    :size :small
-    :orientation :east}
-   {:id :indigo-minion
-    :player-id :indigo
-    :space-index 4
-    :size :medium
-    :orientation :up}
-   {:id :gold-charger
-    :player-id :gold
-    :space-index 4
-    :size :large
-    :orientation :north}
-   {:id :teal-guard
-    :player-id :teal
-    :space-index 4
-    :size :small
-    :orientation :west}
-   {:id :rose-striker
-    :player-id :rose
-    :space-index 8
-    :size :medium
-    :orientation :south}])
-
 (defn player-for [piece]
   (get players-by-id (:player-id piece)))
 

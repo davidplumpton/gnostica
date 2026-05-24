@@ -3,6 +3,7 @@
             [gnostica.board :as board]
             [gnostica.board-layout :as layout]
             [gnostica.cards :as cards]
+            [gnostica.fixtures :as fixtures]
             [gnostica.pieces :as pieces]))
 
 (defn- roughly= [expected actual]
@@ -69,7 +70,7 @@
       (is (= cell (get cells-by-index (:index cell)))))))
 
 (deftest piece-slots-are-stable-and-limited
-  (let [space-pieces (mapv #(assoc (first pieces/initial-pieces) :id %)
+  (let [space-pieces (mapv #(assoc (first fixtures/demo-board-pieces) :id %)
                            [:a :b :c :d])]
     (is (= [[0 (space-pieces 0)]
             [1 (space-pieces 1)]
