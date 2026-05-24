@@ -335,6 +335,10 @@
 (defn- rod-move? [db source-id params]
   (= :rod (selected-power db source-id params)))
 
+(defn- selected-rod-variant [db source-id params]
+  (when (rod-move? db source-id params)
+    (cards/rod-variant (source-card db source-id params))))
+
 (defn- one-point-card-options-for [db source-id params]
   (let [source-card-id (source-hand-card-id source-id params)]
     (->> (current-player-hand db)
@@ -1174,12 +1178,16 @@
     :push-territory {:target {:kind :territory
                               :board-index (:target-board-index params)}}))
 
-(defn- rod-command [source params]
-  (cond-> (merge {:mode (:rod-mode params)
-                  :distance (:distance params)}
-                 (rod-target-command params))
-    (:orientation params)
-    (assoc :orientation (:orientation params))))
+(defn- rod-command [db source params]
+  (let [rod-variant (selected-rod-variant db source params)]
+    (cond-> (merge {:mode (:rod-mode params)
+                    :distance (:distance params)}
+                   (rod-target-command params))
+      rod-variant
+      (assoc :rod-variant rod-variant)
+
+      (:orientation params)
+      (assoc :orientation (:orientation params)))))
 
 (defn move-command [db]
   (let [{:keys [source params]} (move-selection db)]
@@ -1189,14 +1197,14 @@
 	        (merge {:player-id (current-player-id db)
 	                :source (source-command source params)}
 	               (case (selected-power db source params)
-	                 :rod (rod-command source params)
+	                 :rod (rod-command db source params)
 	                 (cup-command db source params)))
 
 	        :play-hand-card
 	        (merge {:player-id (current-player-id db)
 	                :source (source-command source params)}
 	               (case (selected-power db source params)
-	                 :rod (rod-command source params)
+	                 :rod (rod-command db source params)
 	                 (cup-command db source params)))
 
         :draw-cards

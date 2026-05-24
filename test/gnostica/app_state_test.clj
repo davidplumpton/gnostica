@@ -325,6 +325,7 @@
             :source {:kind :territory
                      :board-index 0
                      :piece-id :rose-scout}
+            :rod-variant :rod
             :mode :move-minion
             :distance 1
             :orientation :south}
@@ -336,6 +337,52 @@
             :size :small
             :orientation :south}
            moved-piece))))
+
+(deftest rod-unbounded-territory-source-can-move-into-full-territory
+  (let [deck-order (deck-with-card-at (board-card-position test-player-specs 3)
+                                      "emperor")
+        full-pieces [rose-rod-minion
+                     {:id :rose-target-medium
+                      :player-id :rose
+                      :space-index 4
+                      :size :medium
+                      :orientation :up}
+                     indigo-rod-target
+                     {:id :indigo-target-large
+                      :player-id :indigo
+                      :space-index 4
+                      :size :large
+                      :orientation :south}]
+        db (app-state/initialize {:player-specs test-player-specs
+                                  :game-options {:deck-order deck-order}
+                                  :demo-board-pieces full-pieces})
+        oriented-db (-> db
+                        (app-state/select-move-source :activate-territory)
+                        (app-state/select-move-piece :rose-rod-minion)
+                        (app-state/select-move-rod-mode :move-minion)
+                        (app-state/set-move-distance 1)
+                        (app-state/set-move-orientation :south))
+        confirmed-db (app-state/confirm-move oriented-db)
+        moved-piece (piece-by-id confirmed-db :rose-rod-minion)
+        destination-pieces (filter #(= 4 (:space-index %))
+                                   (app-state/board-pieces confirmed-db))]
+    (is (= {:player-id :rose
+            :source {:kind :territory
+                     :board-index 3
+                     :piece-id :rose-rod-minion}
+            :rod-variant :rod-unbounded
+            :mode :move-minion
+            :distance 1
+            :orientation :south}
+           (app-state/move-command oriented-db)))
+    (is (:ok? (get-in confirmed-db [:move-selection :last-result])))
+    (is (= {:id :rose-rod-minion
+            :player-id :rose
+            :space-index 4
+            :size :medium
+            :orientation :south}
+           moved-piece))
+    (is (= 4 (count destination-pieces)))))
 
 (deftest rod-hand-card-can-push-a-piece-and_discard_source
   (let [db (app-state/initialize {:player-specs test-player-specs
@@ -358,6 +405,7 @@
             :source {:kind :hand-card
                      :card-id "wands2"
                      :piece-id :rose-rod-minion}
+            :rod-variant :rod
             :mode :push-piece
             :distance 1
             :target {:kind :piece
@@ -395,6 +443,7 @@
             :source {:kind :hand-card
                      :card-id "wands2"
                      :piece-id :rose-rod-minion}
+            :rod-variant :rod
             :mode :push-territory
             :target {:kind :territory
                      :board-index 5}

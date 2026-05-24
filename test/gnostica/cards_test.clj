@@ -90,6 +90,10 @@
   (is (cards/rod-card? (cards/card-by-id "chariot")))
   (is (cards/rod-card? (cards/card-by-id "emperor")))
   (is (cards/rod-card? (cards/card-by-id "magician")))
+  (is (= [:rod] (cards/rod-variants (cards/card-by-id "wands2"))))
+  (is (= [:rod] (cards/rod-variants (cards/card-by-id "chariot"))))
+  (is (= [:rod-unbounded] (cards/rod-variants (cards/card-by-id "emperor"))))
+  (is (= [:wild-suits] (cards/rod-variants (cards/card-by-id "magician"))))
   (is (cards/rod-card? {:id "wands3"
                         :title "Three of Wands"
                         :image "/images/wands3.png"}))

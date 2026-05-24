@@ -862,6 +862,7 @@
             :source {:kind :territory
                      :board-index 3
                      :piece-id :rose-rod-minion}
+            :rod-variant :rod
             :mode :move-minion
             :target {:kind :piece
                      :piece-id :rose-rod-minion
@@ -904,6 +905,7 @@
             :source {:kind :hand-card
                      :card-id "wands2"
                      :piece-id :rose-rod-minion}
+            :rod-variant :rod
             :mode :push-piece
             :target {:kind :piece
                      :piece-id :indigo-rod-target
@@ -971,7 +973,56 @@
             :destination {:row 1
                           :col 2}}
            (get-in result [:command :target])))
+    (is (= :rod (get-in result [:command :rod-variant])))
     (is (= 4 (get-in result [:target-cell :index])))))
+
+(deftest rod-command-carries-source-variant
+  (let [emperor-state (-> (state-with-pieces [rose-rod-minion])
+                          (state-with-board-card 3 "emperor"))
+        emperor-result (game-state/resolve-rod-command
+                        emperor-state
+                        {:player-id :rose
+                         :source {:kind :territory
+                                  :board-index 3
+                                  :piece-id :rose-rod-minion}
+                         :mode :move-minion
+                         :distance 1})
+        magician-state (-> (state-with-pieces [rose-rod-minion])
+                           (state-with-board-card 3 "magician"))
+        magician-result (game-state/resolve-rod-command
+                         magician-state
+                         {:player-id :rose
+                          :source {:kind :territory
+                                   :board-index 3
+                                   :piece-id :rose-rod-minion}
+                          :mode :move-minion
+                          :distance 1})]
+    (is (:ok? emperor-result))
+    (is (:ok? magician-result))
+    (is (= :rod-unbounded
+           (get-in emperor-result [:command :rod-variant])))
+    (is (= :wild-suits
+           (get-in magician-result [:command :rod-variant])))))
+
+(deftest rod-command-rejects-unavailable-variants
+  (let [state (-> (state-with-pieces [rose-rod-minion])
+                  (state-with-board-card 3 "wands2"))
+        base-command {:player-id :rose
+                      :source {:kind :territory
+                               :board-index 3
+                               :piece-id :rose-rod-minion}
+                      :mode :move-minion
+                      :distance 1}
+        unavailable-result (game-state/resolve-rod-command
+                            state
+                            (assoc base-command :rod-variant :rod-unbounded))
+        invalid-result (game-state/resolve-rod-command
+                        state
+                        (assoc base-command :rod-variant :wheel-cup))]
+    (is (= :rod-variant-unavailable
+           (get-in unavailable-result [:error :code])))
+    (is (= :invalid-rod-variant
+           (get-in invalid-result [:error :code])))))
 
 (deftest rod-command-rejects-invalid-sources-and-upright-minions
   (let [state (-> (state-with-pieces [rose-rod-minion])
@@ -1074,6 +1125,7 @@
              :source {:kind :territory
                       :board-index 3
                       :piece-id :rose-rod-minion}
+             :rod-variant :rod
              :target {:kind :piece
                       :piece-id :rose-rod-minion
                       :player-id :rose
@@ -1125,6 +1177,7 @@
              :source {:kind :hand-card
                       :card-id "wands2"
                       :piece-id :rose-rod-minion}
+             :rod-variant :rod
              :target {:kind :piece
                       :piece-id :indigo-rod-target
                       :player-id :indigo
@@ -1232,6 +1285,7 @@
              :source {:kind :hand-card
                       :card-id "wands2"
                       :piece-id :rose-rod-minion}
+             :rod-variant :rod
              :target {:kind :territory
                       :board-index 5
                       :row 1
@@ -1375,3 +1429,43 @@
            full-pieces))
     (is (= [void-minion]
            (get-in void-state [:pieces :on-board])))))
+
+(deftest rod-unbounded-variant-ignores-full-territory-destination-limit
+  (let [full-pieces [rose-rod-minion
+                     rose-target-minion
+                     {:id :indigo-target-minion
+                      :player-id :indigo
+                      :space-index 4
+                      :size :small
+                      :orientation :north}
+                     {:id :indigo-target-guard
+                      :player-id :indigo
+                      :space-index 4
+                      :size :large
+                      :orientation :south}]
+        state (:state (game-state/create-game
+                       player-specs
+                       {:deck-order (deck-with-board-card 3 "emperor")}))
+        state (game-state/with-board-pieces state full-pieces)
+        {:keys [ok? state events]} (game-state/apply-rod-move
+                                    state
+                                    {:player-id :rose
+                                     :source {:kind :territory
+                                              :board-index 3
+                                              :piece-id :rose-rod-minion}
+                                     :mode :move-minion
+                                     :distance 1})
+        moved-piece (piece-by-id state :rose-rod-minion)
+        destination-pieces (filter #(= 4 (:space-index %))
+                                   (get-in state [:pieces :on-board]))]
+    (is ok?)
+    (is (= {:id :rose-rod-minion
+            :player-id :rose
+            :space-index 4
+            :size :medium
+            :orientation :east}
+           moved-piece))
+    (is (= 4 (count destination-pieces)))
+    (is (= :rod-unbounded
+           (get-in events [0 :rod-variant])))
+    (is (game-schema/valid-game? state))))

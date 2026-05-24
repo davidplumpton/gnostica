@@ -484,7 +484,38 @@
              "Rod territory targets require a board index or row and column."
              {:target target})))
 
-(defn- resolve-rod-source [state player-id source]
+(defn- resolve-rod-variant [card requested-variant source]
+  (let [variants (cards/rod-variants card)
+        variant-set (set variants)]
+    (cond
+      (empty? variants)
+      (failure :source-card-not-rod
+               "The source card does not provide a Rod power."
+               {:card-id (:id card)
+                :source source})
+
+      (nil? requested-variant)
+      {:ok? true
+       :rod-variant (first variants)}
+
+      (not (contains? cards/rod-variant-ids requested-variant))
+      (failure :invalid-rod-variant
+               "Rod moves require a known Rod variant."
+               {:rod-variant requested-variant
+                :valid-variants cards/rod-variant-ids})
+
+      (contains? variant-set requested-variant)
+      {:ok? true
+       :rod-variant requested-variant}
+
+      :else
+      (failure :rod-variant-unavailable
+               "The source card does not provide the selected Rod variant."
+               {:card-id (:id card)
+                :rod-variant requested-variant
+                :available-variants variants}))))
+
+(defn- resolve-rod-source [state player-id source rod-variant]
   (let [piece (piece-by-id state (:piece-id source))
         piece-coordinate (when piece
                            (piece-coordinate state piece))]
@@ -541,19 +572,19 @@
                     :piece-space-index (:space-index piece)
                     :source-board-index (:board-index source)})
 
-          (not (cards/rod-card? (:card cell)))
-          (failure :source-card-not-rod
-                   "The source card does not provide a Rod power."
-                   {:card-id (get-in cell [:card :id])
-                    :source source})
-
           :else
-          {:ok? true
-           :source source
-           :source-card (:card cell)
-           :piece piece
-           :piece-coordinate (coordinate-map piece-coordinate)
-           :direction (:orientation piece)}))
+          (let [variant-result (resolve-rod-variant (:card cell)
+                                                    rod-variant
+                                                    source)]
+            (if (:ok? variant-result)
+              {:ok? true
+               :source source
+               :source-card (:card cell)
+               :rod-variant (:rod-variant variant-result)
+               :piece piece
+               :piece-coordinate (coordinate-map piece-coordinate)
+               :direction (:orientation piece)}
+              variant-result))))
 
       (= :hand-card (:kind source))
       (let [card (player-hand-card state player-id (:card-id source))]
@@ -564,20 +595,18 @@
                    {:card-id (:card-id source)
                     :player-id player-id})
 
-          (not (cards/rod-card? card))
-          (failure :source-card-not-rod
-                   "The source card does not provide a Rod power."
-                   {:card-id (:id card)
-                    :source source})
-
           :else
-          {:ok? true
-           :source source
-           :source-card card
-           :discard-source-card? true
-           :piece piece
-           :piece-coordinate (coordinate-map piece-coordinate)
-           :direction (:orientation piece)}))
+          (let [variant-result (resolve-rod-variant card rod-variant source)]
+            (if (:ok? variant-result)
+              {:ok? true
+               :source source
+               :source-card card
+               :rod-variant (:rod-variant variant-result)
+               :discard-source-card? true
+               :piece piece
+               :piece-coordinate (coordinate-map piece-coordinate)
+               :direction (:orientation piece)}
+              variant-result))))
 
       :else
       (failure :invalid-rod-command
@@ -754,7 +783,7 @@
           cell-result)))))
 
 (defn resolve-rod-command [state command]
-  (let [{:keys [player-id source mode target distance orientation direction]} command]
+  (let [{:keys [player-id source mode target distance orientation direction rod-variant]} command]
     (cond
       (not (map? command))
       (failure :invalid-rod-command
@@ -779,7 +808,7 @@
                 :supported-modes rod-modes})
 
       :else
-      (let [source-result (resolve-rod-source state player-id source)]
+      (let [source-result (resolve-rod-source state player-id source rod-variant)]
         (if-not (:ok? source-result)
           source-result
           (let [minion-direction (:direction source-result)]
@@ -808,6 +837,7 @@
                       target-result
                       (let [normalized-command (cond-> {:player-id player-id
                                                         :source (source-summary source)
+                                                        :rod-variant (:rod-variant source-result)
                                                         :mode mode
                                                         :target (:target target-result)
                                                         :distance (:distance distance-result)
@@ -1237,7 +1267,10 @@
                            (append-history event))]
         (success next-state [event])))))
 
-(defn- rod-destination-space [state moved-piece {:keys [row col] :as destination}]
+(defn- rod-unbounded? [rod-variant]
+  (= :rod-unbounded rod-variant))
+
+(defn- rod-destination-space [state moved-piece rod-variant {:keys [row col] :as destination}]
   (cond
     (not (and (int? row) (int? col)))
     (failure :invalid-rod-destination
@@ -1249,7 +1282,8 @@
     (if-let [cell (board-cell-at state row col)]
       (let [space-pieces (remove #(= (:id moved-piece) (:id %))
                                  (pieces-at-coordinate state row col))]
-        (if (<= pieces/max-pieces-per-space (count space-pieces))
+        (if (and (not (rod-unbounded? rod-variant))
+                 (<= pieces/max-pieces-per-space (count space-pieces)))
           (failure :target-territory-full
                    "Rod piece movement requires fewer than three pieces on the destination territory."
                    {:piece-id (:id moved-piece)
@@ -1512,9 +1546,10 @@
             (success next-state [event])))))))
 
 (defn- apply-rod-piece-move [state player-id {:keys [command source-card target-piece]}]
-  (let [{:keys [mode source target distance direction]} command
+  (let [{:keys [mode source target distance direction rod-variant]} command
         destination-result (rod-destination-space state
                                                   target-piece
+                                                  rod-variant
                                                   (:destination target))]
     (if-not (:ok? destination-result)
       destination-result
@@ -1526,6 +1561,7 @@
                            :push-piece :rod/piece-pushed)
                    :player-id player-id
                    :source source
+                   :rod-variant rod-variant
                    :target (select-keys target [:kind :piece-id :player-id :row :col])
                    :destination (:destination destination-result)
                    :distance distance
@@ -1552,7 +1588,7 @@
                   cells))))
 
 (defn- apply-rod-territory-push [state player-id {:keys [command source-card target-cell]}]
-  (let [{:keys [source target distance direction]} command
+  (let [{:keys [source target distance direction rod-variant]} command
         {:keys [row col]} target-cell
         destination-result (rod-territory-destination-space state
                                                            player-id
@@ -1578,6 +1614,7 @@
             event {:type :rod/territory-pushed
                    :player-id player-id
                    :source source
+                   :rod-variant rod-variant
                    :target (select-keys target [:kind :board-index :row :col])
                    :destination destination
                    :distance distance

@@ -159,6 +159,31 @@
                   :size :large
                   :orientation :south}])))
 
+(defn create-rod-unbounded-full-destination-game [world]
+  (let [world (create-game-with-options
+               world
+               {:deck-order (deck-with-board-card 2 3 "emperor")})]
+    (-> world
+        (put-pieces [rose-rod-minion
+                     {:id :rose-target-minion
+                      :player-id :rose
+                      :space-index 4
+                      :size :medium
+                      :orientation :up}
+                     {:id :indigo-target-minion
+                      :player-id :indigo
+                      :space-index 4
+                      :size :small
+                      :orientation :north}
+                     {:id :indigo-target-guard
+                      :player-id :indigo
+                      :space-index 4
+                      :size :large
+                      :orientation :south}])
+        (with-rod-fixture {:source-kind :territory
+                           :source-board-index 3
+                           :piece-id :rose-rod-minion}))))
+
 (defn create-rod-enemy-territory-push-game [world]
   (let [world (create-game-with-options
                world

@@ -108,6 +108,9 @@
    {:pattern #"^a Rod full-destination game$"
     :run world/create-rod-full-destination-game}
 
+   {:pattern #"^a Rod unbounded full-destination game$"
+    :run world/create-rod-unbounded-full-destination-game}
+
    {:pattern #"^a Rod enemy-occupied territory-push game$"
     :run world/create-rod-enemy-territory-push-game}
 

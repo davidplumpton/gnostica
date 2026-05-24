@@ -40,6 +40,14 @@ Feature: Rods gameplay moves
     Then the Rod action is rejected with code :target-territory-full
     And the previous state was not mutated
 
+  Scenario: Move into a full territory with an unbounded Rod
+    Given a Rod unbounded full-destination game
+    When Rose moves the Rod minion 1 space
+    Then the Rod action succeeds
+    And piece rose-rod-minion is on board index 4 facing east
+    And the history records a :rod/minion-moved event
+    And the game state is schema valid
+
   Scenario: Reject a void piece destination
     Given a Rod territory-source game with Rose's medium minion at board index 2 facing east
     When Rose moves the Rod minion 2 spaces
