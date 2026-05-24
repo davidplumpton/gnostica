@@ -3,6 +3,7 @@
             [gnostica.fixtures :as fixtures]
             [gnostica.icon-layout :as icon-layout]
             [gnostica.icons :as icons]
+            [gnostica.keyboard-shortcuts :as shortcuts]
             [gnostica.smoke.browser :as browser])
   (:import [java.io ByteArrayInputStream]
            [java.util Base64]
@@ -519,20 +520,18 @@
                                  "Orient a target piece"))))))
 
 (defn hotkey-help-open-ready? [stats]
-  (let [labels (set (get stats "keyLabels"))]
+  (let [labels (set (get stats "keyLabels"))
+        expected-labels (set (shortcuts/hotkey-command-labels))
+        board-command (:command (shortcuts/command-by-id :pan-board-view))]
     (and (true? (get stats "overlayVisible"))
          (true? (get stats "dialogVisible"))
          (= "dialog" (get stats "role"))
          (= "true" (get stats "ariaModal"))
          (str/includes? (get stats "title") "Keyboard Commands")
-         (= 5 (long (or (get stats "commandCount") -1)))
-         (contains? labels "?")
-         (contains? labels "G")
-         (contains? labels "I")
-         (contains? labels "W/A/S/D")
-         (contains? labels "Arrow keys")
-         (contains? labels "Esc")
-         (str/includes? (or (get stats "text") "") "Move the 3D board view"))))
+         (= (count shortcuts/hotkey-commands)
+            (long (or (get stats "commandCount") -1)))
+         (every? #(contains? labels %) expected-labels)
+         (str/includes? (or (get stats "text") "") board-command))))
 
 (defn icon-help-open-ready? [stats]
   (and (true? (get stats "overlayVisible"))

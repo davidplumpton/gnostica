@@ -4,19 +4,8 @@
             [gnostica.cards :as cards]
             [gnostica.icon-view :as icon-view]
             [gnostica.icons :as icons]
+            [gnostica.keyboard-shortcuts :as shortcuts]
             [re-frame.core :as rf]))
-
-(def hotkey-commands
-  [{:keys ["?"]
-    :command "Show keyboard commands"}
-   {:keys ["G"]
-    :command "Show special move icon guide"}
-   {:keys ["I"]
-    :command "Toggle card icon overlays"}
-   {:keys ["W/A/S/D" "Arrow keys"]
-    :command "Move the 3D board view when the board is focused"}
-   {:keys ["Esc"]
-    :command "Close open help dialogs"}])
 
 (defn hotkey-help-dialog [open?]
   (when open?
@@ -36,7 +25,7 @@
          :on-click #(rf/dispatch [events/close-hotkey-help])}
         "Close"]]
       [:dl.hotkey-command-list
-       (for [{:keys [keys command]} hotkey-commands]
+       (for [{:keys [keys command]} shortcuts/hotkey-commands]
          ^{:key command}
          [:div.hotkey-command
           [:dt

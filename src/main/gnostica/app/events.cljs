@@ -1,5 +1,6 @@
 (ns gnostica.app.events
-  (:require [gnostica.app-state :as app-state]
+  (:require [gnostica.app.keyboard :as keyboard]
+            [gnostica.app-state :as app-state]
             [gnostica.app.handlers :as handlers]
             [gnostica.game-state :as game-state]
             [gnostica.pieces :as piece-model]
@@ -7,6 +8,8 @@
             [re-frame.core :as rf]))
 
 (def initialize :gnostica.app/initialize)
+(def install-keyboard-shortcuts :gnostica.app/install-keyboard-shortcuts)
+(def uninstall-keyboard-shortcuts :gnostica.app/uninstall-keyboard-shortcuts)
 (def select-board-card :gnostica.app/select-board-card)
 (def select-move-source :gnostica.app/select-move-source)
 (def select-move-piece :gnostica.app/select-move-piece)
@@ -92,6 +95,16 @@
  three-runtime-detection
  (fn [coeffects _]
    (assoc coeffects three-runtime-status (three-runtime/runtime-status))))
+
+(rf/reg-event-fx
+ install-keyboard-shortcuts
+ (fn [_ _]
+   {keyboard/install-global-shortcuts-fx true}))
+
+(rf/reg-event-fx
+ uninstall-keyboard-shortcuts
+ (fn [_ _]
+   {keyboard/install-global-shortcuts-fx false}))
 
 (rf/reg-event-fx
  initialize

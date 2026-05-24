@@ -58,7 +58,7 @@ The current flow lets the player choose a move source, then stage the required s
 
 ## Keyboard Shortcuts
 
-The app header in `gnostica.ui.header` exposes a `?` control, the global listener in `gnostica.app.keyboard` handles browser shortcuts, and `gnostica.ui.help` renders the command and icon dialogs. The dialog lists the currently supported browser shortcuts: `?` opens the dialog, `G` opens a special move icon guide with detailed explanations, `I` toggles Gnostica card icon overlays between always-visible and hover/focus popup modes, WASD or arrow keys move the focused 3D board view, and `Esc` closes open help dialogs.
+The app header in `gnostica.ui.header` exposes a `?` control, `gnostica.keyboard-shortcuts` owns the shared shortcut command catalog, `gnostica.app.keyboard` installs the global browser listener through a re-frame effect boundary, and `gnostica.ui.help` renders the command and icon dialogs from the same catalog. The dialog lists the currently supported browser shortcuts: `?` opens the dialog, `G` opens a special move icon guide with detailed explanations, `I` toggles Gnostica card icon overlays between always-visible and hover/focus popup modes, WASD or arrow keys move the focused 3D board view, and `Esc` closes open help dialogs.
 
 The `I` shortcut should preserve the current 3D OrbitControls camera view; only the `Reset view` control should reset the board camera.
 

@@ -1,9 +1,11 @@
 (ns gnostica.app.keyboard
   (:require [clojure.string :as str]
-            [gnostica.app.events :as events]
+            [gnostica.keyboard-shortcuts :as shortcuts]
             [re-frame.core :as rf]))
 
-(defonce keyboard-shortcut-listener
+(def install-global-shortcuts-fx :gnostica.app.keyboard/install-global-shortcuts)
+
+(defonce global-shortcut-listener
   (atom nil))
 
 (defn- editable-target? [target]
@@ -11,43 +13,33 @@
     (or (and target (.-isContentEditable target))
         (#{"input" "select" "textarea"} tag-name))))
 
-(defn- modified-shortcut? [event]
-  (or (.-altKey event)
-      (.-ctrlKey event)
-      (.-metaKey event)))
+(defn- event-info [event]
+  {:key (.-key event)
+   :code (.-code event)
+   :shift? (.-shiftKey event)
+   :alt? (.-altKey event)
+   :ctrl? (.-ctrlKey event)
+   :meta? (.-metaKey event)})
 
-(defn- question-mark-key? [event key]
-  (or (= "?" key)
-      (and (= "Slash" (.-code event))
-           (.-shiftKey event))))
+(defn uninstall! []
+  (when-let [listener @global-shortcut-listener]
+    (.removeEventListener js/window "keydown" listener)
+    (reset! global-shortcut-listener nil)))
 
 (defn install! []
-  (when-let [listener @keyboard-shortcut-listener]
-    (.removeEventListener js/window "keydown" listener))
+  (uninstall!)
   (let [listener (fn [event]
-                   (let [key (.-key event)
-                         lower-key (str/lower-case key)]
-                     (when (and (not (modified-shortcut? event))
-                                (not (editable-target? (.-target event))))
-                       (cond
-                         (question-mark-key? event key)
-                         (do
-                           (.preventDefault event)
-                           (rf/dispatch [events/open-hotkey-help]))
-
-                         (= "escape" lower-key)
-                         (do
-                           (.preventDefault event)
-                           (rf/dispatch [events/close-help-dialogs]))
-
-                         (= "i" lower-key)
-                         (do
-                           (.preventDefault event)
-                           (rf/dispatch [events/toggle-card-icon-mode]))
-
-                         (= "g" lower-key)
-                         (do
-                           (.preventDefault event)
-                           (rf/dispatch [events/open-icon-help]))))))]
-    (reset! keyboard-shortcut-listener listener)
+                   (when-not (editable-target? (.-target event))
+                     (when-let [shortcut-event (shortcuts/global-shortcut-event
+                                                (event-info event))]
+                       (.preventDefault event)
+                       (rf/dispatch [shortcut-event]))))]
+    (reset! global-shortcut-listener listener)
     (.addEventListener js/window "keydown" listener)))
+
+(rf/reg-fx
+ install-global-shortcuts-fx
+ (fn [enabled?]
+   (if enabled?
+     (install!)
+     (uninstall!))))

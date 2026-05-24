@@ -1,6 +1,5 @@
 (ns gnostica.app
   (:require [gnostica.app.events :as events]
-            [gnostica.app.keyboard :as keyboard]
             [gnostica.fixtures :as fixtures]
             [gnostica.ui.board :as board-ui]
             [gnostica.ui.card-zones :as card-zones-ui]
@@ -38,7 +37,7 @@
      [help-ui/help-dialogs]]))
 
 (defn mount! []
-  (keyboard/install!)
+  (rf/dispatch-sync [events/install-keyboard-shortcuts])
   (rdom/render [app] (.getElementById js/document "app")))
 
 (defn reload! []
