@@ -932,6 +932,19 @@
                          piece))
                      board-pieces))))
 
+(defn- move-board-index-pieces-to-wasteland [state board-index row col]
+  (update-in state [:pieces :on-board]
+             (fn [board-pieces]
+               (mapv (fn [piece]
+                       (if (= board-index (:space-index piece))
+                         (-> piece
+                             (dissoc :space-index)
+                             (assoc :space {:kind :wasteland
+                                            :row row
+                                            :col col}))
+                         piece))
+                     board-pieces))))
+
 (defn- pieces-at-coordinate [state row col]
   (filterv #(= [row col] (piece-coordinate state %))
            (get-in state [:pieces :on-board])))
@@ -1042,6 +1055,37 @@
                    {:piece-id (:id moved-piece)
                     :destination destination}))))))
 
+(defn- rod-territory-destination-space [state player-id {:keys [row col] :as destination}]
+  (cond
+    (not (and (int? row) (int? col)))
+    (failure :invalid-rod-destination
+             "Rod territory pushing requires a destination coordinate."
+             {:destination destination})
+
+    (some? (board-cell-at state row col))
+    (failure :target-not-wasteland
+             "Rod territory pushing must land in an empty wasteland space."
+             {:destination destination})
+
+    (not (wasteland-target? state {:kind :wasteland
+                                   :row row
+                                   :col col}))
+    (failure :rod-destination-void
+             "Rod territory pushing cannot land in the void."
+             {:destination destination})
+
+    (seq (enemy-pieces-at-coordinate state player-id row col))
+    (failure :wasteland-occupied-by-enemy
+             "Rod territory pushing cannot land on a wasteland occupied by enemy pieces."
+             {:destination destination
+              :enemy-piece-ids (mapv :id (enemy-pieces-at-coordinate state player-id row col))})
+
+    :else
+    {:ok? true
+     :destination {:kind :wasteland
+                   :row row
+                   :col col}}))
+
 (defn- move-piece-to-space [piece piece-space orientation]
   (let [piece (cond-> piece
                 orientation (assoc :orientation orientation))]
@@ -1090,6 +1134,64 @@
                            (append-history event))]
         (success next-state [event])))))
 
+(defn- move-territory-cell [state board-index row col]
+  (update state :board
+          (fn [cells]
+            (mapv (fn [cell]
+                    (if (= board-index (:index cell))
+                      (assoc cell
+                             :row row
+                             :col col
+                             :orientation (board/orientation-for row col))
+                      cell))
+                  cells))))
+
+(defn- apply-rod-territory-push [state player-id {:keys [command source-card target-cell]}]
+  (let [{:keys [source target distance direction]} command
+        {:keys [row col]} target-cell
+        destination-result (rod-territory-destination-space state
+                                                           player-id
+                                                           (:destination target))
+        enemy-pieces (enemy-pieces-at-coordinate state player-id row col)]
+    (cond
+      (seq enemy-pieces)
+      (failure :target-territory-occupied-by-enemy
+               "Rod territory pushing cannot target a territory occupied by enemy pieces."
+               {:target (select-keys target [:kind :board-index :row :col])
+                :enemy-piece-ids (mapv :id enemy-pieces)})
+
+      (not (:ok? destination-result))
+      destination-result
+
+      :else
+      (let [destination (:destination destination-result)
+            moved-territory (assoc target-cell
+                                   :row (:row destination)
+                                   :col (:col destination)
+                                   :orientation (board/orientation-for (:row destination)
+                                                                       (:col destination)))
+            event {:type :rod/territory-pushed
+                   :player-id player-id
+                   :source source
+                   :target (select-keys target [:kind :board-index :row :col])
+                   :destination destination
+                   :distance distance
+                   :direction direction
+                   :territory moved-territory}
+            source-cost {:source-card source-card
+                         :discard-source-card? (= :hand-card (:kind source))}
+            next-state (-> state
+                           (apply-source-cost player-id source-cost)
+                           (move-board-index-pieces-to-wasteland (:index target-cell) row col)
+                           (move-territory-cell (:index target-cell)
+                                                (:row destination)
+                                                (:col destination))
+                           (move-wasteland-pieces-to-board-index (:row destination)
+                                                                 (:col destination)
+                                                                 (:index target-cell))
+                           (append-history event))]
+        (success next-state [event])))))
+
 (defn apply-rod-move [state command]
   (let [result (resolve-rod-command state command)]
     (if-not (:ok? result)
@@ -1101,10 +1203,7 @@
           (apply-rod-piece-move state player-id result)
 
           :push-territory
-          (failure :move-transition-unavailable
-                   "Rod territory pushing is not implemented yet."
-                   {:mode :push-territory
-                    :command normalized-command}))))))
+          (apply-rod-territory-push state player-id result))))))
 
 (defn apply-cup-move [state command]
   (let [{:keys [player-id source target orientation one-point-card-id]} command]

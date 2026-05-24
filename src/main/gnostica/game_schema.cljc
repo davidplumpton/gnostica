@@ -68,18 +68,16 @@
   (and (sequential? cells)
        (distinct-by? :index cells)))
 
-(defn- board-cell-positions-match? [cells]
+(defn- board-cell-coordinates-unique? [cells]
+  (and (sequential? cells)
+       (distinct-by? (juxt :row :col) cells)))
+
+(defn- board-cell-orientations-match? [cells]
   (and (sequential? cells)
        (every?
-        (fn [{:keys [index row col orientation]}]
-          (and (int? index)
-               (int? row)
+        (fn [{:keys [row col orientation]}]
+          (and (int? row)
                (int? col)
-               (if (< index board/board-card-count)
-                 (let [position (board/position-for-index index)]
-                   (and (= (:row position) row)
-                        (= (:col position) col)))
-                 true)
                (= (board/orientation-for row col) orientation)))
         cells)))
 
@@ -238,7 +236,8 @@
              :max 78}
     BoardCell]
    [:fn {:error/message "board cell indexes must be unique"} board-indexes-unique?]
-   [:fn {:error/message "board cells must match their index row, column, and orientation"} board-cell-positions-match?]])
+   [:fn {:error/message "board cell coordinates must be unique"} board-cell-coordinates-unique?]
+   [:fn {:error/message "board cell orientations must match their coordinates"} board-cell-orientations-match?]])
 
 (def Hand
   [:vector {:max game-state/starting-hand-size}

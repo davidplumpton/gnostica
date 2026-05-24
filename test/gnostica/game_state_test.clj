@@ -91,6 +91,12 @@
   (some #(when (= board-index (:index %)) %)
         (:board state)))
 
+(defn- board-cell-at [state row col]
+  (some #(when (and (= row (:row %))
+                    (= col (:col %)))
+           %)
+        (:board state)))
+
 (defn- player-hand-ids [state player-id]
   (mapv :id (get-in state [:players-by-id player-id :hand])))
 
@@ -709,6 +715,155 @@
            (get-in events [0 :destination])))
     (is (not (contains? moved-piece :space-index)))
     (is (game-schema/valid-game? state))))
+
+(deftest rod-move-pushes-territory-into-wasteland-without-moving-pieces
+  (let [deck-order (deck-starting-with ["wands2"])
+        state (:state (game-state/create-game player-specs {:deck-order deck-order}))
+        target-card (get-in state [:board 5 :card])
+        rod-minion (assoc rose-rod-minion :space-index 4)
+        state (assoc-in state [:pieces :on-board]
+                        [rod-minion
+                         (assoc rose-target-minion :space-index 5)
+                         {:id :rose-landing-minion
+                          :player-id :rose
+                          :space {:kind :wasteland
+                                  :row 1
+                                  :col 3}
+                          :size :small
+                          :orientation :west}])
+        command {:player-id :rose
+                 :source {:kind :hand-card
+                          :card-id "wands2"
+                          :piece-id :rose-rod-minion}
+                 :mode :push-territory
+                 :target {:kind :territory
+                          :board-index 5}
+                 :distance 1}
+        {:keys [ok? state events]} (game-state/apply-rod-move state command)
+        moved-cell (board-cell-by-index state 5)
+        old-target-piece (piece-by-id state :rose-target-minion)
+        landing-piece (piece-by-id state :rose-landing-minion)]
+    (is ok?)
+    (is (= {:index 5
+            :row 1
+            :col 3
+            :orientation :portrait
+            :face :up
+            :card target-card}
+           moved-cell))
+    (is (nil? (board-cell-at state 1 2)))
+    (is (= {:id :rose-target-minion
+            :player-id :rose
+            :space {:kind :wasteland
+                    :row 1
+                    :col 2}
+            :size :medium
+            :orientation :up}
+           old-target-piece))
+    (is (= {:id :rose-landing-minion
+            :player-id :rose
+            :space-index 5
+            :size :small
+            :orientation :west}
+           landing-piece))
+    (is (= ["wands2"] (mapv :id (:discard-pile state))))
+    (is (not (some #{"wands2"} (player-hand-ids state :rose))))
+    (is (= [{:type :rod/territory-pushed
+             :player-id :rose
+             :source {:kind :hand-card
+                      :card-id "wands2"
+                      :piece-id :rose-rod-minion}
+             :target {:kind :territory
+                      :board-index 5
+                      :row 1
+                      :col 2}
+             :destination {:kind :wasteland
+                           :row 1
+                           :col 3}
+             :distance 1
+             :direction :east
+             :territory moved-cell}]
+           events))
+    (is (= events [(peek (:history state))]))
+    (is (= (count cards/deck) (count (all-card-ids state))))
+    (is (= (count cards/deck) (count (set (all-card-ids state)))))
+    (is (game-schema/valid-game? state))))
+
+(deftest rod-move-rejects-enemy-occupied-territory-push-targets_without_mutation
+  (let [state (:state (game-state/create-game
+                       player-specs
+                       {:deck-order (deck-with-board-card 4 "wands2")}))
+        pieces [(assoc rose-rod-minion :space-index 4)
+                {:id :indigo-target-minion
+                 :player-id :indigo
+                 :space-index 5
+                 :size :small
+                 :orientation :north}]
+        state (assoc-in state [:pieces :on-board] pieces)
+        result (game-state/apply-rod-move
+                state
+                {:player-id :rose
+                 :source {:kind :territory
+                          :board-index 4
+                          :piece-id :rose-rod-minion}
+                 :mode :push-territory
+                 :target {:kind :territory
+                          :board-index 5}
+                 :distance 1})]
+    (is (= :target-territory-occupied-by-enemy
+           (get-in result [:error :code])))
+    (is (= [:indigo-target-minion]
+           (get-in result [:error :data :enemy-piece-ids])))
+    (is (not (contains? result :state)))
+    (is (= pieces (get-in state [:pieces :on-board])))))
+
+(deftest rod-move-rejects-territory-pushes-to-enemy-wastelands-and-void_without_mutation
+  (let [state (:state (game-state/create-game
+                       player-specs
+                       {:deck-order (deck-with-board-card 4 "wands2")}))
+        enemy-landing-pieces [(assoc rose-rod-minion :space-index 4)
+                              {:id :indigo-landing-minion
+                               :player-id :indigo
+                               :space {:kind :wasteland
+                                       :row 1
+                                       :col 3}
+                               :size :small
+                               :orientation :south}]
+        enemy-landing-state (assoc-in state [:pieces :on-board] enemy-landing-pieces)
+        enemy-landing-result (game-state/apply-rod-move
+                              enemy-landing-state
+                              {:player-id :rose
+                               :source {:kind :territory
+                                        :board-index 4
+                                        :piece-id :rose-rod-minion}
+                               :mode :push-territory
+                               :target {:kind :territory
+                                        :board-index 5}
+                               :distance 1})
+        void-state (assoc-in state [:pieces :on-board]
+                             [(assoc rose-rod-minion :space-index 4)])
+        void-result (game-state/apply-rod-move
+                     void-state
+                     {:player-id :rose
+                      :source {:kind :territory
+                               :board-index 4
+                               :piece-id :rose-rod-minion}
+                      :mode :push-territory
+                      :target {:kind :territory
+                               :board-index 5}
+                      :distance 2})]
+    (is (= :wasteland-occupied-by-enemy
+           (get-in enemy-landing-result [:error :code])))
+    (is (= [:indigo-landing-minion]
+           (get-in enemy-landing-result [:error :data :enemy-piece-ids])))
+    (is (= :rod-destination-void
+           (get-in void-result [:error :code])))
+    (is (not (contains? enemy-landing-result :state)))
+    (is (not (contains? void-result :state)))
+    (is (= enemy-landing-pieces
+           (get-in enemy-landing-state [:pieces :on-board])))
+    (is (= [(assoc rose-rod-minion :space-index 4)]
+           (get-in void-state [:pieces :on-board])))))
 
 (deftest rod-move-rejects-void-and-full-territory-destinations_without_mutation
   (let [full-pieces [rose-rod-minion
