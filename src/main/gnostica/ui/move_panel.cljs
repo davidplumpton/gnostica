@@ -305,24 +305,14 @@
 
      nil)])
 
-(defn- move-active-controls [selection]
+(defn- move-active-controls [selection controls]
   (let [{:keys [source params]} selection
-        board @(rf/subscribe [events/board])
-        power @(rf/subscribe [events/move-power])
-        power-options @(rf/subscribe [events/move-power-options])
-        rod-mode-options @(rf/subscribe [events/move-rod-mode-options])
-        piece-options @(rf/subscribe [events/move-piece-options])
-        target-piece-options @(rf/subscribe [events/move-target-piece-options])
-        hand-options @(rf/subscribe [events/move-hand-card-options])
-        source-board-options @(rf/subscribe [events/move-source-board-options])
-        target-board-options @(rf/subscribe [events/move-target-board-options])
-        target-wasteland-options @(rf/subscribe [events/move-target-wasteland-options])
-        territory-card-source-options @(rf/subscribe [events/move-territory-card-source-options])
-        one-point-card-options @(rf/subscribe [events/move-one-point-card-options])
-        orientation-options @(rf/subscribe [events/move-orientation-options])
-        orientation-required? @(rf/subscribe [events/move-rod-orientation-required?])
-        distance-options @(rf/subscribe [events/move-distance-options])
-        draw-options @(rf/subscribe [events/draw-count-options])]
+        {:keys [board power power-options rod-mode-options piece-options
+                target-piece-options hand-options source-board-options
+                target-board-options target-wasteland-options
+                territory-card-source-options one-point-card-options
+                orientation-options orientation-required? distance-options
+                draw-options]} controls]
     (case source
       :activate-territory
       [:<>
@@ -400,11 +390,8 @@
       nil)))
 
 (defn move-panel []
-  (let [current-player @(rf/subscribe [events/current-player])
-        selection @(rf/subscribe [events/move-selection])
-        source-options @(rf/subscribe [events/move-source-options])
-        prompt @(rf/subscribe [events/move-prompt])
-        ready? @(rf/subscribe [events/move-ready?])
+  (let [{:keys [current-player selection source-options prompt ready? controls]}
+        @(rf/subscribe [events/move-panel-view])
         {:keys [source error]} selection]
     [:section.move-panel
      {:class (if source "is-active" "is-idle")}
@@ -416,7 +403,7 @@
      [move-source-picker source-options source]
      [:p.move-panel__prompt prompt]
      (when source
-       [move-active-controls selection])
+       [move-active-controls selection controls])
      (when error
        [:p.move-error
         {:role "alert"}

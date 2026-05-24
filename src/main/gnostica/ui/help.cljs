@@ -18,8 +18,8 @@
    {:keys ["Esc"]
     :command "Close open help dialogs"}])
 
-(defn hotkey-help-dialog []
-  (when @(rf/subscribe [events/hotkey-help-open?])
+(defn hotkey-help-dialog [open?]
+  (when open?
     [:div.hotkey-help-overlay
      {:role "presentation"
       :on-click #(rf/dispatch [events/close-hotkey-help])}
@@ -51,8 +51,8 @@
        (map :title)
        vec))
 
-(defn icon-help-dialog []
-  (when @(rf/subscribe [events/icon-help-open?])
+(defn icon-help-dialog [open?]
+  (when open?
     [:div.icon-help-overlay
      {:role "presentation"
       :on-click #(rf/dispatch [events/close-icon-help])}
@@ -82,3 +82,9 @@
                [:p.icon-help-item__cards
                 [:span "Cards"]
                 (str " " (str/join ", " card-titles))])]]))]]]))
+
+(defn help-dialogs []
+  (let [{:keys [hotkey-help-open? icon-help-open?]} @(rf/subscribe [events/help-dialogs-view])]
+    [:<>
+     [hotkey-help-dialog hotkey-help-open?]
+     [icon-help-dialog icon-help-open?]]))

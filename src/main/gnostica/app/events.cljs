@@ -1,6 +1,8 @@
 (ns gnostica.app.events
   (:require [gnostica.app-state :as app-state]
             [gnostica.app.handlers :as handlers]
+            [gnostica.game-state :as game-state]
+            [gnostica.pieces :as piece-model]
             [re-frame.core :as rf]))
 
 (def initialize :gnostica.app/initialize)
@@ -61,6 +63,14 @@
 (def card-icon-mode :gnostica.app/card-icon-mode)
 (def hotkey-help-open? :gnostica.app/hotkey-help-open?)
 (def icon-help-open? :gnostica.app/icon-help-open?)
+
+(def app-view :gnostica.app/app-view)
+(def header-view :gnostica.app/header-view)
+(def board-view :gnostica.app/board-view)
+(def card-zones-view :gnostica.app/card-zones-view)
+(def territory-view :gnostica.app/territory-view)
+(def move-panel-view :gnostica.app/move-panel-view)
+(def help-dialogs-view :gnostica.app/help-dialogs-view)
 
 (def shuffle-seed :gnostica.app/shuffle-seed)
 
@@ -214,13 +224,15 @@
 
 (rf/reg-sub
  board
- (fn [db _]
-   (app-state/board db)))
+ :<- [game]
+ (fn [state _]
+   (or (:board state) [])))
 
 (rf/reg-sub
  pieces
- (fn [db _]
-   (app-state/board-pieces db)))
+ :<- [game]
+ (fn [state _]
+   (or (get-in state [:pieces :on-board]) [])))
 
 (rf/reg-sub
  selected-board-index
@@ -229,13 +241,15 @@
 
 (rf/reg-sub
  current-player
- (fn [db _]
-   (app-state/current-player db)))
+ :<- [game]
+ (fn [state _]
+   (some-> state game-state/current-player)))
 
 (rf/reg-sub
  card-zones
- (fn [db _]
-   (app-state/card-zones db)))
+ :<- [game]
+ (fn [state _]
+   (app-state/card-zones {:game state})))
 
 (rf/reg-sub
  three-texture-errors
@@ -249,13 +263,17 @@
 
 (rf/reg-sub
  selected-board-cell
- (fn [db _]
-   (app-state/selected-board-cell db)))
+ :<- [board]
+ :<- [selected-board-index]
+ (fn [[cells selected-index] _]
+   (get cells selected-index)))
 
 (rf/reg-sub
  selected-board-pieces
- (fn [db _]
-   (app-state/selected-board-pieces db)))
+ :<- [pieces]
+ :<- [selected-board-index]
+ (fn [[board-pieces selected-index] _]
+   (piece-model/pieces-for-space board-pieces selected-index)))
 
 (rf/reg-sub
  move-selection
@@ -366,3 +384,119 @@
  icon-help-open?
  (fn [db _]
    (app-state/icon-help-open? db)))
+
+(rf/reg-sub
+ app-view
+ :<- [setup-error]
+ :<- [card-icon-mode]
+ (fn [[setup-error card-icon-mode] _]
+   (app-state/app-view-model
+    {:setup-error setup-error
+     :card-icon-mode card-icon-mode})))
+
+(rf/reg-sub
+ header-view
+ :<- [current-player]
+ :<- [card-icon-mode]
+ (fn [[current-player card-icon-mode] _]
+   (app-state/header-view-model
+    {:current-player current-player
+     :card-icon-mode card-icon-mode})))
+
+(rf/reg-sub
+ board-view
+ :<- [board]
+ :<- [pieces]
+ :<- [selected-board-index]
+ :<- [card-icon-mode]
+ :<- [three-texture-errors]
+ :<- [three-renderer-error]
+ (fn [[cells board-pieces selected-index card-icon-mode texture-errors renderer-error] _]
+   (app-state/board-view-model
+    {:cells cells
+     :board-pieces board-pieces
+     :selected-index selected-index
+     :card-icon-mode card-icon-mode
+     :texture-errors texture-errors
+     :renderer-error renderer-error})))
+
+(rf/reg-sub
+ card-zones-view
+ :<- [current-player]
+ :<- [card-icon-mode]
+ :<- [card-zones]
+ (fn [[current-player card-icon-mode zones] _]
+   (app-state/card-zones-view-model
+    {:current-player current-player
+     :card-icon-mode card-icon-mode
+     :zones zones})))
+
+(rf/reg-sub
+ territory-view
+ :<- [selected-board-cell]
+ :<- [selected-board-pieces]
+ (fn [[cell selected-pieces] _]
+   (app-state/territory-view-model
+    {:cell cell
+     :selected-pieces selected-pieces})))
+
+(rf/reg-sub
+ move-panel-view
+ :<- [current-player]
+ :<- [move-selection]
+ :<- [move-source-options]
+ :<- [move-prompt]
+ :<- [move-ready?]
+ :<- [board]
+ :<- [move-power]
+ :<- [move-power-options]
+ :<- [move-rod-mode-options]
+ :<- [move-piece-options]
+ :<- [move-target-piece-options]
+ :<- [move-hand-card-options]
+ :<- [move-source-board-options]
+ :<- [move-target-board-options]
+ :<- [move-target-wasteland-options]
+ :<- [move-territory-card-source-options]
+ :<- [move-one-point-card-options]
+ :<- [move-orientation-options]
+ :<- [move-rod-orientation-required?]
+ :<- [move-distance-options]
+ :<- [draw-count-options]
+ (fn [[current-player selection source-options prompt ready? board power
+       power-options rod-mode-options piece-options target-piece-options
+       hand-options source-board-options target-board-options
+       target-wasteland-options territory-card-source-options
+       one-point-card-options orientation-options orientation-required?
+       distance-options draw-options] _]
+   (app-state/move-panel-view-model
+    {:current-player current-player
+     :selection selection
+     :source-options source-options
+     :prompt prompt
+     :ready? ready?
+     :board board
+     :power power
+     :power-options power-options
+     :rod-mode-options rod-mode-options
+     :piece-options piece-options
+     :target-piece-options target-piece-options
+     :hand-options hand-options
+     :source-board-options source-board-options
+     :target-board-options target-board-options
+     :target-wasteland-options target-wasteland-options
+     :territory-card-source-options territory-card-source-options
+     :one-point-card-options one-point-card-options
+     :orientation-options orientation-options
+     :orientation-required? orientation-required?
+     :distance-options distance-options
+     :draw-options draw-options})))
+
+(rf/reg-sub
+ help-dialogs-view
+ :<- [hotkey-help-open?]
+ :<- [icon-help-open?]
+ (fn [[hotkey-help-open? icon-help-open?] _]
+   (app-state/help-dialogs-view-model
+    {:hotkey-help-open? hotkey-help-open?
+     :icon-help-open? icon-help-open?})))

@@ -39,8 +39,7 @@
     [icon-view/gnostica-icon :world]]])
 
 (defn app-header []
-  (let [current-player @(rf/subscribe [events/current-player])
-        card-icon-mode @(rf/subscribe [events/card-icon-mode])]
+  (let [{:keys [current-player card-icon-mode]} @(rf/subscribe [events/header-view])]
     [:header.app-header
      [:div.brand
       [:span.brand__mark "G"]

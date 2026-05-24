@@ -22,8 +22,7 @@
       [:pre.setup-error__data (pr-str (:data error))])]])
 
 (defn app []
-  (let [setup-error @(rf/subscribe [events/setup-error])
-        card-icon-mode @(rf/subscribe [events/card-icon-mode])]
+  (let [{:keys [setup-error card-icon-mode]} @(rf/subscribe [events/app-view])]
     [:<>
      [header-ui/app-header]
      (if setup-error
@@ -36,8 +35,7 @@
         [:div.side-stack
          [move-panel-ui/move-panel]
          [territory-ui/territory-panel]]])
-     [help-ui/hotkey-help-dialog]
-     [help-ui/icon-help-dialog]]))
+     [help-ui/help-dialogs]]))
 
 (defn mount! []
   (keyboard/install!)

@@ -5,8 +5,8 @@
             [re-frame.core :as rf]))
 
 (defn territory-panel []
-  (let [{:keys [row col orientation card]} @(rf/subscribe [events/selected-board-cell])
-        selected-pieces @(rf/subscribe [events/selected-board-pieces])
+  (let [{:keys [cell selected-pieces]} @(rf/subscribe [events/territory-view])
+        {:keys [row col orientation card]} cell
         {:keys [title group rank]} card]
     [:aside.territory-panel
      {:class (when-not (seq selected-pieces) "is-empty")}

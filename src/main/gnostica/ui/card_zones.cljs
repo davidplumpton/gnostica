@@ -41,9 +41,8 @@
        "No cards discarded")]]])
 
 (defn card-zones []
-  (let [current-player @(rf/subscribe [events/current-player])
-        card-icon-mode @(rf/subscribe [events/card-icon-mode])
-        {:keys [hand draw-count discard-count discard-top-card]} @(rf/subscribe [events/card-zones])]
+  (let [{:keys [current-player card-icon-mode zones]} @(rf/subscribe [events/card-zones-view])
+        {:keys [hand draw-count discard-count discard-top-card]} zones]
     [:section.card-zones
      {:data-hand-count (count hand)
       :data-draw-count draw-count

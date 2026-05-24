@@ -202,6 +202,26 @@
     (is (= (pieces/pieces-for-space fixtures/demo-board-pieces 4)
            (app-state/selected-board-pieces selected-db)))))
 
+(deftest board-view-model-aggregates-fallback-layout-data
+  (let [db (app-state/initialize {:player-specs test-player-specs
+                                  :game-options {:shuffle-fn identity}
+                                  :demo-board-pieces [rose-source-piece]})
+        view (app-state/board-view (assoc db :three-renderer-error "No WebGL"))]
+    (is (= 9 (count (:cells view))))
+    (is (= [rose-source-piece] (:board-pieces view)))
+    (is (= [rose-source-piece]
+           (get-in view [:pieces-by-space 0])))
+    (is (= 12 (count (:wastelands view))))
+    (is (= {:min-row -1
+            :max-row 3
+            :min-col -1
+            :max-col 3}
+           (:space-bounds view)))
+    (is (= app-state/default-selected-board-index
+           (:selected-index view)))
+    (is (= :always (:card-icon-mode view)))
+    (is (= "No WebGL" (:renderer-error view)))))
+
 (deftest selecting-an-unknown-board-card-is-ignored
   (let [db (app-state/initialize {:game-options {:shuffle-fn identity}})]
     (is (= db (app-state/select-board-card db 99)))))
@@ -234,6 +254,30 @@
     (is (= 1 (:discard-count zones)))
     (is (= (:id discarded-card)
            (:id (:discard-top-card zones))))))
+
+(deftest composed-ui-view-models-collect-feature-state
+  (let [db (app-state/initialize {:game-options {:shuffle-fn identity}
+                                  :demo-board-pieces [rose-source-piece]})
+        selected-db (app-state/select-board-card db 0)
+        card-view (app-state/card-zones-view db)
+        territory-view (app-state/territory-view selected-db)
+        move-view (app-state/move-panel-view db)
+        header-view (app-state/header-view db)
+        help-view (app-state/help-dialogs-view (app-state/open-hotkey-help db))
+        app-view (app-state/app-view db)]
+    (is (= :rose (get-in card-view [:current-player :id])))
+    (is (= :always (:card-icon-mode card-view)))
+    (is (= game-state/starting-hand-size
+           (count (get-in card-view [:zones :hand]))))
+    (is (= 0 (get-in territory-view [:cell :index])))
+    (is (= [rose-source-piece] (:selected-pieces territory-view)))
+    (is (= :rose (get-in header-view [:current-player :id])))
+    (is (seq (:source-options move-view)))
+    (is (contains? (:controls move-view) :piece-options))
+    (is (true? (:hotkey-help-open? help-view)))
+    (is (false? (:icon-help-open? help-view)))
+    (is (= :always (:card-icon-mode app-view)))
+    (is (nil? (:setup-error app-view)))))
 
 (defn- source-option [db source-id]
   (some #(when (= source-id (:id %)) %)

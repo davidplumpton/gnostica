@@ -1,6 +1,5 @@
 (ns gnostica.ui.board
   (:require [gnostica.app.events :as events]
-            [gnostica.board-layout :as layout]
             [gnostica.pieces :as pieces]
             [gnostica.three-board :as three-board]
             [gnostica.ui.card :as card-ui]
@@ -81,15 +80,9 @@
           (board-piece-marker slot piece))])]))
 
 (defn board-stage []
-  (let [cells @(rf/subscribe [events/board])
-        board-pieces @(rf/subscribe [events/pieces])
-        pieces-by-space (pieces/pieces-by-space board-pieces)
-        wastelands (layout/wasteland-spaces cells)
-        space-bounds (layout/space-bounds (concat cells wastelands))
-        selected-index @(rf/subscribe [events/selected-board-index])
-        card-icon-mode @(rf/subscribe [events/card-icon-mode])
-        texture-errors @(rf/subscribe [events/three-texture-errors])
-        renderer-error @(rf/subscribe [events/three-renderer-error])
+  (let [{:keys [cells board-pieces pieces-by-space wastelands space-bounds
+                selected-index card-icon-mode texture-errors renderer-error]}
+        @(rf/subscribe [events/board-view])
         runtime-status (three-board/runtime-status)]
     [:section.board-area
      {:data-three-revision (or (three-board/three-revision) "unavailable")}

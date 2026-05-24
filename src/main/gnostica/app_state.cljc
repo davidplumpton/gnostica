@@ -1,5 +1,6 @@
 (ns gnostica.app-state
-  (:require [gnostica.game-state :as game-state]
+  (:require [gnostica.board-layout :as layout]
+            [gnostica.game-state :as game-state]
             [gnostica.move-selection :as move-selection]
             [gnostica.pieces :as pieces]))
 
@@ -137,6 +138,51 @@
    :discard-count (count (discard-pile db))
    :discard-top-card (discard-top-card db)})
 
+(defn board-view-model
+  [{:keys [cells board-pieces selected-index card-icon-mode texture-errors renderer-error]}]
+  (let [wastelands (layout/wasteland-spaces cells)]
+    {:cells cells
+     :board-pieces board-pieces
+     :pieces-by-space (pieces/pieces-by-space board-pieces)
+     :wastelands wastelands
+     :space-bounds (layout/space-bounds (concat cells wastelands))
+     :selected-index selected-index
+     :card-icon-mode card-icon-mode
+     :texture-errors texture-errors
+     :renderer-error renderer-error}))
+
+(defn board-view [db]
+  (board-view-model
+   {:cells (board db)
+    :board-pieces (board-pieces db)
+    :selected-index (selected-board-index db)
+    :card-icon-mode (card-icon-mode db)
+    :texture-errors (:three-texture-errors db)
+    :renderer-error (:three-renderer-error db)}))
+
+(defn card-zones-view-model
+  [{:keys [current-player card-icon-mode zones]}]
+  {:current-player current-player
+   :card-icon-mode card-icon-mode
+   :zones zones})
+
+(defn card-zones-view [db]
+  (card-zones-view-model
+   {:current-player (current-player db)
+    :card-icon-mode (card-icon-mode db)
+    :zones (card-zones db)}))
+
+(defn territory-view-model
+  [{:keys [cell selected-pieces]}]
+  {:cell cell
+   :selected-pieces selected-pieces
+   :empty? (empty? selected-pieces)})
+
+(defn territory-view [db]
+  (territory-view-model
+   {:cell (selected-board-cell db)
+    :selected-pieces (selected-board-pieces db)}))
+
 (def move-target-wasteland-options move-selection/move-target-wasteland-options)
 (def max-draw-count move-selection/max-draw-count)
 (def draw-count-options move-selection/draw-count-options)
@@ -179,6 +225,89 @@
 (def move-territory-card-source-options move-selection/move-territory-card-source-options)
 (def move-orientation-options move-selection/move-orientation-options)
 (def move-command move-selection/move-command)
+
+(defn move-panel-view-model
+  [{:keys [current-player selection source-options prompt ready?
+           board power power-options rod-mode-options piece-options
+           target-piece-options hand-options source-board-options
+           target-board-options target-wasteland-options
+           territory-card-source-options one-point-card-options
+           orientation-options orientation-required? distance-options
+           draw-options]}]
+  {:current-player current-player
+   :selection selection
+   :source-options source-options
+   :prompt prompt
+   :ready? ready?
+   :controls {:board board
+              :power power
+              :power-options power-options
+              :rod-mode-options rod-mode-options
+              :piece-options piece-options
+              :target-piece-options target-piece-options
+              :hand-options hand-options
+              :source-board-options source-board-options
+              :target-board-options target-board-options
+              :target-wasteland-options target-wasteland-options
+              :territory-card-source-options territory-card-source-options
+              :one-point-card-options one-point-card-options
+              :orientation-options orientation-options
+              :orientation-required? orientation-required?
+              :distance-options distance-options
+              :draw-options draw-options}})
+
+(defn move-panel-view [db]
+  (move-panel-view-model
+   {:current-player (current-player db)
+    :selection (move-selection db)
+    :source-options (move-source-options db)
+    :prompt (move-prompt db)
+    :ready? (move-ready? db)
+    :board (board db)
+    :power (move-power db)
+    :power-options (move-power-options db)
+    :rod-mode-options (move-rod-mode-options db)
+    :piece-options (move-piece-options db)
+    :target-piece-options (move-target-piece-options db)
+    :hand-options (move-hand-card-options db)
+    :source-board-options (move-source-board-options db)
+    :target-board-options (move-target-board-options db)
+    :target-wasteland-options (move-target-wasteland-options db)
+    :territory-card-source-options (move-territory-card-source-options db)
+    :one-point-card-options (move-one-point-card-options db)
+    :orientation-options (move-orientation-options db)
+    :orientation-required? (move-rod-orientation-required? db)
+    :distance-options (move-distance-options db)
+    :draw-options (draw-count-options db)}))
+
+(defn header-view-model [{:keys [current-player card-icon-mode]}]
+  {:current-player current-player
+   :card-icon-mode card-icon-mode})
+
+(defn header-view [db]
+  (header-view-model
+   {:current-player (current-player db)
+    :card-icon-mode (card-icon-mode db)}))
+
+(defn help-dialogs-view-model
+  [{:keys [hotkey-help-open? icon-help-open?]}]
+  {:hotkey-help-open? (true? hotkey-help-open?)
+   :icon-help-open? (true? icon-help-open?)})
+
+(defn help-dialogs-view [db]
+  (help-dialogs-view-model
+   {:hotkey-help-open? (hotkey-help-open? db)
+    :icon-help-open? (icon-help-open? db)}))
+
+(defn app-view-model
+  [{:keys [setup-error card-icon-mode]}]
+  {:setup-error setup-error
+   :card-icon-mode card-icon-mode})
+
+(defn app-view [db]
+  (app-view-model
+   {:setup-error (setup-error db)
+    :card-icon-mode (card-icon-mode db)}))
 
 (defn confirm-move
   ([db] (move-selection/confirm-move db))
