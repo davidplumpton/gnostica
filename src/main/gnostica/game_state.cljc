@@ -4,7 +4,8 @@
             [gnostica.game-state.disc :as disc]
             [gnostica.game-state.draw :as draw]
             [gnostica.game-state.placement :as placement]
-            [gnostica.game-state.rod :as rod]))
+            [gnostica.game-state.rod :as rod]
+            [gnostica.game-state.sword :as sword]))
 
 (def min-players core/min-players)
 (def max-players core/max-players)
@@ -73,6 +74,14 @@
 
 (defn apply-sun-move [state command]
   (disc/apply-sun-move state command))
+
+(def sword-territory-card-sources sword/sword-territory-card-sources)
+(def sword-direction-offsets sword/sword-direction-offsets)
+(defn sword-target-coordinate [coordinate orientation]
+  (sword/sword-target-coordinate coordinate orientation))
+
+(defn resolve-sword-command [state command]
+  (sword/resolve-sword-command state command))
 
 (defn apply-draw-move [state command]
   (draw/apply-draw-move state command))

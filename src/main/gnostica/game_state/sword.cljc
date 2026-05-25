@@ -1,0 +1,581 @@
+(ns gnostica.game-state.sword
+  (:require [gnostica.cards :as cards]
+            [gnostica.game-state.core :as core]
+            [gnostica.pieces :as pieces]))
+
+(def sword-territory-card-sources #{:hand :discard-pile})
+
+(def sword-direction-offsets
+  {:north [-1 0]
+   :east [0 1]
+   :south [1 0]
+   :west [0 -1]})
+
+(def sword-piece-size-ranks
+  {:small 1
+   :medium 2
+   :large 3})
+
+(defn- coordinate-map [coordinate]
+  (cond
+    (map? coordinate)
+    (when (and (int? (:row coordinate))
+               (int? (:col coordinate)))
+      (select-keys coordinate [:row :col]))
+
+    (sequential? coordinate)
+    (let [[row col] coordinate]
+      (when (and (int? row) (int? col))
+        {:row row
+         :col col}))))
+
+(defn sword-target-coordinate [coordinate orientation]
+  (when-let [{:keys [row col]} (coordinate-map coordinate)]
+    (cond
+      (= :up orientation)
+      {:row row
+       :col col}
+
+      :else
+      (when-let [[row-offset col-offset] (get sword-direction-offsets orientation)]
+        {:row (+ row row-offset)
+         :col (+ col col-offset)}))))
+
+(defn- same-coordinate? [left right]
+  (= (coordinate-map left)
+     (coordinate-map right)))
+
+(defn- sword-targetable-coordinate?
+  [actor-coordinate target-coordinate orientation target-self?]
+  (or target-self?
+      (same-coordinate? target-coordinate
+                        (sword-target-coordinate actor-coordinate orientation))))
+
+(defn- target-summary [target]
+  (select-keys target [:kind :piece-id :board-index :row :col]))
+
+(defn- territory-target-cell [state target]
+  (cond
+    (not (map? target))
+    (core/failure :invalid-sword-target
+                  "Sword territory targets require a target map."
+                  {:target target})
+
+    (not= :territory (:kind target))
+    (core/failure :invalid-sword-target
+                  "Sword territory targets must use :kind :territory."
+                  {:target target})
+
+    (some? (:board-index target))
+    (if-let [cell (core/board-cell-by-index state (:board-index target))]
+      {:ok? true
+       :cell cell}
+      (core/failure :invalid-target-territory
+                    "Sword territory targets must reference an existing board cell."
+                    {:target target}))
+
+    (and (int? (:row target))
+         (int? (:col target)))
+    (if-let [cell (core/board-cell-at state (:row target) (:col target))]
+      {:ok? true
+       :cell cell}
+      (core/failure :invalid-target-territory
+                    "Sword territory targets must reference an existing board cell."
+                    {:target target}))
+
+    :else
+    (core/failure :invalid-sword-target
+                  "Sword territory targets require a board index or row and column."
+                  {:target target})))
+
+(defn- resolve-sword-variant [card requested-variant source]
+  (let [variants (cards/sword-variants card)
+        variant-set (set variants)]
+    (cond
+      (empty? variants)
+      (core/failure :source-card-not-sword
+                    "The source card does not provide a Sword power."
+                    {:card-id (:id card)
+                     :source source})
+
+      (nil? requested-variant)
+      {:ok? true
+       :sword-variant (first variants)}
+
+      (not (contains? cards/sword-variant-ids requested-variant))
+      (core/failure :invalid-sword-variant
+                    "Sword moves require a known Sword variant."
+                    {:sword-variant requested-variant
+                     :valid-variants cards/sword-variant-ids})
+
+      (contains? variant-set requested-variant)
+      {:ok? true
+       :sword-variant requested-variant}
+
+      :else
+      (core/failure :sword-variant-unavailable
+                    "The source card does not provide the selected Sword variant."
+                    {:card-id (:id card)
+                     :sword-variant requested-variant
+                     :available-variants variants}))))
+
+(defn- resolve-sword-source [state player-id source sword-variant]
+  (let [piece (core/piece-by-id state (:piece-id source))
+        piece-coordinate (when piece
+                           (core/piece-coordinate state piece))]
+    (cond
+      (not (map? source))
+      (core/failure :invalid-sword-command
+                    "Sword moves require a source map."
+                    {:source source})
+
+      (nil? piece)
+      (core/failure :invalid-piece
+                    "Sword moves require one of the player's pieces as the acting minion."
+                    {:piece-id (:piece-id source)})
+
+      (not= player-id (:player-id piece))
+      (core/failure :invalid-piece
+                    "The acting minion must belong to the move's player."
+                    {:piece-id (:piece-id source)
+                     :player-id player-id
+                     :piece-player-id (:player-id piece)})
+
+      (nil? piece-coordinate)
+      (core/failure :invalid-piece-space
+                    "Sword moves require an acting minion with a board coordinate."
+                    {:piece-id (:piece-id source)
+                     :space-index (:space-index piece)
+                     :space (:space piece)})
+
+      (not (contains? pieces/legal-orientations (:orientation piece)))
+      (core/failure :invalid-sword-direction
+                    "Sword moves require the acting minion to have a legal orientation."
+                    {:piece-id (:id piece)
+                     :orientation (:orientation piece)
+                     :legal-orientations pieces/legal-orientations})
+
+      (nil? (get sword-piece-size-ranks (:size piece)))
+      (core/failure :invalid-piece-size
+                    "Sword moves require an acting minion with a legal size."
+                    {:piece-id (:id piece)
+                     :size (:size piece)})
+
+      (= :territory (:kind source))
+      (let [cell (core/board-cell-by-index state (:board-index source))]
+        (cond
+          (nil? cell)
+          (core/failure :invalid-source-territory
+                        "Sword territory sources must reference an existing board cell."
+                        {:board-index (:board-index source)})
+
+          (not= (:board-index source) (:space-index piece))
+          (core/failure :source-piece-mismatch
+                        "The acting minion must occupy the source territory."
+                        {:piece-id (:piece-id source)
+                         :piece-space-index (:space-index piece)
+                         :source-board-index (:board-index source)})
+
+          :else
+          (let [variant-result (resolve-sword-variant (:card cell)
+                                                      sword-variant
+                                                      source)]
+            (if (:ok? variant-result)
+              {:ok? true
+               :source source
+               :source-card (:card cell)
+               :sword-variant (:sword-variant variant-result)
+               :piece piece
+               :piece-coordinate (coordinate-map piece-coordinate)
+               :orientation (:orientation piece)}
+              variant-result))))
+
+      (= :hand-card (:kind source))
+      (let [card (core/player-hand-card state player-id (:card-id source))]
+        (cond
+          (nil? card)
+          (core/failure :invalid-hand-card
+                        "Sword hand-card sources must reference a card in the player's hand."
+                        {:card-id (:card-id source)
+                         :player-id player-id})
+
+          :else
+          (let [variant-result (resolve-sword-variant card sword-variant source)]
+            (if (:ok? variant-result)
+              {:ok? true
+               :source source
+               :source-card card
+               :sword-variant (:sword-variant variant-result)
+               :discard-source-card? true
+               :piece piece
+               :piece-coordinate (coordinate-map piece-coordinate)
+               :orientation (:orientation piece)}
+              variant-result))))
+
+      :else
+      (core/failure :invalid-sword-command
+                    "Sword move sources must be either :territory or :hand-card."
+                    {:source source}))))
+
+(defn- resolve-damage [damage max-damage target-pips target]
+  (cond
+    (not (int? damage))
+    (core/failure :invalid-sword-damage
+                  "Sword damage must be an integer."
+                  {:damage damage
+                   :target target})
+
+    (not (pos? damage))
+    (core/failure :invalid-sword-damage
+                  "Sword attacks must deal at least one pip of damage."
+                  {:damage damage
+                   :target target})
+
+    (< max-damage damage)
+    (core/failure :invalid-sword-damage
+                  "Sword damage cannot exceed the acting minion's pip count."
+                  {:damage damage
+                   :maximum max-damage
+                   :target target})
+
+    (< target-pips damage)
+    (core/failure :invalid-sword-damage
+                  "Sword damage cannot reduce the target below zero pips."
+                  {:damage damage
+                   :target-pips target-pips
+                   :target target})
+
+    :else
+    {:ok? true
+     :damage damage
+     :destroyed? (= damage target-pips)}))
+
+(defn- resolve-piece-orientation [player-id target-piece damage orientation]
+  (let [target-pips (get sword-piece-size-ranks (:size target-piece))
+        destroyed? (= damage target-pips)]
+    (cond
+      (nil? orientation)
+      {:ok? true}
+
+      destroyed?
+      (core/failure :invalid-orientation
+                    "Destroyed pieces cannot be reoriented by a Sword attack."
+                    {:piece-id (:id target-piece)
+                     :orientation orientation})
+
+      (not= player-id (:player-id target-piece))
+      (core/failure :invalid-orientation
+                    "Enemy pieces retain their original orientation when attacked by a Sword."
+                    {:piece-id (:id target-piece)
+                     :piece-player-id (:player-id target-piece)
+                     :orientation orientation})
+
+      (not (contains? pieces/legal-orientations orientation))
+      (core/failure :invalid-orientation
+                    "Sword attacks can only reorient current-player pieces to a legal orientation."
+                    {:piece-id (:id target-piece)
+                     :orientation orientation
+                     :legal-orientations pieces/legal-orientations})
+
+      :else
+      {:ok? true
+       :orientation orientation})))
+
+(defn- normalize-sword-piece-target
+  [state player-id source-result target-piece damage requested-orientation]
+  (let [{:keys [piece]
+         source-orientation :orientation
+         source-coordinate :piece-coordinate} source-result
+        target-coordinate (coordinate-map (core/piece-coordinate state target-piece))
+        target-self? (= (:id piece) (:id target-piece))
+        max-damage (get sword-piece-size-ranks (:size piece))
+        target-pips (get sword-piece-size-ranks (:size target-piece))]
+    (cond
+      (nil? target-coordinate)
+      (core/failure :invalid-piece-space
+                    "Sword piece targets must have a board coordinate."
+                    {:piece-id (:id target-piece)
+                     :space-index (:space-index target-piece)
+                     :space (:space target-piece)})
+
+      (nil? target-pips)
+      (core/failure :invalid-target-piece
+                    "Sword piece targets must have a legal size."
+                    {:piece-id (:id target-piece)
+                     :size (:size target-piece)})
+
+      (not (sword-targetable-coordinate? source-coordinate
+                                         target-coordinate
+                                         source-orientation
+                                         target-self?))
+      (core/failure :invalid-sword-target
+                    "Sword piece targets must be the minion itself, occupy the current space for upright minions, or occupy the adjacent space in the minion direction."
+                    {:piece-id (:id target-piece)
+                     :orientation source-orientation
+                     :source-coordinate source-coordinate
+                     :target-coordinate target-coordinate
+                     :expected-coordinate (sword-target-coordinate source-coordinate
+                                                                   source-orientation)})
+
+      :else
+      (let [damage-result (resolve-damage damage
+                                          max-damage
+                                          target-pips
+                                          {:kind :piece
+                                           :piece-id (:id target-piece)})
+            orientation-result (when (:ok? damage-result)
+                                 (resolve-piece-orientation player-id
+                                                            target-piece
+                                                            damage
+                                                            requested-orientation))
+            target-cell (core/target-piece-territory-cell state target-piece)]
+        (cond
+          (not (:ok? damage-result))
+          damage-result
+
+          (not (:ok? orientation-result))
+          orientation-result
+
+          :else
+          {:ok? true
+           :damage (:damage damage-result)
+           :destroyed? (:destroyed? damage-result)
+           :target (cond-> {:kind :piece
+                            :piece-id (:id target-piece)
+                            :player-id (:player-id target-piece)
+                            :row (:row target-coordinate)
+                            :col (:col target-coordinate)}
+                     target-cell
+                     (assoc :board-index (:index target-cell))
+
+                     (:orientation orientation-result)
+                     (assoc :orientation (:orientation orientation-result)))
+           :target-piece target-piece})))))
+
+(defn- normalize-sword-territory-target
+  [state player-id source-result target damage requested-orientation]
+  (if (some? requested-orientation)
+    (core/failure :invalid-orientation
+                  "Sword territory attacks do not take a piece orientation."
+                  {:orientation requested-orientation
+                   :target target})
+    (let [cell-result (territory-target-cell state target)]
+      (if (:ok? cell-result)
+        (let [cell (:cell cell-result)
+              cell-coordinate (select-keys cell [:row :col])
+              {:keys [piece-coordinate]
+               source-orientation :orientation
+               piece :piece} source-result
+              enemy-pieces (core/enemy-pieces-at-coordinate state
+                                                            player-id
+                                                            (:row cell)
+                                                            (:col cell))
+              target-pips (cards/card-point-value (:card cell))
+              max-damage (get sword-piece-size-ranks (:size piece))]
+          (cond
+            (not (sword-targetable-coordinate? piece-coordinate
+                                               cell-coordinate
+                                               source-orientation
+                                               false))
+            (core/failure :invalid-sword-target
+                          "Sword territory targets must be the current space for upright minions or the adjacent space in the minion direction."
+                          {:target target
+                           :orientation source-orientation
+                           :source-coordinate piece-coordinate
+                           :target-coordinate cell-coordinate
+                           :expected-coordinate (sword-target-coordinate piece-coordinate
+                                                                         source-orientation)})
+
+            (seq enemy-pieces)
+            (core/failure :target-territory-occupied-by-enemy
+                          "Sword territory attacks cannot target a territory occupied by enemy pieces."
+                          {:target {:kind :territory
+                                    :board-index (:index cell)
+                                    :row (:row cell)
+                                    :col (:col cell)}
+                           :enemy-piece-ids (mapv :id enemy-pieces)})
+
+            (nil? target-pips)
+            (core/failure :invalid-target-territory
+                          "Sword territory targets must have a point value."
+                          {:target target
+                           :card-id (get-in cell [:card :id])})
+
+            :else
+            (let [damage-result (resolve-damage damage
+                                                max-damage
+                                                target-pips
+                                                {:kind :territory
+                                                 :board-index (:index cell)})]
+              (if-not (:ok? damage-result)
+                damage-result
+                {:ok? true
+                 :damage (:damage damage-result)
+                 :destroyed? (:destroyed? damage-result)
+                 :target {:kind :territory
+                          :board-index (:index cell)
+                          :row (:row cell)
+                          :col (:col cell)}
+                 :target-cell cell}))))
+        cell-result))))
+
+(defn- resolve-sword-target [state player-id source-result target damage orientation]
+  (cond
+    (not (map? target))
+    (core/failure :invalid-sword-target
+                  "Sword moves require a target map."
+                  {:target target})
+
+    (= :piece (:kind target))
+    (cond
+      (nil? (:piece-id target))
+      (core/failure :invalid-sword-target
+                    "Sword piece targets require a target piece id."
+                    {:target target})
+
+      :else
+      (if-let [target-piece (core/piece-by-id state (:piece-id target))]
+        (normalize-sword-piece-target state
+                                      player-id
+                                      source-result
+                                      target-piece
+                                      damage
+                                      orientation)
+        (core/failure :invalid-target-piece
+                      "Sword piece targets must reference a piece on the board."
+                      {:target target})))
+
+    (= :territory (:kind target))
+    (normalize-sword-territory-target state
+                                      player-id
+                                      source-result
+                                      target
+                                      damage
+                                      orientation)
+
+    :else
+    (core/failure :invalid-sword-target
+                  "Sword move targets must be :piece or :territory."
+                  {:target (target-summary target)})))
+
+(defn- resolve-replacement-card-options
+  [source-result target destroyed? replacement-card-source replacement-card-id]
+  (if (= :territory (:kind target))
+    (let [replacement-card-source (or replacement-card-source
+                                      (when (some? replacement-card-id)
+                                        :hand))]
+      (cond
+        (and destroyed?
+             (or (some? replacement-card-source)
+                 (some? replacement-card-id)))
+        (core/failure :invalid-sword-replacement
+                      "Destroyed territories do not use a replacement card."
+                      {:target target
+                       :replacement-card-source replacement-card-source
+                       :replacement-card-id replacement-card-id})
+
+        destroyed?
+        {:ok? true}
+
+        (and (not destroyed?)
+             (nil? replacement-card-source))
+        {:ok? true}
+
+        (not (contains? sword-territory-card-sources replacement-card-source))
+        (core/failure :invalid-sword-replacement-card-source
+                      "Sword territory attacks require a supported replacement card source."
+                      {:replacement-card-source replacement-card-source
+                       :valid-sources sword-territory-card-sources})
+
+        (and (= :discard-pile replacement-card-source)
+             (not= :sword-from-discard (:sword-variant source-result)))
+        (core/failure :sword-variant-option-unavailable
+                      "Only Tower Sword can attack territory using a discard-pile replacement card."
+                      {:sword-variant (:sword-variant source-result)
+                       :replacement-card-source replacement-card-source})
+
+        :else
+        {:ok? true
+         :replacement-card-source replacement-card-source
+         :replacement-card-id replacement-card-id}))
+    (if (or (some? replacement-card-source)
+            (some? replacement-card-id))
+      (core/failure :invalid-sword-replacement
+                    "Sword piece attacks do not use a replacement card."
+                    {:target target
+                     :replacement-card-source replacement-card-source
+                     :replacement-card-id replacement-card-id})
+      {:ok? true})))
+
+(defn resolve-sword-command [state command]
+  (let [{:keys [player-id source sword-variant target damage orientation
+                replacement-card-source replacement-card-id]} command]
+    (cond
+      (not (map? command))
+      (core/failure :invalid-sword-command
+                    "Sword moves require a command map."
+                    {:command command})
+
+      (nil? (get-in state [:players-by-id player-id]))
+      (core/failure :unknown-player
+                    "Sword moves require a participating player."
+                    {:player-id player-id})
+
+      (not (core/current-player-id? state player-id))
+      (core/failure :not-current-player
+                    "Only the current player can resolve a Sword move."
+                    {:player-id player-id
+                     :current-player-id (get-in state [:turn :current-player-id])})
+
+      :else
+      (let [source-result (resolve-sword-source state
+                                                player-id
+                                                source
+                                                sword-variant)]
+        (if-not (:ok? source-result)
+          source-result
+          (let [target-result (resolve-sword-target state
+                                                    player-id
+                                                    source-result
+                                                    target
+                                                    damage
+                                                    orientation)]
+            (if-not (:ok? target-result)
+              target-result
+              (let [replacement-result (resolve-replacement-card-options
+                                        source-result
+                                        (:target target-result)
+                                        (:destroyed? target-result)
+                                        replacement-card-source
+                                        replacement-card-id)]
+                (if-not (:ok? replacement-result)
+                  replacement-result
+                  (let [normalized-command (cond-> {:player-id player-id
+                                                    :source (core/source-summary
+                                                             (:source source-result))
+                                                    :sword-variant (:sword-variant
+                                                                    source-result)
+                                                    :target (:target target-result)
+                                                    :damage (:damage target-result)}
+                                             (:orientation (:target target-result))
+                                             (assoc :orientation
+                                                    (:orientation (:target target-result)))
+
+                                             (:replacement-card-source replacement-result)
+                                             (assoc :replacement-card-source
+                                                    (:replacement-card-source
+                                                     replacement-result))
+
+                                             (:replacement-card-id replacement-result)
+                                             (assoc :replacement-card-id
+                                                    (:replacement-card-id
+                                                     replacement-result)))]
+                    (merge {:ok? true
+                            :command normalized-command
+                            :source-card (:source-card source-result)
+                            :discard-source-card? (:discard-source-card?
+                                                   source-result)
+                           :piece (:piece source-result)
+                           :destroyed? (:destroyed? target-result)}
+                           (select-keys target-result
+                                        [:target-piece :target-cell]))))))))))))

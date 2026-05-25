@@ -144,6 +144,15 @@
 
 (def disc-icon-ids (set (keys disc-icon-variants)))
 
+(def sword-icon-variants
+  {:sword :sword
+   :sword-from-discard :sword-from-discard
+   :wild-suits :wild-suits})
+
+(def sword-variant-ids (set (vals sword-icon-variants)))
+
+(def sword-icon-ids (set (keys sword-icon-variants)))
+
 (def rank-titles
   {"1" "One"
    "2" "Two"
@@ -270,6 +279,20 @@
 
 (defn disc-card? [card]
   (boolean (seq (disc-variants card))))
+
+(defn sword-variants [card]
+  (let [card (known-card card)
+        [suit-key] (minor-parts card)]
+    (reduce conj-new
+            (cond-> []
+              (= "swords" suit-key) (conj :sword))
+            (keep sword-icon-variants (:gnostica-icons card)))))
+
+(defn sword-variant [card]
+  (first (sword-variants card)))
+
+(defn sword-card? [card]
+  (boolean (seq (sword-variants card))))
 
 (defn one-point-card? [card]
   (let [card (known-card card)

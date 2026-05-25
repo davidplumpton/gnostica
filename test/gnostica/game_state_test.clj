@@ -9,6 +9,7 @@
             [gnostica.game-state.draw :as game-state-draw]
             [gnostica.game-state.placement :as game-state-placement]
             [gnostica.game-state.rod :as game-state-rod]
+            [gnostica.game-state.sword :as game-state-sword]
             [gnostica.pieces :as pieces]))
 
 (def player-specs
@@ -102,6 +103,13 @@
 
 (def rose-disc-minion
   {:id :rose-disc-minion
+   :player-id :rose
+   :space-index 3
+   :size :medium
+   :orientation :east})
+
+(def rose-sword-minion
+  {:id :rose-sword-minion
    :player-id :rose
    :space-index 3
    :size :medium
@@ -329,7 +337,17 @@
                                :piece-id :rose-disc-minion}
                       :target {:kind :piece
                                :piece-id :rose-disc-minion}
-                      :orientation :south}]
+                      :orientation :south}
+        sword-state (-> (state-with-pieces [rose-sword-minion])
+                        (state-with-board-card 3 "swords2"))
+        sword-command {:player-id :rose
+                       :source {:kind :territory
+                                :board-index 3
+                                :piece-id :rose-sword-minion}
+                       :target {:kind :piece
+                                :piece-id :rose-sword-minion}
+                       :damage 1
+                       :orientation :south}]
     (is (= (game-state/apply-draw-move draw-state draw-command)
            (game-state-draw/apply-draw-move draw-state draw-command)))
     (is (= (game-state/apply-orient-move orient-state orient-command)
@@ -343,7 +361,9 @@
 	    (is (= (game-state/resolve-disc-command disc-state disc-command)
 	           (game-state-disc/resolve-disc-command disc-state disc-command)))
 	    (is (= (game-state/apply-disc-move disc-state disc-command)
-	           (game-state-disc/apply-disc-move disc-state disc-command)))))
+	           (game-state-disc/apply-disc-move disc-state disc-command)))
+    (is (= (game-state/resolve-sword-command sword-state sword-command)
+           (game-state-sword/resolve-sword-command sword-state sword-command)))))
 
 (deftest draw-move-discards-selected-cards-and-draws-to-hand
   (let [initial-state (deterministic-game)
@@ -1167,6 +1187,321 @@
     (is (:ok? result))
     (is (= :disc-from-discard
            (get-in result [:command :disc-variant])))
+    (is (= :discard-pile
+           (get-in result [:command :replacement-card-source])))))
+
+(deftest sword-command-normalizes-territory-source-and-piece-target
+  (let [target-piece {:id :indigo-sword-target
+                      :player-id :indigo
+                      :space-index 4
+                      :size :medium
+                      :orientation :north}
+        state (-> (state-with-pieces [rose-sword-minion target-piece])
+                  (state-with-board-card 3 "swords2"))
+        command {:player-id :rose
+                 :source {:kind :territory
+                          :board-index 3
+                          :piece-id :rose-sword-minion}
+                 :target {:kind :piece
+                          :piece-id :indigo-sword-target}
+                 :damage 1}
+        result (game-state/resolve-sword-command state command)]
+    (is (:ok? result))
+    (is (= {:player-id :rose
+            :source {:kind :territory
+                     :board-index 3
+                     :piece-id :rose-sword-minion}
+            :sword-variant :sword
+            :target {:kind :piece
+                     :piece-id :indigo-sword-target
+                     :player-id :indigo
+                     :board-index 4
+                     :row 1
+                     :col 1}
+            :damage 1}
+           (:command result)))
+    (is (= "swords2" (get-in result [:source-card :id])))
+    (is (= rose-sword-minion (:piece result)))
+    (is (= target-piece (:target-piece result)))
+    (is (false? (:destroyed? result)))))
+
+(deftest sword-command-normalizes-hand-card-source-and-territory-target_options
+  (let [deck-order (deck-starting-with ["swords2" "cups2"])
+        state (:state (game-state/create-game player-specs {:deck-order deck-order}))
+        state (-> state
+                  (game-state/with-board-pieces [rose-sword-minion])
+                  (state-with-board-card 4 "cupsking"))
+        result (game-state/resolve-sword-command
+                state
+                {:player-id :rose
+                 :source {:kind :hand-card
+                          :card-id "swords2"
+                          :piece-id :rose-sword-minion}
+                 :target {:kind :territory
+                          :board-index 4}
+                 :damage 1
+                 :replacement-card-id "cups2"})]
+    (is (:ok? result))
+    (is (= {:player-id :rose
+            :source {:kind :hand-card
+                     :card-id "swords2"
+                     :piece-id :rose-sword-minion}
+            :sword-variant :sword
+            :target {:kind :territory
+                     :board-index 4
+                     :row 1
+                     :col 1}
+            :damage 1
+            :replacement-card-source :hand
+            :replacement-card-id "cups2"}
+           (:command result)))
+    (is (= "swords2" (get-in result [:source-card :id])))
+    (is (= 4 (get-in result [:target-cell :index])))))
+
+(deftest sword-command-allows-upright_current_space_and_minion_self_targeting
+  (let [upright-state (-> (state-with-pieces [(assoc rose-sword-minion
+                                                      :orientation :up)])
+                          (state-with-board-card 3 "swords2"))
+        territory-result (game-state/resolve-sword-command
+                          upright-state
+                          {:player-id :rose
+                           :source {:kind :territory
+                                    :board-index 3
+                                    :piece-id :rose-sword-minion}
+                           :target {:kind :territory
+                                    :board-index 3}
+                           :damage 1})
+        self-state (-> (state-with-pieces [rose-sword-minion])
+                       (state-with-board-card 3 "swords2"))
+        self-result (game-state/resolve-sword-command
+                     self-state
+                     {:player-id :rose
+                      :source {:kind :territory
+                               :board-index 3
+                               :piece-id :rose-sword-minion}
+                      :target {:kind :piece
+                               :piece-id :rose-sword-minion}
+                      :damage 1
+                      :orientation :south})]
+    (is (:ok? territory-result))
+    (is (= {:kind :territory
+            :board-index 3
+            :row 1
+            :col 0}
+           (get-in territory-result [:command :target])))
+    (is (:ok? self-result))
+    (is (= {:kind :piece
+            :piece-id :rose-sword-minion
+            :player-id :rose
+            :board-index 3
+            :row 1
+            :col 0
+            :orientation :south}
+           (get-in self-result [:command :target])))
+    (is (= :south (get-in self-result [:command :orientation])))))
+
+(deftest sword-command-carries-source-variants
+  (let [base-command {:player-id :rose
+                      :source {:kind :territory
+                               :board-index 3
+                               :piece-id :rose-sword-minion}
+                      :target {:kind :piece
+                               :piece-id :rose-sword-minion}
+                      :damage 1}
+        justice-result (game-state/resolve-sword-command
+                        (-> (state-with-pieces [rose-sword-minion])
+                            (state-with-board-card 3 "justice"))
+                        base-command)
+        death-result (game-state/resolve-sword-command
+                      (-> (state-with-pieces [rose-sword-minion])
+                          (state-with-board-card 3 "death"))
+                      base-command)
+        tower-result (game-state/resolve-sword-command
+                      (-> (state-with-pieces [rose-sword-minion])
+                          (state-with-board-card 3 "tower"))
+                      base-command)
+        moon-result (game-state/resolve-sword-command
+                     (-> (state-with-pieces [rose-sword-minion])
+                         (state-with-board-card 3 "moon"))
+                     base-command)
+        magician-result (game-state/resolve-sword-command
+                         (-> (state-with-pieces [rose-sword-minion])
+                             (state-with-board-card 3 "magician"))
+                         base-command)]
+    (is (:ok? justice-result))
+    (is (:ok? death-result))
+    (is (:ok? tower-result))
+    (is (:ok? moon-result))
+    (is (:ok? magician-result))
+    (is (= :sword (get-in justice-result [:command :sword-variant])))
+    (is (= :sword (get-in death-result [:command :sword-variant])))
+    (is (= :sword-from-discard (get-in tower-result [:command :sword-variant])))
+    (is (= :sword (get-in moon-result [:command :sword-variant])))
+    (is (= :wild-suits (get-in magician-result [:command :sword-variant])))))
+
+(deftest sword-command-rejects-unavailable_and_invalid_variants
+  (let [state (-> (state-with-pieces [rose-sword-minion])
+                  (state-with-board-card 3 "swords2")
+                  (state-with-board-card 4 "cupsking"))
+        base-command {:player-id :rose
+                      :source {:kind :territory
+                               :board-index 3
+                               :piece-id :rose-sword-minion}
+                      :target {:kind :piece
+                               :piece-id :rose-sword-minion}
+                      :damage 1}
+        unavailable-result (game-state/resolve-sword-command
+                            state
+                            (assoc base-command :sword-variant :sword-from-discard))
+        invalid-result (game-state/resolve-sword-command
+                        state
+                        (assoc base-command :sword-variant :disc))
+        discard-source-result (game-state/resolve-sword-command
+                               state
+                               (assoc base-command
+                                      :target {:kind :territory
+                                               :board-index 4}
+                                      :replacement-card-source :discard-pile
+                                      :replacement-card-id "cups2"))
+        non-sword-result (game-state/resolve-sword-command
+                          (-> (state-with-pieces [rose-sword-minion])
+                              (state-with-board-card 3 "coins2"))
+                          base-command)]
+    (is (= :sword-variant-unavailable
+           (get-in unavailable-result [:error :code])))
+    (is (= :invalid-sword-variant
+           (get-in invalid-result [:error :code])))
+    (is (= :sword-variant-option-unavailable
+           (get-in discard-source-result [:error :code])))
+    (is (= :source-card-not-sword
+           (get-in non-sword-result [:error :code])))))
+
+(deftest sword-command-rejects_invalid_targets_damage_and_options_without_mutation
+  (let [off-axis-target {:id :indigo-off-axis-sword-target
+                         :player-id :indigo
+                         :space-index 0
+                         :size :small
+                         :orientation :north}
+        enemy-target {:id :indigo-sword-target
+                      :player-id :indigo
+                      :space-index 4
+                      :size :small
+                      :orientation :north}
+        state (-> (state-with-pieces [rose-sword-minion
+                                      off-axis-target
+                                      enemy-target])
+                  (state-with-board-card 3 "swords2")
+                  (state-with-board-card 4 "cupsking"))
+        over-target-state (-> (state-with-pieces [(assoc rose-sword-minion
+                                                          :size :large)])
+                              (state-with-board-card 3 "swords2")
+                              (state-with-board-card 4 "cupsking"))
+        invalid-source-state (-> (state-with-pieces [(assoc rose-sword-minion
+                                                            :size :tiny)])
+                                 (state-with-board-card 3 "swords2"))
+        base-command {:player-id :rose
+                      :source {:kind :territory
+                               :board-index 3
+                               :piece-id :rose-sword-minion}}
+        invalid-source-result (game-state/resolve-sword-command
+                               invalid-source-state
+                               (assoc base-command
+                                      :target {:kind :piece
+                                               :piece-id :rose-sword-minion}
+                                      :damage 1))
+        off-axis-result (game-state/resolve-sword-command
+                         state
+                         (assoc base-command
+                                :target {:kind :piece
+                                         :piece-id :indigo-off-axis-sword-target}
+                                :damage 1))
+        zero-damage-result (game-state/resolve-sword-command
+                            state
+                            (assoc base-command
+                                   :target {:kind :piece
+                                            :piece-id :indigo-sword-target}
+                                   :damage 0))
+        over-minion-result (game-state/resolve-sword-command
+                            state
+                            (assoc base-command
+                                   :target {:kind :piece
+                                            :piece-id :indigo-sword-target}
+                                   :damage 3))
+        over-target-result (game-state/resolve-sword-command
+                            over-target-state
+                            (assoc base-command
+                                   :target {:kind :territory
+                                            :board-index 4}
+                                   :damage 3))
+        enemy-orientation-result (game-state/resolve-sword-command
+                                  state
+                                  (assoc base-command
+                                         :target {:kind :piece
+                                                  :piece-id :indigo-sword-target}
+                                         :damage 1
+                                         :orientation :west))
+        enemy-territory-result (game-state/resolve-sword-command
+                                state
+                                (assoc base-command
+                                       :target {:kind :territory
+                                                :board-index 4}
+                                       :damage 1
+                                       :replacement-card-id "cups2"))
+        piece-replacement-result (game-state/resolve-sword-command
+                                  state
+                                  (assoc base-command
+                                         :target {:kind :piece
+                                                  :piece-id :rose-sword-minion}
+                                         :damage 1
+                                         :replacement-card-id "cups2"))
+        territory-orientation-result (game-state/resolve-sword-command
+                                      state
+                                      (assoc base-command
+                                             :target {:kind :territory
+                                                      :board-index 4}
+                                             :damage 1
+                                             :orientation :west))]
+    (is (= :invalid-piece-size
+           (get-in invalid-source-result [:error :code])))
+    (is (= :invalid-sword-target
+           (get-in off-axis-result [:error :code])))
+    (is (= :invalid-sword-damage
+           (get-in zero-damage-result [:error :code])))
+    (is (= :invalid-sword-damage
+           (get-in over-minion-result [:error :code])))
+    (is (= :invalid-sword-damage
+           (get-in over-target-result [:error :code])))
+    (is (= :invalid-orientation
+           (get-in enemy-orientation-result [:error :code])))
+    (is (= :target-territory-occupied-by-enemy
+           (get-in enemy-territory-result [:error :code])))
+    (is (= :invalid-sword-replacement
+           (get-in piece-replacement-result [:error :code])))
+    (is (= :invalid-orientation
+           (get-in territory-orientation-result [:error :code])))
+    (is (false? (:ok? off-axis-result)))
+    (is (not (contains? off-axis-result :state)))
+    (is (= [rose-sword-minion off-axis-target enemy-target]
+           (get-in state [:pieces :on-board])))))
+
+(deftest tower-sword-command-allows_discard_pile_replacement_source
+  (let [state (-> (state-with-pieces [rose-sword-minion])
+                  (state-with-board-card 3 "tower")
+                  (state-with-board-card 4 "cupsking"))
+        result (game-state/resolve-sword-command
+                state
+                {:player-id :rose
+                 :source {:kind :territory
+                          :board-index 3
+                          :piece-id :rose-sword-minion}
+                 :target {:kind :territory
+                          :board-index 4}
+                 :damage 1
+                 :replacement-card-source :discard-pile
+                 :replacement-card-id "cups2"})]
+    (is (:ok? result))
+    (is (= :sword-from-discard
+           (get-in result [:command :sword-variant])))
     (is (= :discard-pile
            (get-in result [:command :replacement-card-source])))))
 

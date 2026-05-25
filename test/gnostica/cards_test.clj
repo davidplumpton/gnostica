@@ -119,6 +119,27 @@
   (is (not (cards/disc-card? (cards/card-by-id "cups2"))))
   (is (not (cards/disc-card? (cards/card-by-id "chariot")))))
 
+(deftest sword-card-helper-identifies-sword-sources
+  (is (cards/sword-card? (cards/card-by-id "swords2")))
+  (is (cards/sword-card? (cards/card-by-id "swordsqueen")))
+  (is (cards/sword-card? (cards/card-by-id "justice")))
+  (is (cards/sword-card? (cards/card-by-id "death")))
+  (is (cards/sword-card? (cards/card-by-id "tower")))
+  (is (cards/sword-card? (cards/card-by-id "moon")))
+  (is (cards/sword-card? (cards/card-by-id "magician")))
+  (is (= [:sword] (cards/sword-variants (cards/card-by-id "swords2"))))
+  (is (= [:sword] (cards/sword-variants (cards/card-by-id "swordsqueen"))))
+  (is (= [:sword] (cards/sword-variants (cards/card-by-id "justice"))))
+  (is (= [:sword] (cards/sword-variants (cards/card-by-id "death"))))
+  (is (= [:sword-from-discard] (cards/sword-variants (cards/card-by-id "tower"))))
+  (is (= [:sword] (cards/sword-variants (cards/card-by-id "moon"))))
+  (is (= [:wild-suits] (cards/sword-variants (cards/card-by-id "magician"))))
+  (is (cards/sword-card? {:id "swords3"
+                          :title "Three of Swords"
+                          :image "/images/swords3.png"}))
+  (is (not (cards/sword-card? (cards/card-by-id "cups2"))))
+  (is (not (cards/sword-card? (cards/card-by-id "strength")))))
+
 (deftest card-point-values-support-territory-growth_steps
   (is (= 1 (cards/card-point-value (cards/card-by-id "coins2"))))
   (is (= 2 (cards/card-point-value (cards/card-by-id "cupsking"))))
