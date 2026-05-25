@@ -255,6 +255,8 @@
 (def move-power-options move-selection/move-power-options)
 (def move-power move-selection/move-power)
 (def move-rod-mode-options move-selection/move-rod-mode-options)
+(def move-disc-action-count-options move-selection/move-disc-action-count-options)
+(def move-disc-minion-orientation-required? move-selection/move-disc-minion-orientation-required?)
 (def move-disc-target-kind-options move-selection/move-disc-target-kind-options)
 (def move-distance-options move-selection/move-distance-options)
 (def move-target-piece-options move-selection/move-target-piece-options)
@@ -281,6 +283,8 @@
 (def select-move-power move-selection/select-move-power)
 (def select-move-rod-mode move-selection/select-move-rod-mode)
 (def select-move-disc-target-kind move-selection/select-move-disc-target-kind)
+(def set-move-disc-action-count move-selection/set-move-disc-action-count)
+(def set-move-minion-orientation move-selection/set-move-minion-orientation)
 (def select-move-target-piece move-selection/select-move-target-piece)
 (def select-move-territory-card-source move-selection/select-move-territory-card-source)
 (def select-move-one-point-card move-selection/select-move-one-point-card)
@@ -302,7 +306,8 @@
 
 (defn move-panel-view-model
   [{:keys [current-player selection source-options prompt ready?
-           board power power-options rod-mode-options disc-target-kind-options piece-options
+           board power power-options rod-mode-options disc-action-count-options
+           disc-minion-orientation-required? disc-target-kind-options piece-options
            target-piece-options hand-options discard-card-options source-board-options
            target-board-options target-wasteland-options
            territory-card-source-options one-point-card-options replacement-card-options
@@ -317,6 +322,8 @@
               :power power
               :power-options power-options
               :rod-mode-options rod-mode-options
+              :disc-action-count-options disc-action-count-options
+              :disc-minion-orientation-required? disc-minion-orientation-required?
               :disc-target-kind-options disc-target-kind-options
               :piece-options piece-options
               :target-piece-options target-piece-options
@@ -345,6 +352,8 @@
     :power (move-power db)
     :power-options (move-power-options db)
     :rod-mode-options (move-rod-mode-options db)
+    :disc-action-count-options (move-disc-action-count-options db)
+    :disc-minion-orientation-required? (move-disc-minion-orientation-required? db)
     :disc-target-kind-options (move-disc-target-kind-options db)
     :piece-options (move-piece-options db)
     :target-piece-options (move-target-piece-options db)

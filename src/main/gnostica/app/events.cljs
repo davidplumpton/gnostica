@@ -21,6 +21,8 @@
 (def select-move-power :gnostica.app/select-move-power)
 (def select-move-rod-mode :gnostica.app/select-move-rod-mode)
 (def select-move-disc-target-kind :gnostica.app/select-move-disc-target-kind)
+(def set-move-disc-action-count :gnostica.app/set-move-disc-action-count)
+(def set-move-minion-orientation :gnostica.app/set-move-minion-orientation)
 (def select-move-target-piece :gnostica.app/select-move-target-piece)
 (def set-move-orientation :gnostica.app/set-move-orientation)
 (def set-move-distance :gnostica.app/set-move-distance)
@@ -66,6 +68,8 @@
 (def move-power-options :gnostica.app/move-power-options)
 (def move-power :gnostica.app/move-power)
 (def move-rod-mode-options :gnostica.app/move-rod-mode-options)
+(def move-disc-action-count-options :gnostica.app/move-disc-action-count-options)
+(def move-disc-minion-orientation-required? :gnostica.app/move-disc-minion-orientation-required?)
 (def move-disc-target-kind-options :gnostica.app/move-disc-target-kind-options)
 (def move-target-piece-options :gnostica.app/move-target-piece-options)
 (def move-distance-options :gnostica.app/move-distance-options)
@@ -178,6 +182,16 @@ select-move-rod-mode
  select-move-disc-target-kind
  (fn [db [_ target-kind]]
    (app-state/select-move-disc-target-kind db target-kind)))
+
+(rf/reg-event-db
+ set-move-disc-action-count
+ (fn [db [_ action-count]]
+   (app-state/set-move-disc-action-count db action-count)))
+
+(rf/reg-event-db
+ set-move-minion-orientation
+ (fn [db [_ orientation]]
+   (app-state/set-move-minion-orientation db orientation)))
 
 (rf/reg-event-db
  select-move-target-piece
@@ -422,6 +436,16 @@ move-rod-mode-options
   (app-state/move-rod-mode-options db)))
 
 (rf/reg-sub
+ move-disc-action-count-options
+ (fn [db _]
+   (app-state/move-disc-action-count-options db)))
+
+(rf/reg-sub
+ move-disc-minion-orientation-required?
+ (fn [db _]
+   (app-state/move-disc-minion-orientation-required? db)))
+
+(rf/reg-sub
  move-disc-target-kind-options
  (fn [db _]
    (app-state/move-disc-target-kind-options db)))
@@ -554,6 +578,8 @@ move-rod-orientation-required?
  :<- [move-power]
  :<- [move-power-options]
  :<- [move-rod-mode-options]
+ :<- [move-disc-action-count-options]
+ :<- [move-disc-minion-orientation-required?]
  :<- [move-disc-target-kind-options]
  :<- [move-piece-options]
  :<- [move-target-piece-options]
@@ -571,7 +597,8 @@ move-rod-orientation-required?
  :<- [move-distance-options]
  :<- [draw-count-options]
  (fn [[current-player selection source-options prompt ready? board power
-       power-options rod-mode-options disc-target-kind-options piece-options target-piece-options
+       power-options rod-mode-options disc-action-count-options
+       disc-minion-orientation-required? disc-target-kind-options piece-options target-piece-options
        hand-options discard-card-options source-board-options target-board-options
        target-wasteland-options territory-card-source-options
        one-point-card-options replacement-card-options orientation-options orientation-required?
@@ -587,6 +614,8 @@ move-rod-orientation-required?
      :power power
      :power-options power-options
      :rod-mode-options rod-mode-options
+     :disc-action-count-options disc-action-count-options
+     :disc-minion-orientation-required? disc-minion-orientation-required?
      :disc-target-kind-options disc-target-kind-options
      :piece-options piece-options
      :target-piece-options target-piece-options

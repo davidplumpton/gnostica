@@ -275,20 +275,38 @@
          (piece-choice-label board piece)])]
      [:p.move-step__empty "No target pieces available."])])
 
-(defn- orientation-choices [options selected-orientation]
+(defn- orientation-choices
+  ([options selected-orientation]
+   (orientation-choices "Orientation" events/set-move-orientation options selected-orientation))
+  ([label event-id options selected-orientation]
+   [:div.move-step
+    [:div.move-step__header
+     [:span label]
+     [:strong (pieces/orientation-label selected-orientation)]]
+    [:div.move-choice-list.is-compact
+     (for [{:keys [id label]} options]
+       ^{:key id}
+       [:button.move-chip
+        {:type "button"
+         :class (when (= selected-orientation id) "is-selected")
+         :aria-pressed (= selected-orientation id)
+         :on-click #(rf/dispatch [event-id id])}
+        label])]]))
+
+(defn- disc-action-count-choices [options selected-count]
   [:div.move-step
    [:div.move-step__header
-    [:span "Orientation"]
-    [:strong (pieces/orientation-label selected-orientation)]]
+    [:span "Disc actions"]
+    [:strong (or selected-count "None")]]
    [:div.move-choice-list.is-compact
-    (for [{:keys [id label]} options]
-      ^{:key id}
+    (for [action-count options]
+      ^{:key action-count}
       [:button.move-chip
        {:type "button"
-        :class (when (= selected-orientation id) "is-selected")
-        :aria-pressed (= selected-orientation id)
-        :on-click #(rf/dispatch [events/set-move-orientation id])}
-       label])]])
+        :class (when (= selected-count action-count) "is-selected")
+        :aria-pressed (= selected-count action-count)
+        :on-click #(rf/dispatch [events/set-move-disc-action-count action-count])}
+       action-count])]])
 
 (defn- draw-count-choices [options selected-count]
   [:div.move-step
@@ -368,35 +386,51 @@
      nil)])
 
 (defn- disc-move-controls
-  [params board disc-target-kind-options target-piece-options target-board-options
+  [params board disc-action-count-options disc-minion-orientation-required?
+   disc-target-kind-options target-piece-options target-board-options
    replacement-source-options replacement-card-options orientation-options
    orientation-available?]
-  [:<>
-   [disc-target-kind-choices disc-target-kind-options (:disc-target-kind params)]
-   (case (:disc-target-kind params)
-     :piece
-     [:<>
-      [target-piece-choices board target-piece-options (:target-piece-id params)]
-      (when orientation-available?
-        [orientation-choices orientation-options (:orientation params)])]
+  (let [action-count-ready? (or (empty? disc-action-count-options)
+                                (:disc-action-count params))
+        minion-orientation-ready? (or (not disc-minion-orientation-required?)
+                                      (:minion-orientation params))
+        target-ready? (and action-count-ready? minion-orientation-ready?)]
+    [:<>
+     (when (seq disc-action-count-options)
+       [disc-action-count-choices disc-action-count-options (:disc-action-count params)])
+     (when disc-minion-orientation-required?
+       [orientation-choices "Minion orientation"
+        events/set-move-minion-orientation
+        orientation-options
+        (:minion-orientation params)])
+     (when target-ready?
+       [disc-target-kind-choices disc-target-kind-options (:disc-target-kind params)])
+     (when target-ready?
+       (case (:disc-target-kind params)
+         :piece
+         [:<>
+          [target-piece-choices board target-piece-options (:target-piece-id params)]
+          (when orientation-available?
+            [orientation-choices orientation-options (:orientation params)])]
 
-     :territory
-     [:<>
-      [board-choice-grid "Target territory" target-board-options (:target-board-index params)]
-      (when (:target-board-index params)
-        [territory-card-source-choices "Replacement source"
-         replacement-source-options
-         (:replacement-card-source params)])
-      (when (and (:target-board-index params)
-                 (or (= 1 (count replacement-source-options))
-                     (:replacement-card-source params)))
-        [replacement-card-choices replacement-card-options (:replacement-card-id params)])]
+         :territory
+         [:<>
+          [board-choice-grid "Target territory" target-board-options (:target-board-index params)]
+          (when (:target-board-index params)
+            [territory-card-source-choices "Replacement source"
+             replacement-source-options
+             (:replacement-card-source params)])
+          (when (and (:target-board-index params)
+                     (or (= 1 (count replacement-source-options))
+                         (:replacement-card-source params)))
+            [replacement-card-choices replacement-card-options (:replacement-card-id params)])]
 
-     nil)])
+         nil))]))
 
 (defn- move-active-controls [selection controls]
   (let [{:keys [source params]} selection
         {:keys [board power power-options rod-mode-options piece-options
+                disc-action-count-options disc-minion-orientation-required?
                 disc-target-kind-options
                 target-piece-options hand-options discard-card-options source-board-options
                 target-board-options target-wasteland-options
@@ -432,6 +466,8 @@
                   orientation-options]
             :disc [disc-move-controls params
                    board
+                   disc-action-count-options
+                   disc-minion-orientation-required?
                    disc-target-kind-options
                    target-piece-options
                    target-board-options
@@ -468,6 +504,8 @@
                   orientation-options]
             :disc [disc-move-controls params
                    board
+                   disc-action-count-options
+                   disc-minion-orientation-required?
                    disc-target-kind-options
                    target-piece-options
                    target-board-options

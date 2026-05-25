@@ -82,6 +82,9 @@
    :territory {:id :territory
                :label "Grow territory"}})
 
+(def strength-disc-action-count-order
+  [1 2])
+
 (def territory-card-source-order
   [:hand :draw-pile-top])
 
@@ -106,6 +109,8 @@
    :power "Choose the card power."
    :piece-id "Choose a minion."
    :rod-mode "Choose a Rod move."
+   :disc-action-count "Choose how many Disc actions to apply."
+   :minion-orientation "Choose the minion orientation."
    :disc-target-kind "Choose piece or territory growth."
    :target-piece-id "Choose a target piece."
    :target-board-index "Choose a target territory."
@@ -269,6 +274,34 @@
   (when (disc-move? db source-id params)
     (cards/disc-variant (source-card db source-id params))))
 
+(defn- strength-disc-source? [db source-id params]
+  (and (disc-move? db source-id params)
+       (= "strength" (:id (source-card db source-id params)))))
+
+(defn- star-disc-source? [db source-id params]
+  (and (disc-move? db source-id params)
+       (= "star" (:id (source-card db source-id params)))))
+
+(defn- disc-action-count-option-values [db source-id params]
+  (if (strength-disc-source? db source-id params)
+    strength-disc-action-count-order
+    []))
+
+(defn- selected-disc-action-count [db source-id params]
+  (if (strength-disc-source? db source-id params)
+    (if (some #{(:disc-action-count params)}
+              strength-disc-action-count-order)
+      (:disc-action-count params)
+      1)
+    1))
+
+(defn- card-worth-disc-actions-more? [replacement-card original-card action-count]
+  (let [original-value (cards/card-point-value original-card)
+        replacement-value (cards/card-point-value replacement-card)]
+    (and (some? original-value)
+         (= (+ original-value action-count)
+            replacement-value))))
+
 (defn- sword-move? [db source-id params]
   (= :sword (selected-power db source-id params)))
 
@@ -304,13 +337,32 @@
     (cond-> {:player-id (current-player-id db)
              :source (source-command source-id params)}
       (selected-disc-variant db source-id params)
-      (assoc :disc-variant (selected-disc-variant db source-id params)))))
+      (assoc :disc-variant (selected-disc-variant db source-id params))
+
+      (and (star-disc-source? db source-id params)
+           (:minion-orientation params))
+      (assoc :minion-orientation (:minion-orientation params)))))
+
+(defn- disc-resolution-state [state command]
+  (if-let [orientation (:minion-orientation command)]
+    (let [orient-result (game-state/apply-orient-move
+                         state
+                         {:player-id (:player-id command)
+                          :piece-id (get-in command [:source :piece-id])
+                          :orientation orientation})]
+      (when (:ok? orient-result)
+        (:state orient-result)))
+    state))
 
 (defn- disc-command-resolves? [db command]
-  (boolean
-   (and (game db)
-        command
-        (:ok? (game-state/resolve-disc-command (game db) command)))))
+  (let [state (game db)]
+    (boolean
+     (and state
+          command
+          (when-let [resolution-state (disc-resolution-state state command)]
+            (:ok? (game-state/resolve-disc-command
+                   resolution-state
+                   (dissoc command :minion-orientation))))))))
 
 (defn- disc-piece-target? [db source-id params piece]
   (and piece
@@ -374,7 +426,10 @@
              :hand (current-player-hand db)
              :discard-pile (discard-replacement-options db source-id params)
              [])
-           (filter #(and (cards/card-worth-one-more? % original-card)
+           (filter #(and (card-worth-disc-actions-more?
+                          %
+                          original-card
+                          (selected-disc-action-count db source-id params))
                          (or (not= :hand replacement-source)
                              (not= source-card-id (:id %)))))
            vec))))
@@ -583,6 +638,14 @@
 (defn move-rod-mode-options [_db]
   (mapv rod-mode-definitions rod-mode-order))
 
+(defn move-disc-action-count-options [db]
+  (let [{:keys [source params]} (move-selection db)]
+    (disc-action-count-option-values db source params)))
+
+(defn move-disc-minion-orientation-required? [db]
+  (let [{:keys [source params]} (move-selection db)]
+    (star-disc-source? db source params)))
+
 (defn move-distance-options [db]
   (let [piece (piece-by-id db (get-in (move-selection db)
                                       [:params :piece-id]))]
@@ -656,6 +719,13 @@
     (and (rod-move? db source-id params)
          (contains? rod-modes (:rod-mode params)))
 
+    :disc-action-count
+    (some #{(:disc-action-count params)}
+          (disc-action-count-option-values db source-id params))
+
+    :minion-orientation
+    (contains? pieces/legal-orientations (:minion-orientation params))
+
     :disc-target-kind
     (and (disc-move? db source-id params)
          (contains? disc-target-kinds (:disc-target-kind params)))
@@ -725,7 +795,11 @@
 
 (defn- disc-requirements [db source-id params]
   (vec
-   (concat [:disc-target-kind]
+   (concat (when (strength-disc-source? db source-id params)
+             [:disc-action-count])
+           (when (star-disc-source? db source-id params)
+             [:minion-orientation])
+           [:disc-target-kind]
            (case (:disc-target-kind params)
              :piece [:target-piece-id]
              :territory
@@ -777,6 +851,8 @@
     :power :power
     :piece-id :piece
     :rod-mode :rod-mode
+    :disc-action-count :disc-action-count
+    :minion-orientation :minion-orientation
     :disc-target-kind :disc-target-kind
     :target-piece-id :target-piece
     :target-board-index :target
@@ -858,6 +934,8 @@
                   :power (:power requirement-prompts)
                   :piece (:piece-id requirement-prompts)
                   :rod-mode (:rod-mode requirement-prompts)
+                  :disc-action-count (:disc-action-count requirement-prompts)
+                  :minion-orientation (:minion-orientation requirement-prompts)
                   :disc-target-kind (:disc-target-kind requirement-prompts)
                   :target-piece (:target-piece-id requirement-prompts)
                   :orientation (:orientation requirement-prompts)
@@ -907,6 +985,8 @@
               :power
               :rod-mode
               :disc-target-kind
+              :disc-action-count
+              :minion-orientation
               :target-board-index
               :target-wasteland
               :target-piece-id
@@ -944,6 +1024,8 @@
               :power
               :rod-mode
               :disc-target-kind
+              :disc-action-count
+              :minion-orientation
               :target-board-index
               :target-wasteland
               :target-piece-id
@@ -959,6 +1041,7 @@
     (if (= (:piece-id params) piece-id)
       next-params
       (dissoc next-params
+              :minion-orientation
               :target-board-index
               :target-wasteland
               :target-piece-id
@@ -976,6 +1059,8 @@
       (dissoc next-params
               :rod-mode
               :disc-target-kind
+              :disc-action-count
+              :minion-orientation
               :target-board-index
               :target-wasteland
               :target-piece-id
@@ -1011,6 +1096,23 @@
               :territory-card-source
               :one-point-card-id
               :replacement-card-source
+              :replacement-card-id
+              :orientation))))
+
+(defn- set-disc-action-count-param [params action-count]
+  (let [next-params (assoc params :disc-action-count action-count)]
+    (if (= (:disc-action-count params) action-count)
+      next-params
+      (dissoc next-params :replacement-card-id))))
+
+(defn- set-minion-orientation-param [params orientation]
+  (let [next-params (assoc params :minion-orientation orientation)]
+    (if (= (:minion-orientation params) orientation)
+      next-params
+      (dissoc next-params
+              :target-board-index
+              :target-wasteland
+              :target-piece-id
               :replacement-card-id
               :orientation))))
 
@@ -1209,6 +1311,39 @@
                                          "Choose a supported Disc growth target."
                                          {:target-kind target-kind
                                           :options disc-target-kind-order})))))
+
+(defn set-move-disc-action-count [db action-count]
+  (let [{:keys [source params]} (move-selection db)
+        options (disc-action-count-option-values db source params)]
+    (if (some #{action-count} options)
+      (update-move-selection-success db update :params set-disc-action-count-param action-count)
+      (update-move-selection db assoc
+                             :error
+                             (move-error :invalid-disc-action-count
+                                         "Choose a supported Disc action count."
+                                         {:action-count action-count
+                                          :options options})))))
+
+(defn set-move-minion-orientation [db orientation]
+  (let [{:keys [source params]} (move-selection db)]
+    (cond
+      (not (star-disc-source? db source params))
+      (update-move-selection db assoc
+                             :error
+                             (move-error :invalid-minion-orientation
+                                         "Minion orientation is only available for Star Disc moves."
+                                         {:orientation orientation
+                                          :source source}))
+
+      (not (contains? pieces/legal-orientations orientation))
+      (update-move-selection db assoc
+                             :error
+                             (move-error :invalid-orientation
+                                         "Choose a legal piece orientation."
+                                         {:orientation orientation}))
+
+      :else
+      (update-move-selection-success db update :params set-minion-orientation-param orientation))))
 
 (defn select-move-target-piece [db piece-id]
   (let [source (move-source db)
@@ -1516,9 +1651,20 @@
 
     {}))
 
+(defn- strength-disc-command [db source params]
+  (let [action (disc-target-command db source params)
+        action-count (selected-disc-action-count db source params)]
+    {:disc-variant (selected-disc-variant db source params)
+     :disc-actions (vec (repeat action-count action))}))
+
 (defn- disc-command [db source params]
-  (assoc (disc-target-command db source params)
-         :disc-variant (selected-disc-variant db source params)))
+  (if (strength-disc-source? db source params)
+    (strength-disc-command db source params)
+    (cond-> (assoc (disc-target-command db source params)
+                   :disc-variant (selected-disc-variant db source params))
+      (and (star-disc-source? db source params)
+           (:minion-orientation params))
+      (assoc :minion-orientation (:minion-orientation params)))))
 
 (defn- sword-command [db source params]
   (let [sword-variant (selected-sword-variant db source params)]
