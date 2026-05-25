@@ -130,6 +130,29 @@
          (:title card)])]
      [:p.move-step__empty "No replacement cards available."])])
 
+(defn- discard-card-choices [cards selected-card-ids]
+  (let [selected-card-ids (set selected-card-ids)
+        selected-count (count selected-card-ids)]
+    [:div.move-step
+     [:div.move-step__header
+      [:span "Discard"]
+      [:strong (if (pos? selected-count)
+                 (ui/card-count-label selected-count)
+                 "None")]]
+     (if (seq cards)
+       [:div.move-discard-list
+        (for [card cards
+              :let [selected? (contains? selected-card-ids (:id card))]]
+          ^{:key (:id card)}
+          [:label.move-discard-choice
+           {:class (when selected? "is-selected")}
+           [:input
+            {:type "checkbox"
+             :checked selected?
+             :on-change #(rf/dispatch [events/toggle-move-discard-card (:id card)])}]
+           [:span (:title card)]])]
+       [:p.move-step__empty "No hand cards available."])]))
+
 (defn- territory-card-source-choices
   ([options selected-source]
    (territory-card-source-choices "Territory card" options selected-source))
@@ -375,7 +398,7 @@
   (let [{:keys [source params]} selection
         {:keys [board power power-options rod-mode-options piece-options
                 disc-target-kind-options
-                target-piece-options hand-options source-board-options
+                target-piece-options hand-options discard-card-options source-board-options
                 target-board-options target-wasteland-options
                 territory-card-source-options one-point-card-options
                 replacement-card-options orientation-options orientation-required?
@@ -455,7 +478,9 @@
             nil)])]
 
       :draw-cards
-      [draw-count-choices draw-options (:draw-count params)]
+      [:<>
+       [discard-card-choices discard-card-options (:discard-card-ids params)]
+       [draw-count-choices draw-options (:draw-count params)]]
 
       :orient-piece
       [:<>

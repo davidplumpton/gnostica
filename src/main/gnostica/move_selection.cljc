@@ -25,7 +25,7 @@
    :draw-cards
    {:id :draw-cards
     :label "Draw cards"
-    :summary "Draw toward the six-card hand limit."
+    :summary "Discard hand cards, then draw toward the six-card hand limit."
     :requirements [:draw-count]}
    :orient-piece
    {:id :orient-piece
@@ -113,7 +113,7 @@
    :replacement-card-id "Choose a replacement card."
    :orientation "Choose an orientation."
    :distance "Choose a distance."
-   :draw-count "Choose how many cards to draw."})
+   :draw-count "Choose cards to discard, then how many cards to draw."})
 
 (defn empty-move-selection []
   {:stage :source
@@ -448,15 +448,56 @@
 (defn- rod-distance-options-for-piece [piece]
   (vec (range 1 (inc (or (pieces/pips piece) 0)))))
 
-(defn max-draw-count [db]
-  (let [hand-slots (- game-state/starting-hand-size
-                      (count (current-player-hand db)))
-        available-cards (+ (count (get-in db [:game :draw-pile] []))
-                           (count (get-in db [:game :discard-pile] [])))]
-    (max 0 (min hand-slots available-cards))))
+(defn- valid-discard-card-ids [db discard-card-ids]
+  (let [hand-card-ids (set (map :id (current-player-hand db)))]
+    (vec (filter hand-card-ids (distinct (or discard-card-ids []))))))
 
-(defn draw-count-options [db]
-  (vec (range 1 (inc (max-draw-count db)))))
+(defn max-draw-count
+  ([db]
+   (max-draw-count db (get-in db [:move-selection :params :discard-card-ids])))
+  ([db discard-card-ids]
+   (let [discard-count (count (valid-discard-card-ids db discard-card-ids))
+         post-discard-hand-count (- (count (current-player-hand db))
+                                    discard-count)
+         hand-slots (- game-state/starting-hand-size
+                       post-discard-hand-count)
+         available-cards (+ (count (get-in db [:game :draw-pile] []))
+                            (count (get-in db [:game :discard-pile] []))
+                            discard-count)]
+     (max 0 (min hand-slots available-cards)))))
+
+(defn draw-count-options
+  ([db]
+   (draw-count-options db (get-in db [:move-selection :params :discard-card-ids])))
+  ([db discard-card-ids]
+   (let [discard-count (count (valid-discard-card-ids db discard-card-ids))
+         min-draw-count (if (pos? discard-count) 0 1)
+         max-draw-count (max-draw-count db discard-card-ids)]
+     (if (< max-draw-count min-draw-count)
+       []
+       (vec (range min-draw-count (inc max-draw-count)))))))
+
+(defn- max-potential-draw-count [db]
+  (max-draw-count db (mapv :id (current-player-hand db))))
+
+(defn- default-draw-count [options]
+  (or (some #{1} options)
+      (first options)))
+
+(defn- normalize-draw-selection-params [db params]
+  (let [discard-card-ids (valid-discard-card-ids db (:discard-card-ids params))
+        params (assoc params :discard-card-ids discard-card-ids)
+        options (draw-count-options db discard-card-ids)
+        draw-count (:draw-count params)]
+    (cond
+      (some #{draw-count} options)
+      params
+
+      (seq options)
+      (assoc params :draw-count (default-draw-count options))
+
+      :else
+      (dissoc params :draw-count))))
 
 (defn- small-stash-count [db]
   (or (get-in (current-player db) [:stash :small])
@@ -467,7 +508,7 @@
   (let [player (current-player db)
         owned-pieces (current-player-pieces db)
         hand (current-player-hand db)
-        max-draw (max-draw-count db)]
+        max-draw (max-potential-draw-count db)]
     (cond
       (nil? player)
       "No current player is available."
@@ -647,10 +688,8 @@
     (contains? pieces/legal-orientations (:orientation params))
 
     :draw-count
-    (let [draw-count (:draw-count params)]
-      (and (int? draw-count)
-           (<= 1 draw-count)
-           (<= draw-count (max-draw-count db))))
+    (some #{(:draw-count params)}
+          (draw-count-options db (:discard-card-ids params)))
 
     :distance
     (some #{(:distance params)} (move-distance-options db))
@@ -822,9 +861,10 @@
                                        reason
                                        {:source source-id})))
       (let [selected-index (selected-board-index db)
-            base-params (cond-> {}
-                          (= source-id :draw-cards)
-                          (assoc :draw-count (first (draw-count-options db)))
+            base-params (cond-> (if (= source-id :draw-cards)
+                                  (normalize-draw-selection-params db
+                                                                   {:discard-card-ids []})
+                                  {})
 
                           (and (= source-id :activate-territory)
                                (seq (current-player-pieces-on-space db selected-index)))
@@ -1271,6 +1311,41 @@
                                        {:draw-count draw-count
                                         :options (draw-count-options db)}))))
 
+(defn toggle-move-discard-card [db card-id]
+  (let [{:keys [source params]} (move-selection db)]
+    (cond
+      (not= :draw-cards source)
+      (update-move-selection db assoc
+                             :error
+                             (move-error :invalid-discard-card
+                                         "Discard choices are only available for draw moves."
+                                         {:card-id card-id
+                                          :source source}))
+
+      (nil? (hand-card-by-id db card-id))
+      (update-move-selection db assoc
+                             :error
+                             (move-error :invalid-discard-card
+                                         "Choose a card from the current player's hand."
+                                         {:card-id card-id}))
+
+      :else
+      (let [selected-card-ids (set (:discard-card-ids params))
+            next-selected-card-ids (if (contains? selected-card-ids card-id)
+                                     (disj selected-card-ids card-id)
+                                     (conj selected-card-ids card-id))
+            next-discard-card-ids (->> (current-player-hand db)
+                                       (map :id)
+                                       (filter next-selected-card-ids)
+                                       vec)]
+        (update-move-selection-success
+         db
+         assoc
+         :params
+         (normalize-draw-selection-params
+          db
+          (assoc params :discard-card-ids next-discard-card-ids)))))))
+
 (defn set-move-distance [db distance]
   (if (some #{distance} (move-distance-options db))
     (update-move-selection-success db assoc-in [:params :distance] distance)
@@ -1296,6 +1371,11 @@
 
 (defn move-hand-card-options [db]
   (if (= :play-hand-card (move-source db))
+    (current-player-hand db)
+    []))
+
+(defn move-discard-card-options [db]
+  (if (= :draw-cards (move-source db))
     (current-player-hand db)
     []))
 
@@ -1451,7 +1531,7 @@
         :draw-cards
         {:source :draw-cards
          :player-id (current-player-id db)
-         :discard-card-ids (vec (:discard-card-ids params))
+         :discard-card-ids (valid-discard-card-ids db (:discard-card-ids params))
          :draw-count (:draw-count params)}
 
         :orient-piece

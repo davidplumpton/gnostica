@@ -358,7 +358,7 @@
     (is (:enabled? (source-option db :activate-territory)))
     (is (:enabled? (source-option db :play-hand-card)))
     (is (:enabled? (source-option db :orient-piece)))
-    (is (not (:enabled? (source-option db :draw-cards))))
+    (is (:enabled? (source-option db :draw-cards)))
     (is (not (:enabled? (source-option db :place-initial-small))))))
 
 (deftest drawing-cards-confirms-through-game-state
@@ -378,7 +378,8 @@
     (is (:enabled? (source-option db :draw-cards)))
     (is (= 1 (app-state/max-draw-count empty-draw-db)))
     (is (= :confirm (:stage (app-state/move-selection source-db))))
-    (is (= {:draw-count 1}
+    (is (= {:discard-card-ids []
+            :draw-count 1}
            (app-state/move-params source-db)))
     (is (= {:source :draw-cards
             :player-id :rose
@@ -392,6 +393,41 @@
            (mapv :id (:discard-pile zones))))
     (is (= (dec (count (get-in db [:game :draw-pile])))
            (:draw-count zones)))))
+
+(deftest full-hand-draw-can-select-discards-before-drawing
+  (let [db (app-state/initialize {:player-specs test-player-specs
+                                  :game-options {:shuffle-fn identity}})
+        original-hand (app-state/current-player-hand db)
+        discarded-card (last original-hand)
+        draw-card (first (get-in db [:game :draw-pile]))
+        source-db (app-state/select-move-source db :draw-cards)
+        discard-db (app-state/toggle-move-discard-card source-db (:id discarded-card))
+        controls (:controls (app-state/move-panel-view source-db))
+        confirmed-db (app-state/confirm-move discard-db)
+        zones (app-state/card-zones confirmed-db)]
+    (is (:enabled? (source-option db :draw-cards)))
+    (is (= :draw-count (:stage (app-state/move-selection source-db))))
+    (is (= {:discard-card-ids []}
+           (app-state/move-params source-db)))
+    (is (= (mapv :id original-hand)
+           (mapv :id (:discard-card-options controls))))
+    (is (empty? (:draw-options controls)))
+    (is (= :confirm (:stage (app-state/move-selection discard-db))))
+    (is (= [0 1] (app-state/draw-count-options discard-db)))
+    (is (= {:discard-card-ids [(:id discarded-card)]
+            :draw-count 1}
+           (app-state/move-params discard-db)))
+    (is (= {:source :draw-cards
+            :player-id :rose
+            :discard-card-ids [(:id discarded-card)]
+            :draw-count 1}
+           (app-state/move-command discard-db)))
+    (is (:ok? (get-in confirmed-db [:move-selection :last-result])))
+    (is (= (mapv :id (conj (vec (butlast original-hand)) draw-card))
+           (mapv :id (:hand zones))))
+    (is (= [(:id discarded-card)]
+           (mapv :id (:discard-pile zones))))
+    (is (game-schema/valid-game? (app-state/game confirmed-db)))))
 
 (deftest confirm-move-event-handler-is-deterministic-with-injected-draw-shuffle-seed
   (let [initial-db (app-state/initialize {:player-specs test-player-specs

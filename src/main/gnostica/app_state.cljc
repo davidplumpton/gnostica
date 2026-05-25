@@ -287,9 +287,11 @@
 (def select-move-replacement-card move-selection/select-move-replacement-card)
 (def set-move-orientation move-selection/set-move-orientation)
 (def set-move-draw-count move-selection/set-move-draw-count)
+(def toggle-move-discard-card move-selection/toggle-move-discard-card)
 (def set-move-distance move-selection/set-move-distance)
 (def move-piece-options move-selection/move-piece-options)
 (def move-hand-card-options move-selection/move-hand-card-options)
+(def move-discard-card-options move-selection/move-discard-card-options)
 (def move-source-board-options move-selection/move-source-board-options)
 (def move-target-board-options move-selection/move-target-board-options)
 (def move-one-point-card-options move-selection/move-one-point-card-options)
@@ -301,7 +303,7 @@
 (defn move-panel-view-model
   [{:keys [current-player selection source-options prompt ready?
            board power power-options rod-mode-options disc-target-kind-options piece-options
-           target-piece-options hand-options source-board-options
+           target-piece-options hand-options discard-card-options source-board-options
            target-board-options target-wasteland-options
            territory-card-source-options one-point-card-options replacement-card-options
            orientation-options orientation-required? disc-orientation-available? distance-options
@@ -319,6 +321,7 @@
               :piece-options piece-options
               :target-piece-options target-piece-options
               :hand-options hand-options
+              :discard-card-options discard-card-options
               :source-board-options source-board-options
               :target-board-options target-board-options
               :target-wasteland-options target-wasteland-options
@@ -346,6 +349,7 @@
     :piece-options (move-piece-options db)
     :target-piece-options (move-target-piece-options db)
     :hand-options (move-hand-card-options db)
+    :discard-card-options (move-discard-card-options db)
     :source-board-options (move-source-board-options db)
     :target-board-options (move-target-board-options db)
     :target-wasteland-options (move-target-wasteland-options db)

@@ -25,6 +25,7 @@
 (def set-move-orientation :gnostica.app/set-move-orientation)
 (def set-move-distance :gnostica.app/set-move-distance)
 (def set-move-draw-count :gnostica.app/set-move-draw-count)
+(def toggle-move-discard-card :gnostica.app/toggle-move-discard-card)
 (def confirm-move :gnostica.app/confirm-move)
 (def cancel-move :gnostica.app/cancel-move)
 (def toggle-card-icon-mode :gnostica.app/toggle-card-icon-mode)
@@ -72,6 +73,7 @@
 (def move-disc-orientation-available? :gnostica.app/move-disc-orientation-available?)
 (def move-replacement-card-options :gnostica.app/move-replacement-card-options)
 (def move-orientation-options :gnostica.app/move-orientation-options)
+(def move-discard-card-options :gnostica.app/move-discard-card-options)
 (def draw-count-options :gnostica.app/draw-count-options)
 (def card-icon-mode :gnostica.app/card-icon-mode)
 (def open-panels :gnostica.app/open-panels)
@@ -196,6 +198,11 @@ select-move-rod-mode
  set-move-draw-count
  (fn [db [_ draw-count]]
    (app-state/set-move-draw-count db draw-count)))
+
+(rf/reg-event-db
+ toggle-move-discard-card
+ (fn [db [_ card-id]]
+   (app-state/toggle-move-discard-card db card-id)))
 
 (rf/reg-event-fx
  confirm-move
@@ -368,6 +375,11 @@ select-move-rod-mode
  move-hand-card-options
  (fn [db _]
    (app-state/move-hand-card-options db)))
+
+(rf/reg-sub
+ move-discard-card-options
+ (fn [db _]
+   (app-state/move-discard-card-options db)))
 
 (rf/reg-sub
  move-source-board-options
@@ -546,6 +558,7 @@ move-rod-orientation-required?
  :<- [move-piece-options]
  :<- [move-target-piece-options]
  :<- [move-hand-card-options]
+ :<- [move-discard-card-options]
  :<- [move-source-board-options]
  :<- [move-target-board-options]
  :<- [move-target-wasteland-options]
@@ -559,7 +572,7 @@ move-rod-orientation-required?
  :<- [draw-count-options]
  (fn [[current-player selection source-options prompt ready? board power
        power-options rod-mode-options disc-target-kind-options piece-options target-piece-options
-       hand-options source-board-options target-board-options
+       hand-options discard-card-options source-board-options target-board-options
        target-wasteland-options territory-card-source-options
        one-point-card-options replacement-card-options orientation-options orientation-required?
        disc-orientation-available?
@@ -578,6 +591,7 @@ move-rod-orientation-required?
      :piece-options piece-options
      :target-piece-options target-piece-options
      :hand-options hand-options
+     :discard-card-options discard-card-options
      :source-board-options source-board-options
      :target-board-options target-board-options
      :target-wasteland-options target-wasteland-options
