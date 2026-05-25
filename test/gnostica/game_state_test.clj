@@ -321,8 +321,10 @@
            (game-state-rod/resolve-rod-command rod-state rod-command)))
     (is (= (game-state/apply-rod-move rod-state rod-command)
            (game-state-rod/apply-rod-move rod-state rod-command)))
-    (is (= (game-state/resolve-disc-command disc-state disc-command)
-           (game-state-disc/resolve-disc-command disc-state disc-command)))))
+	    (is (= (game-state/resolve-disc-command disc-state disc-command)
+	           (game-state-disc/resolve-disc-command disc-state disc-command)))
+	    (is (= (game-state/apply-disc-move disc-state disc-command)
+	           (game-state-disc/apply-disc-move disc-state disc-command)))))
 
 (deftest draw-move-discards-selected-cards-and-draws-to-hand
   (let [initial-state (deterministic-game)
@@ -1148,6 +1150,182 @@
            (get-in result [:command :disc-variant])))
     (is (= :discard-pile
            (get-in result [:command :replacement-card-source])))))
+
+(deftest disc-move-grows-current-player-piece-and-may-reorient-it
+  (let [small-minion (assoc rose-disc-minion :size :small)
+        state (:state (game-state/create-game
+                       player-specs
+                       {:deck-order (deck-with-board-card 3 "coins2")}))
+        state (game-state/with-board-pieces state [small-minion])
+        command {:player-id :rose
+                 :source {:kind :territory
+                          :board-index 3
+                          :piece-id :rose-disc-minion}
+                 :target {:kind :piece
+                          :piece-id :rose-disc-minion}
+                 :orientation :south}
+        {:keys [ok? state events]} (game-state/apply-disc-move state command)
+        grown-piece (piece-by-id state :rose-medium-1)]
+    (is ok?)
+    (is (nil? (piece-by-id state :rose-disc-minion)))
+    (is (= {:id :rose-medium-1
+            :player-id :rose
+            :space-index 3
+            :size :medium
+            :orientation :south}
+           grown-piece))
+    (is (= 5 (get-in state [:players-by-id :rose :stash :small])))
+    (is (= 4 (get-in state [:players-by-id :rose :stash :medium])))
+    (is (= 5 (get-in state [:pieces :stashes :rose :small])))
+    (is (= 4 (get-in state [:pieces :stashes :rose :medium])))
+    (is (= [{:type :disc/piece-grown
+             :player-id :rose
+             :source {:kind :territory
+                      :board-index 3
+                      :piece-id :rose-disc-minion}
+             :disc-variant :disc
+             :target {:kind :piece
+                      :piece-id :rose-disc-minion
+                      :player-id :rose
+                      :board-index 3
+                      :row 1
+                      :col 0}
+             :from-size :small
+             :to-size :medium
+             :replaced-piece small-minion
+             :piece grown-piece}]
+           events))
+    (is (= events [(peek (:history state))]))
+    (is (= (count cards/deck) (count (all-card-ids state))))
+    (is (= (count cards/deck) (count (set (all-card-ids state)))))
+    (is (game-schema/valid-game? state))))
+
+(deftest disc-move-grows-medium-pieces-to-large
+  (let [state (:state (game-state/create-game
+                       player-specs
+                       {:deck-order (deck-with-board-card 3 "coins2")}))
+        state (game-state/with-board-pieces state [rose-disc-minion])
+        {:keys [ok? state events]} (game-state/apply-disc-move
+                                    state
+                                    {:player-id :rose
+                                     :source {:kind :territory
+                                              :board-index 3
+                                              :piece-id :rose-disc-minion}
+                                     :target {:kind :piece
+                                              :piece-id :rose-disc-minion}})
+        grown-piece (piece-by-id state :rose-large-1)]
+    (is ok?)
+    (is (= {:id :rose-large-1
+            :player-id :rose
+            :space-index 3
+            :size :large
+            :orientation :east}
+           grown-piece))
+    (is (= :medium (get-in events [0 :from-size])))
+    (is (= :large (get-in events [0 :to-size])))
+    (is (= 5 (get-in state [:players-by-id :rose :stash :medium])))
+    (is (= 4 (get-in state [:players-by-id :rose :stash :large])))
+    (is (game-schema/valid-game? state))))
+
+(deftest disc-move-grows-enemy-piece-and-discards-hand-source
+  (let [enemy-piece {:id :indigo-disc-target
+                     :player-id :indigo
+                     :space-index 4
+                     :size :small
+                     :orientation :north}
+        state (:state (game-state/create-game
+                       player-specs
+                       {:deck-order (deck-starting-with ["coins2"])}))
+        state (game-state/with-board-pieces state [rose-disc-minion enemy-piece])
+        command {:player-id :rose
+                 :source {:kind :hand-card
+                          :card-id "coins2"
+                          :piece-id :rose-disc-minion}
+                 :target {:kind :piece
+                          :piece-id :indigo-disc-target}}
+        {:keys [ok? state events]} (game-state/apply-disc-move state command)
+        grown-piece (piece-by-id state :indigo-medium-1)]
+    (is ok?)
+    (is (= {:id :indigo-medium-1
+            :player-id :indigo
+            :space-index 4
+            :size :medium
+            :orientation :north}
+           grown-piece))
+    (is (= ["coins2"] (mapv :id (:discard-pile state))))
+    (is (not (some #{"coins2"} (player-hand-ids state :rose))))
+    (is (= 5 (get-in state [:players-by-id :indigo :stash :small])))
+    (is (= 4 (get-in state [:players-by-id :indigo :stash :medium])))
+    (is (= :disc/piece-grown (get-in events [0 :type])))
+    (is (= :indigo (get-in events [0 :target :player-id])))
+    (is (= enemy-piece (get-in events [0 :replaced-piece])))
+    (is (= (count cards/deck) (count (all-card-ids state))))
+    (is (= (count cards/deck) (count (set (all-card-ids state)))))
+    (is (game-schema/valid-game? state))))
+
+(deftest disc-move-rejects-large-pieces-and-missing-replacements_without_mutation
+  (let [large-piece (assoc rose-disc-minion :size :large)
+        large-state (-> (:state (game-state/create-game
+                                 player-specs
+                                 {:deck-order (deck-with-board-card 3 "coins2")}))
+                        (game-state/with-board-pieces [large-piece]))
+        large-result (game-state/apply-disc-move
+                      large-state
+                      {:player-id :rose
+                       :source {:kind :territory
+                                :board-index 3
+                                :piece-id :rose-disc-minion}
+                       :target {:kind :piece
+                                :piece-id :rose-disc-minion}})
+        small-piece (assoc rose-disc-minion :size :small)
+        medium-pieces [{:id :rose-medium-a
+                        :player-id :rose
+                        :space-index 0
+                        :size :medium
+                        :orientation :north}
+                       {:id :rose-medium-b
+                        :player-id :rose
+                        :space-index 1
+                        :size :medium
+                        :orientation :east}
+                       {:id :rose-medium-c
+                        :player-id :rose
+                        :space-index 2
+                        :size :medium
+                        :orientation :south}
+                       {:id :rose-medium-d
+                        :player-id :rose
+                        :space-index 4
+                        :size :medium
+                        :orientation :west}
+                       {:id :rose-medium-e
+                        :player-id :rose
+                        :space-index 5
+                        :size :medium
+                        :orientation :up}]
+        no-medium-pieces (vec (cons small-piece medium-pieces))
+        no-medium-state (-> (:state (game-state/create-game
+                                     player-specs
+                                     {:deck-order (deck-with-board-card 3 "coins2")}))
+                            (game-state/with-board-pieces no-medium-pieces))
+        no-medium-result (game-state/apply-disc-move
+                          no-medium-state
+                          {:player-id :rose
+                           :source {:kind :territory
+                                    :board-index 3
+                                    :piece-id :rose-disc-minion}
+                           :target {:kind :piece
+                                    :piece-id :rose-disc-minion}})]
+    (is (= :target-piece-max-size
+           (get-in large-result [:error :code])))
+    (is (= :no-larger-piece-available
+           (get-in no-medium-result [:error :code])))
+    (is (not (contains? large-result :state)))
+    (is (not (contains? no-medium-result :state)))
+    (is (= [large-piece]
+           (get-in large-state [:pieces :on-board])))
+    (is (= no-medium-pieces
+           (get-in no-medium-state [:pieces :on-board])))))
 
 (deftest rod-command-normalizes-territory-source
   (let [state (-> (state-with-pieces [rose-rod-minion])

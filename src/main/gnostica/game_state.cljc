@@ -68,6 +68,9 @@
 (defn resolve-disc-command [state command]
   (disc/resolve-disc-command state command))
 
+(defn apply-disc-move [state command]
+  (disc/apply-disc-move state command))
+
 (defn apply-draw-move [state command]
   (draw/apply-draw-move state command))
 

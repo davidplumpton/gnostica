@@ -389,15 +389,27 @@
        (map first)
        vec))
 
-(defn small-stash-count [state player-id]
-  (or (get-in state [:players-by-id player-id :stash :small])
-      (get-in state [:pieces :stashes player-id :small])
+(defn stash-count [state player-id size]
+  (or (get-in state [:players-by-id player-id :stash size])
+      (get-in state [:pieces :stashes player-id size])
       0))
 
-(defn decrement-small-stash [state player-id]
+(defn update-stash-count [state player-id size f]
   (-> state
-      (update-player player-id update-in [:stash :small] dec)
-      (update-in [:pieces :stashes player-id :small] dec)))
+      (update-player player-id update-in [:stash size] f)
+      (update-in [:pieces :stashes player-id size] f)))
+
+(defn increment-stash [state player-id size]
+  (update-stash-count state player-id size inc))
+
+(defn decrement-stash [state player-id size]
+  (update-stash-count state player-id size dec))
+
+(defn small-stash-count [state player-id]
+  (stash-count state player-id :small))
+
+(defn decrement-small-stash [state player-id]
+  (decrement-stash state player-id :small))
 
 (defn next-piece-id [state player-id size]
   (let [prefix (str (name player-id) "-" (name size) "-")
@@ -478,14 +490,17 @@
 (defn next-board-index [state]
   (inc (apply max -1 (map :index (:board state)))))
 
-(defn replace-piece [state piece]
+(defn replace-piece-by-id [state piece-id piece]
   (update-in state [:pieces :on-board]
              (fn [board-pieces]
                (mapv (fn [board-piece]
-                       (if (= (:id piece) (:id board-piece))
+                       (if (= piece-id (:id board-piece))
                          piece
                          board-piece))
                      board-pieces))))
+
+(defn replace-piece [state piece]
+  (replace-piece-by-id state (:id piece) piece))
 
 (defn player-pieces [state player-id]
   (filterv #(= player-id (:player-id %))

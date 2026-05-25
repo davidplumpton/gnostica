@@ -11,6 +11,10 @@
    :south [1 0]
    :west [0 -1]})
 
+(def next-disc-piece-size
+  {:small :medium
+   :medium :large})
+
 (defn- coordinate-map [coordinate]
   (cond
     (map? coordinate)
@@ -440,9 +444,77 @@
                                              (:replacement-card-id replacement-result)
                                              (assoc :replacement-card-id
                                                     (:replacement-card-id replacement-result)))]
-                    (merge {:ok? true
-                            :command normalized-command
-                            :source-card (:source-card source-result)
-                            :piece (:piece source-result)}
-                           (select-keys target-result
-                                        [:target-piece :target-cell]))))))))))))
+	                    (merge {:ok? true
+	                            :command normalized-command
+	                            :source-card (:source-card source-result)
+	                            :piece (:piece source-result)}
+	                           (select-keys target-result
+	                                        [:target-piece :target-cell]))))))))))))
+
+(defn- piece-space [piece]
+  (select-keys piece [:space-index :space]))
+
+(defn- apply-disc-piece-growth [state player-id {:keys [command source-card target-piece]}]
+  (let [{:keys [source target disc-variant]} command
+        owner-id (:player-id target-piece)
+        old-size (:size target-piece)
+        next-size (get next-disc-piece-size old-size)]
+    (cond
+      (nil? next-size)
+      (core/failure :target-piece-max-size
+               "Disc piece growth cannot grow a large piece."
+               {:piece-id (:id target-piece)
+                :size old-size})
+
+      (not (pos? (core/stash-count state owner-id next-size)))
+      (core/failure :no-larger-piece-available
+               "Disc piece growth requires a larger piece in the target owner's stash."
+               {:player-id owner-id
+                :piece-id (:id target-piece)
+                :from-size old-size
+                :to-size next-size})
+
+      :else
+      (let [grown-piece (merge {:id (core/next-piece-id state owner-id next-size)
+                                :player-id owner-id
+                                :size next-size
+                                :orientation (or (:orientation target)
+                                                 (:orientation target-piece))}
+                               (piece-space target-piece))
+            event {:type :disc/piece-grown
+                   :player-id player-id
+                   :source source
+                   :disc-variant disc-variant
+                   :target (select-keys target [:kind :piece-id :player-id :board-index :row :col])
+                   :from-size old-size
+                   :to-size next-size
+                   :replaced-piece target-piece
+                   :piece grown-piece}
+            source-cost {:source-card source-card
+                         :discard-source-card? (= :hand-card (:kind source))}
+            next-state (-> state
+                           (core/apply-source-cost player-id source-cost)
+                           (core/increment-stash owner-id old-size)
+                           (core/decrement-stash owner-id next-size)
+                           (core/replace-piece-by-id (:id target-piece) grown-piece)
+                           (core/append-history event))]
+        (core/success next-state [event])))))
+
+(defn apply-disc-move [state command]
+  (let [result (resolve-disc-command state command)]
+    (if-not (:ok? result)
+      result
+      (let [normalized-command (:command result)
+            player-id (:player-id normalized-command)]
+        (case (get-in normalized-command [:target :kind])
+          :piece
+          (apply-disc-piece-growth state player-id result)
+
+          :territory
+          (core/failure :disc-territory-growth-unavailable
+                   "Disc territory growth is not implemented by this transition yet."
+                   {:target (:target normalized-command)})
+
+          (core/failure :invalid-disc-target
+                   "Disc move targets must be :piece or :territory."
+                   {:target (:target normalized-command)}))))))
