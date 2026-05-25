@@ -361,9 +361,30 @@
     (is (:enabled? (source-option db :draw-cards)))
     (is (not (:enabled? (source-option db :place-initial-small))))))
 
-(deftest drawing-cards-confirms-through-game-state
+(deftest no-piece-player-with-hand-room-must-place-initial-small
   (let [initial-db (app-state/initialize {:player-specs test-player-specs
                                           :game-options {:shuffle-fn identity}})
+        original-hand (app-state/current-player-hand initial-db)
+        discarded-card (last original-hand)
+        db (-> initial-db
+               (replace-game-player-hand :rose (vec (butlast original-hand)))
+               (update-in [:game :discard-pile] conj discarded-card))
+        draw-option (source-option db :draw-cards)
+        source-db (app-state/select-move-source db :draw-cards)]
+    (is (not (:enabled? draw-option)))
+    (is (= "The current player has no pieces on the board."
+           (:reason draw-option)))
+    (is (:enabled? (source-option db :place-initial-small)))
+    (is (= :move-source-unavailable
+           (get-in source-db [:move-selection :error :code])))
+    (is (= :draw-cards
+           (get-in source-db [:move-selection :error :data :source])))
+    (is (game-schema/valid-game? (app-state/game db)))))
+
+(deftest drawing-cards-confirms-through-game-state
+  (let [initial-db (app-state/initialize {:player-specs test-player-specs
+                                          :game-options {:shuffle-fn identity}
+                                          :demo-board-pieces [rose-source-piece]})
         original-hand (app-state/current-player-hand initial-db)
         discarded-card (last original-hand)
         shortened-hand (vec (butlast original-hand))
@@ -394,9 +415,30 @@
     (is (= (dec (count (get-in db [:game :draw-pile])))
            (:draw-count zones)))))
 
+(deftest no-piece-draw-confirmation-is-rejected
+  (let [initial-db (app-state/initialize {:player-specs test-player-specs
+                                          :game-options {:shuffle-fn identity}
+                                          :demo-board-pieces [rose-source-piece]})
+        original-hand (app-state/current-player-hand initial-db)
+        discarded-card (last original-hand)
+        db (-> initial-db
+               (replace-game-player-hand :rose (vec (butlast original-hand)))
+               (update-in [:game :discard-pile] conj discarded-card))
+        staged-db (app-state/select-move-source db :draw-cards)
+        no-piece-db (update staged-db :game game-state/with-board-pieces [])
+        confirmed-db (app-state/confirm-move no-piece-db)]
+    (is (= :confirm (:stage (app-state/move-selection staged-db))))
+    (is (= :rejected (:stage (app-state/move-selection confirmed-db))))
+    (is (= :move-source-unavailable
+           (get-in confirmed-db [:move-selection :error :code])))
+    (is (= (app-state/game no-piece-db)
+           (app-state/game confirmed-db)))
+    (is (game-schema/valid-game? (app-state/game confirmed-db)))))
+
 (deftest full-hand-draw-can-select-discards-before-drawing
   (let [db (app-state/initialize {:player-specs test-player-specs
-                                  :game-options {:shuffle-fn identity}})
+                                  :game-options {:shuffle-fn identity}
+                                  :demo-board-pieces [rose-source-piece]})
         original-hand (app-state/current-player-hand db)
         discarded-card (last original-hand)
         draw-card (first (get-in db [:game :draw-pile]))
@@ -431,7 +473,8 @@
 
 (deftest confirm-move-event-handler-is-deterministic-with-injected-draw-shuffle-seed
   (let [initial-db (app-state/initialize {:player-specs test-player-specs
-                                          :game-options {:shuffle-fn identity}})
+                                          :game-options {:shuffle-fn identity}
+                                          :demo-board-pieces [rose-source-piece]})
         original-hand (app-state/current-player-hand initial-db)
         shortened-hand (vec (drop 2 original-hand))
         first-draw-card (first (get-in initial-db [:game :draw-pile]))

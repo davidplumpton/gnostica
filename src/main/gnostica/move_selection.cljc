@@ -523,8 +523,9 @@
         (empty? owned-pieces) "The current player needs a piece on the board.")
 
       (= :draw-cards source-id)
-      (when (zero? max-draw)
-        "The current player cannot draw more cards.")
+      (cond
+        (empty? owned-pieces) "The current player has no pieces on the board."
+        (zero? max-draw) "The current player cannot draw more cards.")
 
       (= :orient-piece source-id)
       (when-not (seq owned-pieces)
@@ -1604,6 +1605,12 @@
                             (move-error :incomplete-move
                                         "Complete the move selection before confirming."
                                         {:stage (:stage (move-selection db))}))
-     (let [command (move-command db)
-           result (confirmed-move-result db command transition-options)]
-       (apply-confirmed-move-result db result)))))
+     (if-let [reason (source-unavailable-reason db (move-source db))]
+       (apply-confirmed-move-result
+        db
+        (game-state/failure :move-source-unavailable
+                            reason
+                            {:source (move-source db)}))
+       (let [command (move-command db)
+             result (confirmed-move-result db command transition-options)]
+         (apply-confirmed-move-result db result))))))
