@@ -17,8 +17,10 @@
 (def select-move-wasteland-target :gnostica.app/select-move-wasteland-target)
 (def select-move-one-point-card :gnostica.app/select-move-one-point-card)
 (def select-move-territory-card-source :gnostica.app/select-move-territory-card-source)
+(def select-move-replacement-card :gnostica.app/select-move-replacement-card)
 (def select-move-power :gnostica.app/select-move-power)
 (def select-move-rod-mode :gnostica.app/select-move-rod-mode)
+(def select-move-disc-target-kind :gnostica.app/select-move-disc-target-kind)
 (def select-move-target-piece :gnostica.app/select-move-target-piece)
 (def set-move-orientation :gnostica.app/set-move-orientation)
 (def set-move-distance :gnostica.app/set-move-distance)
@@ -61,9 +63,12 @@
 (def move-power-options :gnostica.app/move-power-options)
 (def move-power :gnostica.app/move-power)
 (def move-rod-mode-options :gnostica.app/move-rod-mode-options)
+(def move-disc-target-kind-options :gnostica.app/move-disc-target-kind-options)
 (def move-target-piece-options :gnostica.app/move-target-piece-options)
 (def move-distance-options :gnostica.app/move-distance-options)
 (def move-rod-orientation-required? :gnostica.app/move-rod-orientation-required?)
+(def move-disc-orientation-available? :gnostica.app/move-disc-orientation-available?)
+(def move-replacement-card-options :gnostica.app/move-replacement-card-options)
 (def move-orientation-options :gnostica.app/move-orientation-options)
 (def draw-count-options :gnostica.app/draw-count-options)
 (def card-icon-mode :gnostica.app/card-icon-mode)
@@ -145,9 +150,14 @@
    (app-state/select-move-one-point-card db card-id)))
 
 (rf/reg-event-db
- select-move-territory-card-source
- (fn [db [_ territory-card-source]]
-   (app-state/select-move-territory-card-source db territory-card-source)))
+select-move-territory-card-source
+(fn [db [_ territory-card-source]]
+  (app-state/select-move-territory-card-source db territory-card-source)))
+
+(rf/reg-event-db
+ select-move-replacement-card
+ (fn [db [_ card-id]]
+   (app-state/select-move-replacement-card db card-id)))
 
 (rf/reg-event-db
  select-move-power
@@ -155,9 +165,14 @@
    (app-state/select-move-power db power)))
 
 (rf/reg-event-db
- select-move-rod-mode
- (fn [db [_ mode]]
-   (app-state/select-move-rod-mode db mode)))
+select-move-rod-mode
+(fn [db [_ mode]]
+  (app-state/select-move-rod-mode db mode)))
+
+(rf/reg-event-db
+ select-move-disc-target-kind
+ (fn [db [_ target-kind]]
+   (app-state/select-move-disc-target-kind db target-kind)))
 
 (rf/reg-event-db
  select-move-target-piece
@@ -377,12 +392,17 @@
    (app-state/move-power db)))
 
 (rf/reg-sub
- move-rod-mode-options
- (fn [db _]
-   (app-state/move-rod-mode-options db)))
+move-rod-mode-options
+(fn [db _]
+  (app-state/move-rod-mode-options db)))
 
 (rf/reg-sub
- move-target-piece-options
+ move-disc-target-kind-options
+ (fn [db _]
+   (app-state/move-disc-target-kind-options db)))
+
+(rf/reg-sub
+move-target-piece-options
  (fn [db _]
    (app-state/move-target-piece-options db)))
 
@@ -392,9 +412,19 @@
    (app-state/move-distance-options db)))
 
 (rf/reg-sub
- move-rod-orientation-required?
+move-rod-orientation-required?
+(fn [db _]
+  (app-state/move-rod-orientation-required? db)))
+
+(rf/reg-sub
+ move-disc-orientation-available?
  (fn [db _]
-   (app-state/move-rod-orientation-required? db)))
+   (app-state/move-disc-orientation-available? db)))
+
+(rf/reg-sub
+ move-replacement-card-options
+ (fn [db _]
+   (app-state/move-replacement-card-options db)))
 
 (rf/reg-sub
  move-orientation-options
@@ -490,6 +520,7 @@
  :<- [move-power]
  :<- [move-power-options]
  :<- [move-rod-mode-options]
+ :<- [move-disc-target-kind-options]
  :<- [move-piece-options]
  :<- [move-target-piece-options]
  :<- [move-hand-card-options]
@@ -498,15 +529,18 @@
  :<- [move-target-wasteland-options]
  :<- [move-territory-card-source-options]
  :<- [move-one-point-card-options]
+ :<- [move-replacement-card-options]
  :<- [move-orientation-options]
  :<- [move-rod-orientation-required?]
+ :<- [move-disc-orientation-available?]
  :<- [move-distance-options]
  :<- [draw-count-options]
  (fn [[current-player selection source-options prompt ready? board power
-       power-options rod-mode-options piece-options target-piece-options
+       power-options rod-mode-options disc-target-kind-options piece-options target-piece-options
        hand-options source-board-options target-board-options
        target-wasteland-options territory-card-source-options
-       one-point-card-options orientation-options orientation-required?
+       one-point-card-options replacement-card-options orientation-options orientation-required?
+       disc-orientation-available?
        distance-options draw-options] _]
    (app-state/move-panel-view-model
     {:current-player current-player
@@ -518,6 +552,7 @@
      :power power
      :power-options power-options
      :rod-mode-options rod-mode-options
+     :disc-target-kind-options disc-target-kind-options
      :piece-options piece-options
      :target-piece-options target-piece-options
      :hand-options hand-options
@@ -526,8 +561,10 @@
      :target-wasteland-options target-wasteland-options
      :territory-card-source-options territory-card-source-options
      :one-point-card-options one-point-card-options
+     :replacement-card-options replacement-card-options
      :orientation-options orientation-options
      :orientation-required? orientation-required?
+     :disc-orientation-available? disc-orientation-available?
      :distance-options distance-options
      :draw-options draw-options})))
 

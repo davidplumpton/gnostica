@@ -65,6 +65,25 @@
       [card]
       (drop index remaining-cards)))))
 
+(defn- deck-with-cards-at [placements]
+  (let [placed-ids (set (vals placements))]
+    (loop [index 0
+           remaining-cards (vec (remove #(contains? placed-ids (:id %)) cards/deck))
+           result []]
+      (cond
+        (= (count result) (count cards/deck))
+        (vec result)
+
+        (contains? placements index)
+        (recur (inc index)
+               remaining-cards
+               (conj result (cards/card-by-id (get placements index))))
+
+        :else
+        (recur (inc index)
+               (subvec remaining-cards 1)
+               (conj result (first remaining-cards)))))))
+
 (defn- board-card-position [player-specs board-index]
   (+ (* game-state/starting-hand-size (count player-specs))
      board-index))
@@ -828,9 +847,154 @@
            (:draw-count zones)))
     (is (game-schema/valid-game? (app-state/game confirmed-db)))))
 
-(deftest rejected-cup-confirmation-keeps-staged-selection
+(deftest disc-hand-card-can-grow-a_target_piece
   (let [db (app-state/initialize {:player-specs test-player-specs
-                                  :game-options {:shuffle-fn identity}
+                                  :game-options {:deck-order (deck-starting-with ["coins2"])}
+                                  :demo-board-pieces [rose-rod-minion
+                                                      indigo-rod-target]})
+        piece-db (-> db
+                     (app-state/select-move-source :play-hand-card)
+                     (app-state/select-move-hand-card "coins2")
+                     (app-state/select-move-piece :rose-rod-minion))
+        kind-db (app-state/select-move-disc-target-kind piece-db :piece)
+        target-db (app-state/select-move-target-piece kind-db :indigo-rod-target)
+        confirmed-db (app-state/confirm-move target-db)
+        zones (app-state/card-zones confirmed-db)
+        grown-piece (piece-by-id confirmed-db :indigo-medium-1)]
+    (is (= :disc (app-state/move-power piece-db)))
+    (is (= :disc-target-kind (:stage (app-state/move-selection piece-db))))
+    (is (= [:rose-rod-minion :indigo-rod-target]
+           (mapv :id (app-state/move-target-piece-options kind-db))))
+    (is (= :confirm (:stage (app-state/move-selection target-db))))
+    (is (= {:player-id :rose
+            :source {:kind :hand-card
+                     :card-id "coins2"
+                     :piece-id :rose-rod-minion}
+            :disc-variant :disc
+            :target {:kind :piece
+                     :piece-id :indigo-rod-target}}
+           (app-state/move-command target-db)))
+    (is (:ok? (get-in confirmed-db [:move-selection :last-result])))
+    (is (= {:id :indigo-medium-1
+            :player-id :indigo
+            :space-index 4
+            :size :medium
+            :orientation :north}
+           grown-piece))
+    (is (= ["coins2"] (mapv :id (:discard-pile zones))))
+    (is (not (some #{"coins2"} (map :id (:hand zones)))))
+    (is (game-schema/valid-game? (app-state/game confirmed-db)))))
+
+(deftest disc-hand-card-can-grow-a_territory_with_hand_replacement
+  (let [deck-order (deck-with-cards-at {0 "coins2"
+                                        1 "cupsking"
+                                        (board-card-position test-player-specs 4) "cups2"})
+        db (app-state/initialize {:player-specs test-player-specs
+                                  :game-options {:deck-order deck-order}
+                                  :demo-board-pieces [rose-rod-minion]})
+        kind-db (-> db
+                    (app-state/select-move-source :play-hand-card)
+                    (app-state/select-move-hand-card "coins2")
+                    (app-state/select-move-piece :rose-rod-minion)
+                    (app-state/select-move-disc-target-kind :territory))
+        target-db (app-state/select-board-card kind-db 4)
+        replacement-db (app-state/select-move-replacement-card target-db "cupsking")
+        confirmed-db (app-state/confirm-move replacement-db)
+        zones (app-state/card-zones confirmed-db)
+        grown-cell (board-cell-by-index confirmed-db 4)]
+    (is (= [4] (mapv :index (app-state/move-target-board-options kind-db))))
+    (is (= :replacement-card (:stage (app-state/move-selection target-db))))
+    (is (= ["cupsking"]
+           (mapv :id (app-state/move-replacement-card-options target-db))))
+    (is (= :confirm (:stage (app-state/move-selection replacement-db))))
+    (is (= {:player-id :rose
+            :source {:kind :hand-card
+                     :card-id "coins2"
+                     :piece-id :rose-rod-minion}
+            :disc-variant :disc
+            :target {:kind :territory
+                     :board-index 4}
+            :replacement-card-source :hand
+            :replacement-card-id "cupsking"}
+           (app-state/move-command replacement-db)))
+    (is (:ok? (get-in confirmed-db [:move-selection :last-result])))
+    (is (= "cupsking" (get-in grown-cell [:card :id])))
+    (is (= ["coins2" "cups2"] (mapv :id (:discard-pile zones))))
+    (is (not (some #{"coins2" "cupsking"} (map :id (:hand zones)))))
+    (is (game-schema/valid-game? (app-state/game confirmed-db)))))
+
+(deftest star-disc-can_offer_discard_pile_replacement_source
+  (let [deck-order (deck-with-cards-at {0 "star"
+                                        (board-card-position test-player-specs 4) "cupsking"})
+        db (app-state/initialize {:player-specs test-player-specs
+                                  :game-options {:deck-order deck-order}
+                                  :demo-board-pieces [rose-rod-minion]})
+        target-db (-> db
+                      (app-state/select-move-source :play-hand-card)
+                      (app-state/select-move-hand-card "star")
+                      (app-state/select-move-piece :rose-rod-minion)
+                      (app-state/select-move-disc-target-kind :territory)
+                      (app-state/select-board-card 4))
+        source-db (app-state/select-move-territory-card-source target-db :discard-pile)
+        replacement-db (app-state/select-move-replacement-card source-db "star")
+        confirmed-db (app-state/confirm-move replacement-db)
+        zones (app-state/card-zones confirmed-db)
+        grown-cell (board-cell-by-index confirmed-db 4)]
+    (is (= [:hand :discard-pile]
+           (mapv :id (app-state/move-territory-card-source-options target-db))))
+    (is (= :replacement-card-source
+           (:stage (app-state/move-selection target-db))))
+    (is (= ["star"]
+           (mapv :id (app-state/move-replacement-card-options source-db))))
+    (is (= {:player-id :rose
+            :source {:kind :hand-card
+                     :card-id "star"
+                     :piece-id :rose-rod-minion}
+            :disc-variant :disc-from-discard
+            :target {:kind :territory
+                     :board-index 4}
+            :replacement-card-source :discard-pile
+            :replacement-card-id "star"}
+           (app-state/move-command replacement-db)))
+    (is (:ok? (get-in confirmed-db [:move-selection :last-result])))
+    (is (= "star" (get-in grown-cell [:card :id])))
+    (is (= ["cupsking"] (mapv :id (:discard-pile zones))))
+    (is (not (some #{"star"} (map :id (:hand zones)))))
+    (is (game-schema/valid-game? (app-state/game confirmed-db)))))
+
+(deftest rejected-disc-confirmation-keeps-staged-selection
+  (let [deck-order (deck-with-cards-at {0 "coins2"
+                                        1 "cupsking"
+                                        (board-card-position test-player-specs 4) "cups2"})
+        db (app-state/initialize {:player-specs test-player-specs
+                                  :game-options {:deck-order deck-order}
+                                  :demo-board-pieces [rose-rod-minion]})
+        replacement-db (-> db
+                           (app-state/select-move-source :play-hand-card)
+                           (app-state/select-move-hand-card "coins2")
+                           (app-state/select-move-piece :rose-rod-minion)
+                           (app-state/select-move-disc-target-kind :territory)
+                           (app-state/select-board-card 4)
+                           (app-state/select-move-replacement-card "cupsking"))
+        stale-game (game-state/with-board-pieces
+                    (app-state/game replacement-db)
+                    [rose-rod-minion indigo-rod-target])
+        stale-db (assoc replacement-db :game stale-game)
+        confirmed-db (app-state/confirm-move stale-db)]
+    (is (= :confirm (:stage (app-state/move-selection stale-db))))
+    (is (= :rejected (:stage (app-state/move-selection confirmed-db))))
+    (is (= :target-territory-occupied-by-enemy
+           (get-in confirmed-db [:move-selection :error :code])))
+    (is (= (app-state/move-params stale-db)
+           (app-state/move-params confirmed-db)))
+    (is (= stale-game
+           (app-state/game confirmed-db)))))
+
+(deftest rejected-cup-confirmation-keeps-staged-selection
+  (let [deck-order (deck-with-card-at (board-card-position test-player-specs 0)
+                                      "swords2")
+        db (app-state/initialize {:player-specs test-player-specs
+                                  :game-options {:deck-order deck-order}
                                   :demo-board-pieces [rose-source-piece]})
         oriented-db (-> db
                         (app-state/select-move-source :activate-territory)

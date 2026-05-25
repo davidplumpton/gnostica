@@ -111,11 +111,33 @@
          (:title card)])]
      [:p.move-step__empty "No one-point cards available."])])
 
-(defn- territory-card-source-choices [options selected-source]
+(defn- replacement-card-choices [cards selected-card-id]
+  [:div.move-step
+   [:div.move-step__header
+    [:span "Replacement card"]
+    [:strong
+     (or (:title (some #(when (= selected-card-id (:id %)) %) cards))
+         "None")]]
+   (if (seq cards)
+     [:div.move-choice-list
+      (for [card cards]
+        ^{:key (:id card)}
+        [:button.move-chip
+         {:type "button"
+          :class (when (= selected-card-id (:id card)) "is-selected")
+          :aria-pressed (= selected-card-id (:id card))
+          :on-click #(rf/dispatch [events/select-move-replacement-card (:id card)])}
+         (:title card)])]
+     [:p.move-step__empty "No replacement cards available."])])
+
+(defn- territory-card-source-choices
+  ([options selected-source]
+   (territory-card-source-choices "Territory card" options selected-source))
+  ([label options selected-source]
   (when (< 1 (count options))
     [:div.move-step
      [:div.move-step__header
-      [:span "Territory card"]
+      [:span label]
       [:strong
        (or (:label (some #(when (= selected-source (:id %)) %) options))
            "None")]]
@@ -127,7 +149,7 @@
           :class (when (= selected-source id) "is-selected")
           :aria-pressed (= selected-source id)
           :on-click #(rf/dispatch [events/select-move-territory-card-source id])}
-         label])]]))
+         label])]])))
 
 (defn- power-choices [options selected-power]
   (when (< 1 (count options))
@@ -162,6 +184,23 @@
         :class (when (= selected-mode id) "is-selected")
         :aria-pressed (= selected-mode id)
         :on-click #(rf/dispatch [events/select-move-rod-mode id])}
+         label])]])
+
+(defn- disc-target-kind-choices [options selected-kind]
+  [:div.move-step
+   [:div.move-step__header
+    [:span "Disc move"]
+    [:strong
+     (or (:label (some #(when (= selected-kind (:id %)) %) options))
+         "None")]]
+   [:div.move-choice-list
+    (for [{:keys [id label]} options]
+      ^{:key id}
+      [:button.move-chip
+       {:type "button"
+        :class (when (= selected-kind id) "is-selected")
+        :aria-pressed (= selected-kind id)
+        :on-click #(rf/dispatch [events/select-move-disc-target-kind id])}
        label])]])
 
 (defn- piece-choice-label [board piece]
@@ -305,13 +344,42 @@
 
      nil)])
 
+(defn- disc-move-controls
+  [params board disc-target-kind-options target-piece-options target-board-options
+   replacement-source-options replacement-card-options orientation-options
+   orientation-available?]
+  [:<>
+   [disc-target-kind-choices disc-target-kind-options (:disc-target-kind params)]
+   (case (:disc-target-kind params)
+     :piece
+     [:<>
+      [target-piece-choices board target-piece-options (:target-piece-id params)]
+      (when orientation-available?
+        [orientation-choices orientation-options (:orientation params)])]
+
+     :territory
+     [:<>
+      [board-choice-grid "Target territory" target-board-options (:target-board-index params)]
+      (when (:target-board-index params)
+        [territory-card-source-choices "Replacement source"
+         replacement-source-options
+         (:replacement-card-source params)])
+      (when (and (:target-board-index params)
+                 (or (= 1 (count replacement-source-options))
+                     (:replacement-card-source params)))
+        [replacement-card-choices replacement-card-options (:replacement-card-id params)])]
+
+     nil)])
+
 (defn- move-active-controls [selection controls]
   (let [{:keys [source params]} selection
         {:keys [board power power-options rod-mode-options piece-options
+                disc-target-kind-options
                 target-piece-options hand-options source-board-options
                 target-board-options target-wasteland-options
                 territory-card-source-options one-point-card-options
-                orientation-options orientation-required? distance-options
+                replacement-card-options orientation-options orientation-required?
+                disc-orientation-available? distance-options
                 draw-options]} controls]
     (case source
       :activate-territory
@@ -339,6 +407,15 @@
                   territory-card-source-options
                   one-point-card-options
                   orientation-options]
+            :disc [disc-move-controls params
+                   board
+                   disc-target-kind-options
+                   target-piece-options
+                   target-board-options
+                   territory-card-source-options
+                   replacement-card-options
+                   orientation-options
+                   disc-orientation-available?]
             nil)])]
 
       :play-hand-card
@@ -366,6 +443,15 @@
                   territory-card-source-options
                   one-point-card-options
                   orientation-options]
+            :disc [disc-move-controls params
+                   board
+                   disc-target-kind-options
+                   target-piece-options
+                   target-board-options
+                   territory-card-source-options
+                   replacement-card-options
+                   orientation-options
+                   disc-orientation-available?]
             nil)])]
 
       :draw-cards

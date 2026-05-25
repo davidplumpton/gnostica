@@ -224,9 +224,11 @@
 (def move-power-options move-selection/move-power-options)
 (def move-power move-selection/move-power)
 (def move-rod-mode-options move-selection/move-rod-mode-options)
+(def move-disc-target-kind-options move-selection/move-disc-target-kind-options)
 (def move-distance-options move-selection/move-distance-options)
 (def move-target-piece-options move-selection/move-target-piece-options)
 (def move-rod-orientation-required? move-selection/move-rod-orientation-required?)
+(def move-disc-orientation-available? move-selection/move-disc-orientation-available?)
 (def move-ready? move-selection/move-ready?)
 (def move-prompt move-selection/move-prompt)
 (def select-move-source move-selection/select-move-source)
@@ -243,9 +245,11 @@
 (def select-move-hand-card move-selection/select-move-hand-card)
 (def select-move-power move-selection/select-move-power)
 (def select-move-rod-mode move-selection/select-move-rod-mode)
+(def select-move-disc-target-kind move-selection/select-move-disc-target-kind)
 (def select-move-target-piece move-selection/select-move-target-piece)
 (def select-move-territory-card-source move-selection/select-move-territory-card-source)
 (def select-move-one-point-card move-selection/select-move-one-point-card)
+(def select-move-replacement-card move-selection/select-move-replacement-card)
 (def set-move-orientation move-selection/set-move-orientation)
 (def set-move-draw-count move-selection/set-move-draw-count)
 (def set-move-distance move-selection/set-move-distance)
@@ -255,16 +259,17 @@
 (def move-target-board-options move-selection/move-target-board-options)
 (def move-one-point-card-options move-selection/move-one-point-card-options)
 (def move-territory-card-source-options move-selection/move-territory-card-source-options)
+(def move-replacement-card-options move-selection/move-replacement-card-options)
 (def move-orientation-options move-selection/move-orientation-options)
 (def move-command move-selection/move-command)
 
 (defn move-panel-view-model
   [{:keys [current-player selection source-options prompt ready?
-           board power power-options rod-mode-options piece-options
+           board power power-options rod-mode-options disc-target-kind-options piece-options
            target-piece-options hand-options source-board-options
            target-board-options target-wasteland-options
-           territory-card-source-options one-point-card-options
-           orientation-options orientation-required? distance-options
+           territory-card-source-options one-point-card-options replacement-card-options
+           orientation-options orientation-required? disc-orientation-available? distance-options
            draw-options]}]
   {:current-player current-player
    :selection selection
@@ -275,6 +280,7 @@
               :power power
               :power-options power-options
               :rod-mode-options rod-mode-options
+              :disc-target-kind-options disc-target-kind-options
               :piece-options piece-options
               :target-piece-options target-piece-options
               :hand-options hand-options
@@ -283,8 +289,10 @@
               :target-wasteland-options target-wasteland-options
               :territory-card-source-options territory-card-source-options
               :one-point-card-options one-point-card-options
+              :replacement-card-options replacement-card-options
               :orientation-options orientation-options
               :orientation-required? orientation-required?
+              :disc-orientation-available? disc-orientation-available?
               :distance-options distance-options
               :draw-options draw-options}})
 
@@ -299,6 +307,7 @@
     :power (move-power db)
     :power-options (move-power-options db)
     :rod-mode-options (move-rod-mode-options db)
+    :disc-target-kind-options (move-disc-target-kind-options db)
     :piece-options (move-piece-options db)
     :target-piece-options (move-target-piece-options db)
     :hand-options (move-hand-card-options db)
@@ -307,8 +316,10 @@
     :target-wasteland-options (move-target-wasteland-options db)
     :territory-card-source-options (move-territory-card-source-options db)
     :one-point-card-options (move-one-point-card-options db)
+    :replacement-card-options (move-replacement-card-options db)
     :orientation-options (move-orientation-options db)
     :orientation-required? (move-rod-orientation-required? db)
+    :disc-orientation-available? (move-disc-orientation-available? db)
     :distance-options (move-distance-options db)
     :draw-options (draw-count-options db)}))
 
