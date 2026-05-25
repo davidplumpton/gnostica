@@ -71,6 +71,9 @@
 (defn apply-disc-move [state command]
   (disc/apply-disc-move state command))
 
+(defn apply-sun-move [state command]
+  (disc/apply-sun-move state command))
+
 (defn apply-draw-move [state command]
   (draw/apply-draw-move state command))
 

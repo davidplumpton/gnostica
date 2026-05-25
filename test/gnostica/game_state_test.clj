@@ -1271,6 +1271,205 @@
     (is (= (count cards/deck) (count (set (all-card-ids state)))))
     (is (game-schema/valid-game? state))))
 
+(deftest star-disc-orients-minion-before-targeting
+  (let [deck-order (deck-with-cards-at {0 "star"
+                                        (board-deck-position 4) "cupsking"})
+        state (:state (game-state/create-game player-specs {:deck-order deck-order}))
+        state (game-state/with-board-pieces
+               state
+               [(assoc rose-disc-minion :orientation :north)])
+        command {:player-id :rose
+                 :source {:kind :hand-card
+                          :card-id "star"
+                          :piece-id :rose-disc-minion}
+                 :minion-orientation :east
+                 :target {:kind :territory
+                          :board-index 4}
+                 :replacement-card-source :discard-pile
+                 :replacement-card-id "star"}
+        {:keys [ok? state events]} (game-state/apply-disc-move state command)]
+    (is ok?)
+    (is (= [:piece/oriented :disc/territory-grown]
+           (mapv :type events)))
+    (is (= :east (:orientation (piece-by-id state :rose-disc-minion))))
+    (is (= "star" (get-in (board-cell-by-index state 4) [:card :id])))
+    (is (= ["cupsking"] (mapv :id (:discard-pile state))))
+    (is (game-schema/valid-game? state))))
+
+(deftest strength-disc-can_skip_intermediate_piece_size
+  (let [small-minion (assoc rose-disc-minion :size :small)
+        medium-pieces [{:id :rose-medium-a
+                        :player-id :rose
+                        :space-index 0
+                        :size :medium
+                        :orientation :north}
+                       {:id :rose-medium-b
+                        :player-id :rose
+                        :space-index 1
+                        :size :medium
+                        :orientation :east}
+                       {:id :rose-medium-c
+                        :player-id :rose
+                        :space-index 2
+                        :size :medium
+                        :orientation :south}
+                       {:id :rose-medium-d
+                        :player-id :rose
+                        :space-index 4
+                        :size :medium
+                        :orientation :west}
+                       {:id :rose-medium-e
+                        :player-id :rose
+                        :space-index 5
+                        :size :medium
+                        :orientation :up}]
+        state (:state (game-state/create-game
+                       player-specs
+                       {:deck-order (deck-starting-with ["strength"])}))
+        state (game-state/with-board-pieces
+               state
+               (vec (cons small-minion medium-pieces)))
+        {:keys [ok? state events]} (game-state/apply-disc-move
+                                    state
+                                    {:player-id :rose
+                                     :source {:kind :hand-card
+                                              :card-id "strength"
+                                              :piece-id :rose-disc-minion}
+                                     :disc-actions [{:target {:kind :piece
+                                                              :piece-id :rose-disc-minion}}
+                                                    {:target {:kind :piece
+                                                              :piece-id :rose-disc-minion}}]})
+        grown-piece (piece-by-id state :rose-large-1)]
+    (is ok?)
+    (is (= {:id :rose-large-1
+            :player-id :rose
+            :space-index 3
+            :size :large
+            :orientation :east}
+           grown-piece))
+    (is (= ["strength"] (mapv :id (:discard-pile state))))
+    (is (= :small (get-in events [0 :from-size])))
+    (is (= :large (get-in events [0 :to-size])))
+    (is (= 2 (get-in events [0 :action-count])))
+    (is (true? (get-in events [0 :shortcut?])))
+    (is (= 0 (get-in state [:pieces :stashes :rose :medium])))
+    (is (game-schema/valid-game? state))))
+
+(deftest strength-disc-can_skip_intermediate_territory_value
+  (let [deck-order (deck-with-cards-at {0 "strength"
+                                        1 "star"
+                                        (board-deck-position 4) "cups2"})
+        state (:state (game-state/create-game player-specs {:deck-order deck-order}))
+        state (game-state/with-board-pieces state [rose-disc-minion])
+        {:keys [ok? state events]} (game-state/apply-disc-move
+                                    state
+                                    {:player-id :rose
+                                     :source {:kind :hand-card
+                                              :card-id "strength"
+                                              :piece-id :rose-disc-minion}
+                                     :disc-actions [{:target {:kind :territory
+                                                              :board-index 4}}
+                                                    {:target {:kind :territory
+                                                              :board-index 4}
+                                                     :replacement-card-id "star"}]})
+        grown-cell (board-cell-by-index state 4)]
+    (is ok?)
+    (is (= "star" (get-in grown-cell [:card :id])))
+    (is (= ["strength" "cups2"] (mapv :id (:discard-pile state))))
+    (is (= 1 (get-in events [0 :from-value])))
+    (is (= 3 (get-in events [0 :to-value])))
+    (is (= 2 (get-in events [0 :action-count])))
+    (is (true? (get-in events [0 :shortcut?])))
+    (is (not (some #{"strength" "star"} (player-hand-ids state :rose))))
+    (is (game-schema/valid-game? state))))
+
+(deftest sun-move-applies_cup_then_disc_to_created_piece
+  (let [small-pieces [{:id :rose-small-a
+                       :player-id :rose
+                       :space-index 0
+                       :size :small
+                       :orientation :north}
+                      {:id :rose-small-b
+                       :player-id :rose
+                       :space-index 1
+                       :size :small
+                       :orientation :east}
+                      {:id :rose-small-c
+                       :player-id :rose
+                       :space-index 2
+                       :size :small
+                       :orientation :south}
+                      {:id :rose-small-d
+                       :player-id :rose
+                       :space-index 5
+                       :size :small
+                       :orientation :west}
+                      {:id :rose-small-e
+                       :player-id :rose
+                       :space-index 6
+                       :size :small
+                       :orientation :up}]
+        state (:state (game-state/create-game
+                       player-specs
+                       {:deck-order (deck-starting-with ["sun"])}))
+        state (game-state/with-board-pieces
+               state
+               (vec (cons rose-disc-minion small-pieces)))
+        {:keys [ok? state events]} (game-state/apply-sun-move
+                                    state
+                                    {:player-id :rose
+                                     :source {:kind :hand-card
+                                              :card-id "sun"
+                                              :piece-id :rose-disc-minion}
+                                     :cup {:target {:kind :territory
+                                                    :board-index 4}
+                                           :orientation :north}
+                                     :disc {:target {:kind :created-piece}
+                                            :orientation :south}})
+        grown-piece (piece-by-id state :rose-medium-1)]
+    (is ok?)
+    (is (= [:sun/piece-created-and-grown]
+           (mapv :type events)))
+    (is (= {:id :rose-medium-1
+            :player-id :rose
+            :space-index 4
+            :size :medium
+            :orientation :south}
+           grown-piece))
+    (is (= ["sun"] (mapv :id (:discard-pile state))))
+    (is (not (some #{"sun"} (player-hand-ids state :rose))))
+    (is (= 0 (get-in state [:pieces :stashes :rose :small])))
+    (is (= 3 (get-in state [:pieces :stashes :rose :medium])))
+    (is (game-schema/valid-game? state))))
+
+(deftest sun-move-can_skip_one_point_territory_creation
+  (let [state (:state (game-state/create-game
+                       player-specs
+                       {:deck-order (deck-starting-with ["sun" "cupsking"])}))
+        state (game-state/with-board-pieces state [rose-disc-minion])
+        {:keys [ok? state events]} (game-state/apply-sun-move
+                                    state
+                                    {:player-id :rose
+                                     :source {:kind :hand-card
+                                              :card-id "sun"
+                                              :piece-id :rose-disc-minion}
+                                     :cup {:target {:kind :wasteland
+                                                    :row 0
+                                                    :col 3}}
+                                     :disc {:target {:kind :created-territory}
+                                            :replacement-card-id "cupsking"}})
+        created-cell (last (:board state))]
+    (is ok?)
+    (is (= [:sun/territory-created-and-grown]
+           (mapv :type events)))
+    (is (= {:row 0
+            :col 3}
+           (select-keys created-cell [:row :col])))
+    (is (= "cupsking" (get-in created-cell [:card :id])))
+    (is (= ["sun"] (mapv :id (:discard-pile state))))
+    (is (not (some #{"sun" "cupsking"} (player-hand-ids state :rose))))
+    (is (game-schema/valid-game? state))))
+
 (deftest disc-move-rejects-missing-or-invalid-territory_replacements_without_mutation
   (let [deck-order (deck-with-cards-at {0 "sun"
                                         (board-deck-position 3) "coins2"
