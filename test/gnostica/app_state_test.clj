@@ -125,6 +125,8 @@
            (app-state/selected-board-index db)))
     (is (= :always
            (app-state/card-icon-mode db)))
+    (is (= app-state/default-open-panels
+           (app-state/open-panels db)))
     (is (false? (app-state/hotkey-help-open? db)))
     (is (false? (app-state/icon-help-open? db)))
     (is (= app-state/default-three-runtime-status
@@ -176,6 +178,19 @@
     (is (= :always
            (app-state/card-icon-mode
             (app-state/set-card-icon-mode db :unknown))))))
+
+(deftest overlay-panels-can-be-initialized-and-toggled
+  (let [db (app-state/initialize {:game-options {:shuffle-fn identity}
+                                  :open-panels #{:cards :unknown}})
+        move-open-db (app-state/set-panel-open db :move true)
+        cards-closed-db (app-state/toggle-panel move-open-db :cards)]
+    (is (= #{:cards} (app-state/open-panels db)))
+    (is (true? (app-state/panel-open? db :cards)))
+    (is (false? (app-state/panel-open? db :move)))
+    (is (= #{:cards :move} (app-state/open-panels move-open-db)))
+    (is (= #{:move} (app-state/open-panels cards-closed-db)))
+    (is (= cards-closed-db
+           (app-state/toggle-panel cards-closed-db :unknown)))))
 
 (deftest hotkey-help-visibility-can-be-controlled
   (let [db (app-state/initialize {:game-options {:shuffle-fn identity}})]
@@ -324,11 +339,13 @@
     (is (= 0 (get-in territory-view [:cell :index])))
     (is (= [rose-source-piece] (:selected-pieces territory-view)))
     (is (= :rose (get-in header-view [:current-player :id])))
+    (is (= app-state/default-open-panels (:open-panels header-view)))
     (is (seq (:source-options move-view)))
     (is (contains? (:controls move-view) :piece-options))
     (is (true? (:hotkey-help-open? help-view)))
     (is (false? (:icon-help-open? help-view)))
     (is (= :always (:card-icon-mode app-view)))
+    (is (= app-state/default-open-panels (:open-panels app-view)))
     (is (nil? (:setup-error app-view)))))
 
 (defn- source-option [db source-id]

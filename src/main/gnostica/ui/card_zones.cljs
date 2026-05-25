@@ -44,7 +44,8 @@
   (let [{:keys [current-player card-icon-mode zones]} @(rf/subscribe [events/card-zones-view])
         {:keys [hand draw-count discard-count discard-top-card]} zones]
     [:section.card-zones
-     {:data-hand-count (count hand)
+     {:id "cards-panel"
+      :data-hand-count (count hand)
       :data-draw-count draw-count
       :data-discard-count discard-count}
      [:div.card-zones__header
@@ -54,7 +55,13 @@
         (if current-player
           (str (:name current-player) " hand")
           "Current hand")]]
-      [:span.card-zones__count (ui/card-count-label (count hand))]]
+      [:div.panel-heading-actions
+       [:span.card-zones__count (ui/card-count-label (count hand))]
+       [:button.panel-close
+        {:type "button"
+         :aria-label "Close cards panel"
+         :on-click #(rf/dispatch [events/set-panel-open :cards false])}
+        "Close"]]]
      [:div.hand-card-grid
       (for [card hand]
         ^{:key (:id card)}

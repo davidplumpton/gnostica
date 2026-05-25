@@ -22,8 +22,13 @@
 
 (def happy-stats-js
   "(() => {
+     const header = document.querySelector('.app-header');
+     const headerRect = header ? header.getBoundingClientRect() : null;
+     const shell = document.querySelector('.app-shell');
+     const shellRect = shell ? shell.getBoundingClientRect() : null;
      const board = document.querySelector('.board-three');
      const canvas = document.querySelector('.board-three__canvas');
+     const boardRect = board ? board.getBoundingClientRect() : null;
      const rect = canvas ? canvas.getBoundingClientRect() : null;
      const antialiasSupported = (() => {
        const probe = document.createElement('canvas');
@@ -56,6 +61,11 @@
      };
      return {
        url: location.href,
+       viewportWidth: window.innerWidth,
+       viewportHeight: window.innerHeight,
+       viewportAvailableHeight: Math.round(window.innerHeight - (headerRect ? headerRect.height : 0)),
+       shellClientWidth: shellRect ? Math.round(shellRect.width) : 0,
+       shellClientHeight: shellRect ? Math.round(shellRect.height) : 0,
        cardIconMode: (document.querySelector('.app-shell') || {}).dataset.cardIconMode || null,
        threeRevision: window.THREE ? window.THREE.REVISION : null,
        orbitControls: Boolean(window.THREE && window.THREE.OrbitControls),
@@ -80,6 +90,8 @@
        canvas: Boolean(canvas),
        canvasWidth: canvas ? canvas.width : 0,
        canvasHeight: canvas ? canvas.height : 0,
+       boardClientWidth: boardRect ? Math.round(boardRect.width) : 0,
+       boardClientHeight: boardRect ? Math.round(boardRect.height) : 0,
        canvasClientWidth: rect ? Math.round(rect.width) : 0,
        canvasClientHeight: rect ? Math.round(rect.height) : 0,
        antialiasRequested: board ? board.dataset.antialiasRequested === 'true' : false,
@@ -388,11 +400,25 @@
 
 (defn happy-ready? [stats]
   (let [visible-piece-count (long (or (get stats "visiblePieceCount") -1))
-        piece-edge-outline-count (long (or (get stats "pieceEdgeOutlineCount") -1))]
+        piece-edge-outline-count (long (or (get stats "pieceEdgeOutlineCount") -1))
+        viewport-width (long (or (get stats "viewportWidth") 0))
+        viewport-height (long (or (get stats "viewportAvailableHeight") 0))
+        shell-width (long (or (get stats "shellClientWidth") 0))
+        shell-height (long (or (get stats "shellClientHeight") 0))
+        board-width (long (or (get stats "boardClientWidth") 0))
+        board-height (long (or (get stats "boardClientHeight") 0))
+        canvas-width (long (or (get stats "canvasClientWidth") 0))
+        canvas-height (long (or (get stats "canvasClientHeight") 0))]
     (and (= "128" (get stats "threeRevision"))
          (= "always" (get stats "cardIconMode"))
          (true? (get stats "orbitControls"))
          (true? (get stats "board"))
+         (<= (- viewport-width 2) shell-width)
+         (<= (- viewport-height 2) shell-height)
+         (<= (- shell-width 2) board-width)
+         (<= (- shell-height 2) board-height)
+         (<= (- board-width 2) canvas-width)
+         (<= (- board-height 2) canvas-height)
          (= "always" (get stats "boardCardIconMode"))
          (= 2 (long (or (get stats "majorIconCardCount") -1)))
          (= 5 (long (or (get stats "majorIconCount") -1)))
@@ -404,8 +430,8 @@
          (= expected-table-clear-color (get stats "tableClearColor"))
          (false? (get stats "fallback"))
          (true? (get stats "canvas"))
-         (pos? (long (or (get stats "canvasClientWidth") 0)))
-         (pos? (long (or (get stats "canvasClientHeight") 0)))
+         (pos? canvas-width)
+         (pos? canvas-height)
          (antialias-ready? stats)
          (roughly= 3.2 (double (or (get stats "minZoomDistance") -1)) 0.001)
          (roughly= 10.0 (double (or (get stats "maxZoomDistance") -1)) 0.001)

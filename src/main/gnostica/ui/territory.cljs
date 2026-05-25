@@ -9,8 +9,15 @@
         {:keys [row col orientation card]} cell
         {:keys [title group rank]} card]
     [:aside.territory-panel
-     {:class (when-not (seq selected-pieces) "is-empty")}
-     [:p.eyebrow "Territory"]
+     {:id "territory-panel"
+      :class (when-not (seq selected-pieces) "is-empty")}
+     [:div.territory-panel__heading
+      [:p.eyebrow "Territory"]
+      [:button.panel-close
+       {:type "button"
+        :aria-label "Close territory panel"
+        :on-click #(rf/dispatch [events/set-panel-open :territory false])}
+       "Close"]]
      [:h1 title]
      [:dl.territory-facts
       [:div

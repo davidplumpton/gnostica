@@ -15,6 +15,12 @@
 
 (def default-icon-help-open? false)
 
+(def panel-ids
+  #{:cards :move :territory})
+
+(def default-open-panels
+  #{:cards})
+
 (def default-three-runtime-status
   {:ok? false
    :code :three-unchecked
@@ -26,6 +32,9 @@
   #{:always :popup})
 
 (def empty-move-selection move-selection/empty-move-selection)
+
+(defn normalize-open-panels [open-panels]
+  (set (filter panel-ids open-panels)))
 
 (defn- state-with-demo-board-pieces [state opts]
   (if (contains? opts :demo-board-pieces)
@@ -46,15 +55,17 @@
 (defn initialize
   ([] (initialize {}))
   ([{:keys [player-specs game-options selected-board-index card-icon-mode
-            three-runtime-status]
+            open-panels three-runtime-status]
      :as opts
      :or {player-specs default-player-specs
           game-options {}
           selected-board-index default-selected-board-index
-          card-icon-mode default-card-icon-mode}}]
+          card-icon-mode default-card-icon-mode
+          open-panels default-open-panels}}]
    (let [result (game-state/create-game player-specs game-options)
          base-db {:selected-board-index selected-board-index
                   :card-icon-mode (normalize-card-icon-mode card-icon-mode)
+                  :open-panels (normalize-open-panels open-panels)
                   :hotkey-help-open? default-hotkey-help-open?
                   :icon-help-open? default-icon-help-open?
                   :move-selection (empty-move-selection)
@@ -96,6 +107,26 @@
                       (if (= :always (card-icon-mode db))
                         :popup
                         :always)))
+
+(defn open-panels [db]
+  (if (contains? db :open-panels)
+    (normalize-open-panels (:open-panels db))
+    default-open-panels))
+
+(defn panel-open? [db panel-id]
+  (contains? (open-panels db) panel-id))
+
+(defn set-panel-open [db panel-id open?]
+  (if (contains? panel-ids panel-id)
+    (update db :open-panels
+            (fn [open-panels]
+              ((if open? conj disj)
+               (normalize-open-panels (or open-panels default-open-panels))
+               panel-id)))
+    db))
+
+(defn toggle-panel [db panel-id]
+  (set-panel-open db panel-id (not (panel-open? db panel-id))))
 
 (defn hotkey-help-open? [db]
   (true? (:hotkey-help-open? db)))
@@ -237,7 +268,11 @@
 
 (defn select-board-card [db index]
   (if (contains? (board db) index)
-    (select-board-for-active-move (assoc db :selected-board-index index) index)
+    (select-board-for-active-move
+     (-> db
+         (assoc :selected-board-index index)
+         (set-panel-open :territory true))
+     index)
     db))
 
 (def select-move-wasteland-target move-selection/select-move-wasteland-target)
@@ -323,14 +358,16 @@
     :distance-options (move-distance-options db)
     :draw-options (draw-count-options db)}))
 
-(defn header-view-model [{:keys [current-player card-icon-mode]}]
+(defn header-view-model [{:keys [current-player card-icon-mode open-panels]}]
   {:current-player current-player
-   :card-icon-mode card-icon-mode})
+   :card-icon-mode card-icon-mode
+   :open-panels (normalize-open-panels open-panels)})
 
 (defn header-view [db]
   (header-view-model
    {:current-player (current-player db)
-    :card-icon-mode (card-icon-mode db)}))
+    :card-icon-mode (card-icon-mode db)
+    :open-panels (open-panels db)}))
 
 (defn help-dialogs-view-model
   [{:keys [hotkey-help-open? icon-help-open?]}]
@@ -343,14 +380,16 @@
     :icon-help-open? (icon-help-open? db)}))
 
 (defn app-view-model
-  [{:keys [setup-error card-icon-mode]}]
+  [{:keys [setup-error card-icon-mode open-panels]}]
   {:setup-error setup-error
-   :card-icon-mode card-icon-mode})
+   :card-icon-mode card-icon-mode
+   :open-panels (normalize-open-panels open-panels)})
 
 (defn app-view [db]
   (app-view-model
    {:setup-error (setup-error db)
-    :card-icon-mode (card-icon-mode db)}))
+    :card-icon-mode (card-icon-mode db)
+    :open-panels (open-panels db)}))
 
 (defn confirm-move
   ([db] (move-selection/confirm-move db))

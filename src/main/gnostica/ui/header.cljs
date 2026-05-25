@@ -38,13 +38,35 @@
     {:aria-hidden "true"}
     [icon-view/gnostica-icon :world]]])
 
+(def panel-toggle-labels
+  {:move "Move"
+   :territory "Territory"
+   :cards "Cards"})
+
+(defn- panel-toggle [open-panels panel-id]
+  (let [open? (contains? open-panels panel-id)
+        label (get panel-toggle-labels panel-id)]
+    [:button.panel-toggle
+     {:type "button"
+      :class (when open? "is-active")
+      :aria-controls (str (name panel-id) "-panel")
+      :aria-expanded open?
+      :data-short-label (subs label 0 1)
+      :title (str label " panel")
+      :on-click #(rf/dispatch [events/toggle-panel panel-id])}
+     label]))
+
 (defn app-header []
-  (let [{:keys [current-player card-icon-mode]} @(rf/subscribe [events/header-view])]
+  (let [{:keys [current-player card-icon-mode open-panels]} @(rf/subscribe [events/header-view])]
     [:header.app-header
      [:div.brand
       [:span.brand__mark "G"]
       [:span.brand__name "Gnostica"]]
      [:div.app-header__actions
+      [:div.panel-toggles
+       [panel-toggle open-panels :move]
+       [panel-toggle open-panels :territory]
+       [panel-toggle open-panels :cards]]
       [hotkey-help-toggle]
       [icon-help-toggle]
       [card-icon-mode-toggle card-icon-mode]

@@ -480,12 +480,19 @@
         @(rf/subscribe [events/move-panel-view])
         {:keys [source error]} selection]
     [:section.move-panel
-     {:class (if source "is-active" "is-idle")}
+     {:id "move-panel"
+      :class (if source "is-active" "is-idle")}
      [:div.move-panel__heading
       [:p.eyebrow "Move"]
-      [:h2 (if current-player
-             (:name current-player)
-             "No player")]]
+      [:div.panel-heading-actions
+       [:h2 (if current-player
+              (:name current-player)
+              "No player")]
+       [:button.panel-close
+        {:type "button"
+         :aria-label "Close move panel"
+         :on-click #(rf/dispatch [events/set-panel-open :move false])}
+        "Close"]]]
      [move-source-picker source-options source]
      [:p.move-panel__prompt prompt]
      (when source

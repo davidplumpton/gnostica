@@ -28,6 +28,8 @@
 (def confirm-move :gnostica.app/confirm-move)
 (def cancel-move :gnostica.app/cancel-move)
 (def toggle-card-icon-mode :gnostica.app/toggle-card-icon-mode)
+(def toggle-panel :gnostica.app/toggle-panel)
+(def set-panel-open :gnostica.app/set-panel-open)
 (def open-hotkey-help :gnostica.app/open-hotkey-help)
 (def close-hotkey-help :gnostica.app/close-hotkey-help)
 (def open-icon-help :gnostica.app/open-icon-help)
@@ -72,6 +74,7 @@
 (def move-orientation-options :gnostica.app/move-orientation-options)
 (def draw-count-options :gnostica.app/draw-count-options)
 (def card-icon-mode :gnostica.app/card-icon-mode)
+(def open-panels :gnostica.app/open-panels)
 (def hotkey-help-open? :gnostica.app/hotkey-help-open?)
 (def icon-help-open? :gnostica.app/icon-help-open?)
 
@@ -210,6 +213,16 @@ select-move-rod-mode
  toggle-card-icon-mode
  (fn [db _]
    (app-state/toggle-card-icon-mode db)))
+
+(rf/reg-event-db
+ toggle-panel
+ (fn [db [_ panel-id]]
+   (app-state/toggle-panel db panel-id)))
+
+(rf/reg-event-db
+ set-panel-open
+ (fn [db [_ panel-id open?]]
+   (app-state/set-panel-open db panel-id open?)))
 
 (rf/reg-event-db
  open-hotkey-help
@@ -442,6 +455,11 @@ move-rod-orientation-required?
    (app-state/card-icon-mode db)))
 
 (rf/reg-sub
+ open-panels
+ (fn [db _]
+   (app-state/open-panels db)))
+
+(rf/reg-sub
  hotkey-help-open?
  (fn [db _]
    (app-state/hotkey-help-open? db)))
@@ -455,19 +473,23 @@ move-rod-orientation-required?
  app-view
  :<- [setup-error]
  :<- [card-icon-mode]
- (fn [[setup-error card-icon-mode] _]
+ :<- [open-panels]
+ (fn [[setup-error card-icon-mode open-panels] _]
    (app-state/app-view-model
     {:setup-error setup-error
-     :card-icon-mode card-icon-mode})))
+     :card-icon-mode card-icon-mode
+     :open-panels open-panels})))
 
 (rf/reg-sub
  header-view
  :<- [current-player]
  :<- [card-icon-mode]
- (fn [[current-player card-icon-mode] _]
+ :<- [open-panels]
+ (fn [[current-player card-icon-mode open-panels] _]
    (app-state/header-view-model
     {:current-player current-player
-     :card-icon-mode card-icon-mode})))
+     :card-icon-mode card-icon-mode
+     :open-panels open-panels})))
 
 (rf/reg-sub
  board-view
