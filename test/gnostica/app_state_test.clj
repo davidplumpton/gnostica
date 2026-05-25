@@ -1086,29 +1086,63 @@
     (is (= stale-game
            (app-state/game confirmed-db)))))
 
-(deftest rejected-cup-confirmation-keeps-staged-selection
+(deftest sword-only-territory-source-reports-unavailable-transition
   (let [deck-order (deck-with-card-at (board-card-position test-player-specs 0)
                                       "swords2")
         db (app-state/initialize {:player-specs test-player-specs
                                   :game-options {:deck-order deck-order}
                                   :demo-board-pieces [rose-source-piece]})
-        oriented-db (-> db
-                        (app-state/select-move-source :activate-territory)
-                        (app-state/select-move-piece :rose-scout)
-                        (app-state/select-board-card 4)
-                        (app-state/set-move-orientation :north))
-        confirmed-db (app-state/confirm-move oriented-db)]
+        staged-db (-> db
+                      (app-state/select-move-source :activate-territory)
+                      (app-state/select-move-piece :rose-scout))
+        confirmed-db (app-state/confirm-move staged-db)]
+    (is (= :sword (app-state/move-power staged-db)))
+    (is (= [:sword] (mapv :id (app-state/move-power-options staged-db))))
+    (is (= :confirm (:stage (app-state/move-selection staged-db))))
+    (is (= {:player-id :rose
+            :source {:kind :territory
+                     :board-index 0
+                     :piece-id :rose-scout}
+            :power :sword
+            :sword-variant :sword}
+           (app-state/move-command staged-db)))
     (is (= :rejected (:stage (app-state/move-selection confirmed-db))))
-    (is (= :source-card-not-cup
+    (is (= :move-transition-unavailable
            (get-in confirmed-db [:move-selection :error :code])))
-    (is (= (app-state/move-params oriented-db)
+    (is (= (app-state/move-params staged-db)
            (app-state/move-params confirmed-db)))
-    (is (= (app-state/game oriented-db)
+    (is (= (app-state/game staged-db)
+           (app-state/game confirmed-db)))))
+
+(deftest sword-only-hand-card-source-reports-unavailable-transition
+  (let [db (app-state/initialize {:player-specs test-player-specs
+                                  :game-options {:deck-order (deck-starting-with ["swords2"])}
+                                  :demo-board-pieces [rose-source-piece]})
+        staged-db (-> db
+                      (app-state/select-move-source :play-hand-card)
+                      (app-state/select-move-hand-card "swords2")
+                      (app-state/select-move-piece :rose-scout))
+        confirmed-db (app-state/confirm-move staged-db)]
+    (is (= :sword (app-state/move-power staged-db)))
+    (is (= :confirm (:stage (app-state/move-selection staged-db))))
+    (is (= {:player-id :rose
+            :source {:kind :hand-card
+                     :card-id "swords2"
+                     :piece-id :rose-scout}
+            :power :sword
+            :sword-variant :sword}
+           (app-state/move-command staged-db)))
+    (is (= :move-transition-unavailable
+           (get-in confirmed-db [:move-selection :error :code])))
+    (is (= (app-state/game staged-db)
            (app-state/game confirmed-db)))))
 
 (deftest incomplete-moves-report_recoverable_errors
-  (let [db (app-state/initialize {:game-options {:shuffle-fn identity}
-                                  :demo-board-pieces fixtures/demo-board-pieces})
+  (let [deck-order (deck-with-card-at (board-card-position test-player-specs 0)
+                                      "cups2")
+        db (app-state/initialize {:player-specs test-player-specs
+                                  :game-options {:deck-order deck-order}
+                                  :demo-board-pieces [rose-source-piece]})
         source-db (app-state/select-move-source db :activate-territory)
         confirmed-db (app-state/confirm-move source-db)
         recovered-db (app-state/select-move-piece confirmed-db :rose-scout)]

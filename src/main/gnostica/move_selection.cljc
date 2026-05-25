@@ -39,7 +39,7 @@
     :requirements [:target-space :orientation]}})
 
 (def move-power-order
-  [:cup :rod :disc])
+  [:cup :rod :disc :sword])
 
 (def move-power-definitions
   {:cup {:id :cup
@@ -47,7 +47,9 @@
    :rod {:id :rod
          :label "Rod"}
    :disc {:id :disc
-          :label "Disc"}})
+          :label "Disc"}
+   :sword {:id :sword
+           :label "Sword"}})
 
 (def rod-mode-order
   [:move-minion
@@ -216,7 +218,8 @@
     (cond-> []
       (cards/cup-card? card) (conj :cup)
       (cards/rod-card? card) (conj :rod)
-      (cards/disc-card? card) (conj :disc))))
+      (cards/disc-card? card) (conj :disc)
+      (cards/sword-card? card) (conj :sword))))
 
 (defn- selected-power [db source-id params]
   (when (gameplay-move-source? source-id)
@@ -231,7 +234,7 @@
         (first power-options)
 
         (and card (empty? power-options))
-        :cup
+        :unavailable
 
         :else
         nil))))
@@ -262,6 +265,13 @@
 (defn- selected-disc-variant [db source-id params]
   (when (disc-move? db source-id params)
     (cards/disc-variant (source-card db source-id params))))
+
+(defn- sword-move? [db source-id params]
+  (= :sword (selected-power db source-id params)))
+
+(defn- selected-sword-variant [db source-id params]
+  (when (sword-move? db source-id params)
+    (cards/sword-variant (source-card db source-id params))))
 
 (defn- one-point-card-options-for [db source-id params]
   (let [source-card-id (source-hand-card-id source-id params)]
@@ -1507,6 +1517,26 @@
   (assoc (disc-target-command db source params)
          :disc-variant (selected-disc-variant db source params)))
 
+(defn- sword-command [db source params]
+  (let [sword-variant (selected-sword-variant db source params)]
+    (cond-> {:power :sword}
+      sword-variant
+      (assoc :sword-variant sword-variant))))
+
+(defn- unavailable-power-command [db source params]
+  (let [card (source-card db source params)]
+    (cond-> {:power (selected-power db source params)}
+      card
+      (assoc :card-id (:id card)))))
+
+(defn- gameplay-power-command [db source params]
+  (case (selected-power db source params)
+    :rod (rod-command db source params)
+    :disc (disc-command db source params)
+    :cup (cup-command db source params)
+    :sword (sword-command db source params)
+    (unavailable-power-command db source params)))
+
 (defn move-command [db]
   (let [{:keys [source params]} (move-selection db)]
     (when source
@@ -1514,20 +1544,12 @@
         :activate-territory
         (merge {:player-id (current-player-id db)
                 :source (source-command source params)}
-               (case (selected-power db source params)
-                 :rod (rod-command db source params)
-                 :disc (disc-command db source params)
-                 :cup (cup-command db source params)
-                 (cup-command db source params)))
+               (gameplay-power-command db source params))
 
         :play-hand-card
         (merge {:player-id (current-player-id db)
                 :source (source-command source params)}
-               (case (selected-power db source params)
-                 :rod (rod-command db source params)
-                 :disc (disc-command db source params)
-                 :cup (cup-command db source params)
-                 (cup-command db source params)))
+               (gameplay-power-command db source params))
 
         :draw-cards
         {:source :draw-cards
