@@ -454,6 +454,40 @@
 (defn- piece-space [piece]
   (select-keys piece [:space-index :space]))
 
+(defn- discard-pile-card [state card-id]
+  (some (fn [card]
+          (when (= card-id (:id card))
+            card))
+        (:discard-pile state)))
+
+(defn- remove-card-from-discard [state card-id]
+  (update state :discard-pile
+          (fn [discard-pile]
+            (vec (remove #(= card-id (:id %)) discard-pile)))))
+
+(defn- replace-board-cell-card [state board-index replacement-card]
+  (update state :board
+          (fn [cells]
+            (mapv (fn [cell]
+                    (if (= board-index (:index cell))
+                      (assoc cell :card replacement-card)
+                      cell))
+                  cells))))
+
+(defn- replacement-card-from-source
+  [state player-id replacement-card-source replacement-card-id]
+  (case replacement-card-source
+    :hand (core/player-hand-card state player-id replacement-card-id)
+    :discard-pile (discard-pile-card state replacement-card-id)
+    nil))
+
+(defn- remove-replacement-card
+  [state player-id replacement-card-source replacement-card-id]
+  (case replacement-card-source
+    :hand (core/remove-card-from-hand state player-id replacement-card-id)
+    :discard-pile (remove-card-from-discard state replacement-card-id)
+    state))
+
 (defn- apply-disc-piece-growth [state player-id {:keys [command source-card target-piece]}]
   (let [{:keys [source target disc-variant]} command
         owner-id (:player-id target-piece)
@@ -500,6 +534,80 @@
                            (core/append-history event))]
         (core/success next-state [event])))))
 
+(defn- apply-disc-territory-growth [state player-id {:keys [command source-card target-cell]}]
+  (let [{:keys [source target disc-variant
+                replacement-card-source replacement-card-id]} command
+        replacement-card-source (or replacement-card-source :hand)
+        original-card (:card target-cell)]
+    (cond
+      (nil? replacement-card-id)
+      (core/failure :invalid-disc-replacement
+               "Disc territory growth requires a selected replacement card."
+               {:target (select-keys target [:kind :board-index :row :col])
+                :replacement-card-source replacement-card-source})
+
+      (not (contains? disc-territory-card-sources replacement-card-source))
+      (core/failure :invalid-disc-replacement-card-source
+               "Disc territory growth requires a supported replacement card source."
+               {:replacement-card-source replacement-card-source
+                :valid-sources disc-territory-card-sources})
+
+      (and (= :hand replacement-card-source)
+           (= :hand-card (:kind source))
+           (= (:id source-card) replacement-card-id))
+      (core/failure :card-already-used
+               "A played source card cannot also become the replacement territory."
+               {:card-id replacement-card-id})
+
+      :else
+      (let [source-cost {:source-card source-card
+                         :discard-source-card? (= :hand-card (:kind source))}
+            cost-state (core/apply-source-cost state player-id source-cost)
+            replacement-card (replacement-card-from-source cost-state
+                                                           player-id
+                                                           replacement-card-source
+                                                           replacement-card-id)
+            original-value (cards/card-point-value original-card)
+            replacement-value (cards/card-point-value replacement-card)]
+        (cond
+          (nil? replacement-card)
+          (core/failure :invalid-disc-replacement-card
+                   "Disc territory growth requires a replacement card from the selected source."
+                   {:card-id replacement-card-id
+                    :player-id player-id
+                    :replacement-card-source replacement-card-source})
+
+          (not (cards/card-worth-one-more? replacement-card original-card))
+          (core/failure :invalid-disc-replacement-card
+                   "Disc territory growth requires a replacement card worth exactly one more point than the original territory."
+                   {:original-card-id (:id original-card)
+                    :original-value original-value
+                    :replacement-card-id (:id replacement-card)
+                    :replacement-value replacement-value})
+
+          :else
+          (let [grown-cell (assoc target-cell :card replacement-card)
+                event {:type :disc/territory-grown
+                       :player-id player-id
+                       :source source
+                       :disc-variant disc-variant
+                       :target (select-keys target [:kind :board-index :row :col])
+                       :replacement-card-source replacement-card-source
+                       :original-card-id (:id original-card)
+                       :replacement-card-id (:id replacement-card)
+                       :from-value original-value
+                       :to-value replacement-value
+                       :territory grown-cell}
+                next-state (-> cost-state
+                               (remove-replacement-card player-id
+                                                        replacement-card-source
+                                                        replacement-card-id)
+                               (replace-board-cell-card (:index target-cell)
+                                                        replacement-card)
+                               (core/discard-card original-card)
+                               (core/append-history event))]
+            (core/success next-state [event])))))))
+
 (defn apply-disc-move [state command]
   (let [result (resolve-disc-command state command)]
     (if-not (:ok? result)
@@ -511,9 +619,7 @@
           (apply-disc-piece-growth state player-id result)
 
           :territory
-          (core/failure :disc-territory-growth-unavailable
-                   "Disc territory growth is not implemented by this transition yet."
-                   {:target (:target normalized-command)})
+          (apply-disc-territory-growth state player-id result)
 
           (core/failure :invalid-disc-target
                    "Disc move targets must be :piece or :territory."

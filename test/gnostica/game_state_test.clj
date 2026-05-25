@@ -26,6 +26,10 @@
 (defn- hand-card-count [player-count]
   (* game-state/starting-hand-size player-count))
 
+(defn- board-deck-position [board-index]
+  (+ (hand-card-count (count player-specs))
+     board-index))
+
 (defn- all-card-ids [state]
   (vec
    (concat
@@ -54,6 +58,21 @@
       (take deck-index other-cards)
       [card]
       (drop deck-index other-cards)))))
+
+(defn- deck-with-cards-at [position->card-id]
+  (let [placed-card-ids (set (vals position->card-id))]
+    (loop [index 0
+           filler-cards (remove #(contains? placed-card-ids (:id %)) cards/deck)
+           deck []]
+      (if (= (count cards/deck) (count deck))
+        (vec deck)
+        (if-let [card-id (get position->card-id index)]
+          (recur (inc index)
+                 filler-cards
+                 (conj deck (cards/card-by-id card-id)))
+          (recur (inc index)
+                 (rest filler-cards)
+                 (conj deck (first filler-cards))))))))
 
 (defn- state-with-pieces [pieces]
   (game-state/with-board-pieces (deterministic-game) pieces))
@@ -1150,6 +1169,134 @@
            (get-in result [:command :disc-variant])))
     (is (= :discard-pile
            (get-in result [:command :replacement-card-source])))))
+
+(deftest disc-move-grows-spot-territory-with-hand-replacement
+  (let [deck-order (deck-with-cards-at {0 "cupsking"
+                                        (board-deck-position 3) "coins2"
+                                        (board-deck-position 4) "cups2"})
+        target-piece (assoc rose-target-minion
+                            :space-index 4
+                            :orientation :south)
+        state (:state (game-state/create-game player-specs {:deck-order deck-order}))
+        state (game-state/with-board-pieces state [rose-disc-minion target-piece])
+        original-cell (board-cell-by-index state 4)
+        command {:player-id :rose
+                 :source {:kind :territory
+                          :board-index 3
+                          :piece-id :rose-disc-minion}
+                 :target {:kind :territory
+                          :board-index 4}
+                 :replacement-card-source :hand
+                 :replacement-card-id "cupsking"}
+        {:keys [ok? state events]} (game-state/apply-disc-move state command)
+        grown-cell (board-cell-by-index state 4)]
+    (is ok?)
+    (is (= "cupsking" (get-in grown-cell [:card :id])))
+    (is (= (select-keys original-cell [:index :row :col :orientation :face])
+           (select-keys grown-cell [:index :row :col :orientation :face])))
+    (is (= target-piece (piece-by-id state :rose-target-minion)))
+    (is (= ["cups2"] (mapv :id (:discard-pile state))))
+    (is (not (some #{"cupsking"} (player-hand-ids state :rose))))
+    (is (= [{:type :disc/territory-grown
+             :player-id :rose
+             :source {:kind :territory
+                      :board-index 3
+                      :piece-id :rose-disc-minion}
+             :disc-variant :disc
+             :target {:kind :territory
+                      :board-index 4
+                      :row 1
+                      :col 1}
+             :replacement-card-source :hand
+             :original-card-id "cups2"
+             :replacement-card-id "cupsking"
+             :from-value 1
+             :to-value 2
+             :territory grown-cell}]
+           events))
+    (is (= events [(peek (:history state))]))
+    (is (= (count cards/deck) (count (all-card-ids state))))
+    (is (= (count cards/deck) (count (set (all-card-ids state)))))
+    (is (game-schema/valid-game? state))))
+
+(deftest disc-move-hand-source-grows-territory-without-duplicating-cards
+  (let [deck-order (deck-with-cards-at {0 "coins2"
+                                        1 "cupsking"
+                                        (board-deck-position 4) "cups2"})
+        state (:state (game-state/create-game player-specs {:deck-order deck-order}))
+        state (game-state/with-board-pieces state [rose-disc-minion])
+        command {:player-id :rose
+                 :source {:kind :hand-card
+                          :card-id "coins2"
+                          :piece-id :rose-disc-minion}
+                 :target {:kind :territory
+                          :board-index 4}
+                 :replacement-card-source :hand
+                 :replacement-card-id "cupsking"}
+        {:keys [ok? state events]} (game-state/apply-disc-move state command)]
+    (is ok?)
+    (is (= "cupsking" (get-in (board-cell-by-index state 4) [:card :id])))
+    (is (= ["coins2" "cups2"] (mapv :id (:discard-pile state))))
+    (is (not (some #{"coins2"} (player-hand-ids state :rose))))
+    (is (not (some #{"cupsking"} (player-hand-ids state :rose))))
+    (is (= :disc/territory-grown (get-in events [0 :type])))
+    (is (= :hand-card (get-in events [0 :source :kind])))
+    (is (= (count cards/deck) (count (all-card-ids state))))
+    (is (= (count cards/deck) (count (set (all-card-ids state)))))
+    (is (game-schema/valid-game? state))))
+
+(deftest star-disc-move-can-grow-royalty-territory-from-discard_source
+  (let [deck-order (deck-with-cards-at {0 "star"
+                                        (board-deck-position 4) "cupsking"})
+        state (:state (game-state/create-game player-specs {:deck-order deck-order}))
+        state (game-state/with-board-pieces state [rose-disc-minion])
+        command {:player-id :rose
+                 :source {:kind :hand-card
+                          :card-id "star"
+                          :piece-id :rose-disc-minion}
+                 :target {:kind :territory
+                          :board-index 4}
+                 :replacement-card-source :discard-pile
+                 :replacement-card-id "star"}
+        {:keys [ok? state events]} (game-state/apply-disc-move state command)]
+    (is ok?)
+    (is (= "star" (get-in (board-cell-by-index state 4) [:card :id])))
+    (is (= ["cupsking"] (mapv :id (:discard-pile state))))
+    (is (not (some #{"star"} (player-hand-ids state :rose))))
+    (is (= :disc-from-discard (get-in events [0 :disc-variant])))
+    (is (= :discard-pile (get-in events [0 :replacement-card-source])))
+    (is (= 2 (get-in events [0 :from-value])))
+    (is (= 3 (get-in events [0 :to-value])))
+    (is (= (count cards/deck) (count (all-card-ids state))))
+    (is (= (count cards/deck) (count (set (all-card-ids state)))))
+    (is (game-schema/valid-game? state))))
+
+(deftest disc-move-rejects-missing-or-invalid-territory_replacements_without_mutation
+  (let [deck-order (deck-with-cards-at {0 "sun"
+                                        (board-deck-position 3) "coins2"
+                                        (board-deck-position 4) "cups2"})
+        state (:state (game-state/create-game player-specs {:deck-order deck-order}))
+        state (game-state/with-board-pieces state [rose-disc-minion])
+        base-command {:player-id :rose
+                      :source {:kind :territory
+                               :board-index 3
+                               :piece-id :rose-disc-minion}
+                      :target {:kind :territory
+                               :board-index 4}}
+        missing-result (game-state/apply-disc-move state base-command)
+        invalid-result (game-state/apply-disc-move
+                        state
+                        (assoc base-command
+                               :replacement-card-id "sun"))]
+    (is (= :invalid-disc-replacement
+           (get-in missing-result [:error :code])))
+    (is (= :invalid-disc-replacement-card
+           (get-in invalid-result [:error :code])))
+    (is (not (contains? missing-result :state)))
+    (is (not (contains? invalid-result :state)))
+    (is (= "cups2" (get-in (board-cell-by-index state 4) [:card :id])))
+    (is (= ["sun"] (take 1 (player-hand-ids state :rose))))
+    (is (empty? (:discard-pile state)))))
 
 (deftest disc-move-grows-current-player-piece-and-may-reorient-it
   (let [small-minion (assoc rose-disc-minion :size :small)
