@@ -9,6 +9,9 @@
 (defn- parse-keyword [value]
   (keyword value))
 
+(defn- parse-quoted-values [value]
+  (mapv second (re-seq #"\"([^\"]+)\"" value)))
+
 (defn- expect [world ok? code message data]
   (if ok?
     world
@@ -117,6 +120,49 @@
    {:pattern #"^a Rod enemy-occupied landing-wasteland game$"
     :run world/create-rod-enemy-landing-territory-push-game}
 
+   {:pattern #"^a Disc territory-source game with Rose's ([a-z]+) minion at board index (\d+) facing ([a-z]+)$"
+    :run (fn [world size board-index orientation]
+           (world/create-disc-territory-source-piece-game
+            world
+            (parse-keyword size)
+            (parse-int board-index)
+            (parse-keyword orientation)))}
+
+   {:pattern #"^a Disc hand-card game with Rose's medium minion at board index (\d+) facing ([a-z]+) and an Indigo target at board index (\d+) facing ([a-z]+)$"
+    :run (fn [world minion-board-index minion-orientation target-board-index target-orientation]
+           (world/create-disc-hand-card-piece-game
+            world
+            (parse-int minion-board-index)
+            (parse-keyword minion-orientation)
+            (parse-int target-board-index)
+            (parse-keyword target-orientation)))}
+
+   {:pattern #"^a Disc hand-card territory-growth game$"
+    :run world/create-disc-hand-card-territory-growth-game}
+
+   {:pattern #"^a Disc territory-source territory-growth game$"
+    :run world/create-disc-territory-source-territory-growth-game}
+
+   {:pattern #"^a Disc enemy-occupied territory-growth game$"
+    :run world/create-disc-enemy-occupied-territory-growth-game}
+
+   {:pattern #"^a Disc no-medium-stash game with Rose's small minion at board index (\d+) facing ([a-z]+)$"
+    :run (fn [world board-index orientation]
+           (world/create-disc-no-medium-stash-game
+            world
+            (parse-int board-index)
+            (parse-keyword orientation)))}
+
+   {:pattern #"^a Star hand-card territory-growth game$"
+    :run world/create-star-disc-territory-growth-game}
+
+   {:pattern #"^a Strength Disc shortcut game with Rose's small minion at board index (\d+) facing ([a-z]+)$"
+    :run (fn [world board-index orientation]
+           (world/create-strength-disc-shortcut-game
+            world
+            (parse-int board-index)
+            (parse-keyword orientation)))}
+
    {:pattern #"^Rose moves the Rod minion (\d+) space(?:s)?$"
     :run (fn [world distance]
            (world/apply-rod-minion-move world (parse-int distance) nil))}
@@ -141,6 +187,37 @@
     :run (fn [world distance]
            (world/apply-rod-territory-push world (parse-int distance)))}
 
+   {:pattern #"^Rose grows the Rose Disc piece$"
+    :run (fn [world]
+           (world/apply-disc-piece-growth world nil))}
+
+   {:pattern #"^Rose grows the Rose Disc piece with orientation ([a-z]+)$"
+    :run (fn [world orientation]
+           (world/apply-disc-piece-growth world (parse-keyword orientation)))}
+
+   {:pattern #"^Rose grows the Indigo Disc piece$"
+    :run (fn [world]
+           (world/apply-disc-piece-growth world nil))}
+
+   {:pattern #"^Rose tries to grow the Indigo Disc piece with orientation ([a-z]+)$"
+    :run (fn [world orientation]
+           (world/apply-disc-piece-growth world (parse-keyword orientation)))}
+
+   {:pattern #"^Rose grows the target territory without a replacement$"
+    :run (fn [world]
+           (world/apply-disc-territory-growth world nil nil))}
+
+   {:pattern #"^Rose grows the target territory with hand replacement \"([^\"]+)\"$"
+    :run (fn [world replacement-card-id]
+           (world/apply-disc-territory-growth world :hand replacement-card-id))}
+
+   {:pattern #"^Rose grows the target territory from discard replacement \"([^\"]+)\"$"
+    :run (fn [world replacement-card-id]
+           (world/apply-disc-territory-growth world :discard-pile replacement-card-id))}
+
+   {:pattern #"^Rose uses Strength to grow the Rose Disc piece twice$"
+    :run world/apply-strength-disc-piece-shortcut}
+
    {:pattern #"^the Rod action succeeds$"
     :run (fn [world]
            (let [result (:last-result world)]
@@ -161,6 +238,30 @@
                           (= expected-code actual-code))
                      :unexpected-rod-rejection
                      "The Rod action rejection did not match the expected error code."
+                     {:expected expected-code
+                      :actual actual-code
+                      :result result})))}
+
+   {:pattern #"^the Disc action succeeds$"
+    :run (fn [world]
+           (let [result (:last-result world)]
+             (expect world
+                     (:ok? result)
+                     :disc-action-failed
+                     "The Disc action was expected to succeed."
+                     {:error (:error result)
+                      :last-action (:last-action world)})))}
+
+   {:pattern #"^the Disc action is rejected with code :([a-z0-9-]+)$"
+    :run (fn [world expected-code]
+           (let [expected-code (parse-keyword expected-code)
+                 result (:last-result world)
+                 actual-code (get-in result [:error :code])]
+             (expect world
+                     (and (false? (:ok? result))
+                          (= expected-code actual-code))
+                     :unexpected-disc-rejection
+                     "The Disc action rejection did not match the expected error code."
                      {:expected expected-code
                       :actual actual-code
                       :result result})))}
@@ -246,14 +347,28 @@
                       :col col
                       :cell (world/board-cell-at world row col)})))}
 
-   {:pattern #"^the discard pile contains exactly \"([^\"]+)\"$"
-    :run (fn [world card-id]
-           (expect world
-                   (= [card-id] (world/discard-ids world))
-                   :unexpected-discard-pile
-                   "The discard pile does not contain the expected single card."
-                   {:expected [card-id]
-                    :actual (world/discard-ids world)}))}
+   {:pattern #"^board index (\d+) contains card \"([^\"]+)\"$"
+    :run (fn [world board-index card-id]
+           (let [board-index (parse-int board-index)
+                 cell (world/board-cell-by-index world board-index)]
+             (expect world
+                     (= card-id (get-in cell [:card :id]))
+                     :unexpected-territory-card
+                     "The territory does not contain the expected card."
+                     {:board-index board-index
+                      :expected card-id
+                      :actual (get-in cell [:card :id])
+                      :cell cell})))}
+
+   {:pattern #"^the discard pile contains exactly (\"[^\"]+\"(?:, \"[^\"]+\")*)$"
+    :run (fn [world card-ids]
+           (let [expected-card-ids (parse-quoted-values card-ids)]
+             (expect world
+                     (= expected-card-ids (world/discard-ids world))
+                     :unexpected-discard-pile
+                     "The discard pile does not contain the expected cards."
+                     {:expected expected-card-ids
+                      :actual (world/discard-ids world)})))}
 
    {:pattern #"^Rose no longer has \"([^\"]+)\" in hand$"
     :run (fn [world card-id]
@@ -271,7 +386,7 @@
              (expect world
                      (= event-type (:type event))
                      :unexpected-history-event
-                     "The latest history event was not the expected Rod event."
+                     "The latest history event was not the expected event."
                      {:expected event-type
                       :actual (:type event)
                       :event event})))}])

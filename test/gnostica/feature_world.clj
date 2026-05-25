@@ -20,12 +20,30 @@
 (defn- hand-card-count [player-count]
   (* game-state/starting-hand-size player-count))
 
+(defn- board-deck-position [player-count board-index]
+  (+ (hand-card-count player-count) board-index))
+
 (defn deck-starting-with [card-ids]
   (let [front-ids (set card-ids)]
     (vec
      (concat
       (map cards/card-by-id card-ids)
       (remove #(contains? front-ids (:id %)) cards/deck)))))
+
+(defn deck-with-cards-at [position->card-id]
+  (let [placed-card-ids (set (vals position->card-id))]
+    (loop [index 0
+           filler-cards (remove #(contains? placed-card-ids (:id %)) cards/deck)
+           deck []]
+      (if (= (count cards/deck) (count deck))
+        (vec deck)
+        (if-let [card-id (get position->card-id index)]
+          (recur (inc index)
+                 filler-cards
+                 (conj deck (cards/card-by-id card-id)))
+          (recur (inc index)
+                 (rest filler-cards)
+                 (conj deck (first filler-cards))))))))
 
 (defn deck-with-board-card [player-count board-index card-id]
   (let [card (cards/card-by-id card-id)
@@ -75,6 +93,47 @@
    :size :small
    :orientation :north})
 
+(def rose-disc-minion
+  {:id :rose-disc-minion
+   :player-id :rose
+   :space-index 3
+   :size :medium
+   :orientation :east})
+
+(def indigo-disc-target
+  {:id :indigo-disc-target
+   :player-id :indigo
+   :space-index 4
+   :size :small
+   :orientation :north})
+
+(def rose-medium-pieces
+  [{:id :rose-medium-a
+    :player-id :rose
+    :space-index 0
+    :size :medium
+    :orientation :north}
+   {:id :rose-medium-b
+    :player-id :rose
+    :space-index 1
+    :size :medium
+    :orientation :east}
+   {:id :rose-medium-c
+    :player-id :rose
+    :space-index 2
+    :size :medium
+    :orientation :south}
+   {:id :rose-medium-d
+    :player-id :rose
+    :space-index 4
+    :size :medium
+    :orientation :west}
+   {:id :rose-medium-e
+    :player-id :rose
+    :space-index 5
+    :size :medium
+    :orientation :up}])
+
 (defn- create-game-with-options [world options]
   (let [specs (player-specs 2)
         result (game-state/create-game specs options)]
@@ -88,6 +147,9 @@
 
 (defn- with-rod-fixture [world fixture]
   (assoc world :rod-fixture fixture))
+
+(defn- with-disc-fixture [world fixture]
+  (assoc world :disc-fixture fixture))
 
 (defn create-rod-territory-source-game [world board-index orientation]
   (let [world (create-game-with-options
@@ -196,6 +258,123 @@
                            :piece-id :rose-rod-minion
                            :target-board-index 5}))))
 
+(defn create-disc-territory-source-piece-game [world size board-index orientation]
+  (let [world (create-game-with-options
+               world
+               {:deck-order (deck-with-board-card 2 board-index "coins2")})
+        minion (assoc rose-disc-minion
+                      :space-index board-index
+                      :size size
+                      :orientation orientation)]
+    (-> world
+        (put-pieces [minion])
+        (with-disc-fixture {:source-kind :territory
+                            :source-board-index board-index
+                            :piece-id :rose-disc-minion
+                            :target-piece-id :rose-disc-minion}))))
+
+(defn create-disc-hand-card-piece-game [world minion-board-index minion-orientation target-board-index target-orientation]
+  (let [world (create-game-with-options
+               world
+               {:deck-order (deck-starting-with ["coins2"])})
+        minion (assoc rose-disc-minion
+                      :space-index minion-board-index
+                      :orientation minion-orientation)
+        target (assoc indigo-disc-target
+                      :space-index target-board-index
+                      :orientation target-orientation)]
+    (-> world
+        (put-pieces [minion target])
+        (with-disc-fixture {:source-kind :hand-card
+                            :source-card-id "coins2"
+                            :piece-id :rose-disc-minion
+                            :target-piece-id :indigo-disc-target}))))
+
+(defn create-disc-hand-card-territory-growth-game [world]
+  (let [world (create-game-with-options
+               world
+               {:deck-order (deck-with-cards-at
+                             {0 "coins2"
+                              1 "cupsking"
+                              (board-deck-position 2 4) "cups2"})})]
+    (-> world
+        (put-pieces [rose-disc-minion])
+        (with-disc-fixture {:source-kind :hand-card
+                            :source-card-id "coins2"
+                            :piece-id :rose-disc-minion
+                            :target-board-index 4}))))
+
+(defn create-disc-territory-source-territory-growth-game [world]
+  (let [world (create-game-with-options
+               world
+               {:deck-order (deck-with-cards-at
+                             {(board-deck-position 2 3) "coins2"
+                              (board-deck-position 2 4) "cups2"})})]
+    (-> world
+        (put-pieces [rose-disc-minion])
+        (with-disc-fixture {:source-kind :territory
+                            :source-board-index 3
+                            :piece-id :rose-disc-minion
+                            :target-board-index 4}))))
+
+(defn create-disc-enemy-occupied-territory-growth-game [world]
+  (let [world (create-game-with-options
+               world
+               {:deck-order (deck-with-cards-at
+                             {0 "cupsking"
+                              (board-deck-position 2 3) "coins2"
+                              (board-deck-position 2 4) "cups2"})})
+        guard (assoc indigo-disc-target :space-index 4)]
+    (-> world
+        (put-pieces [rose-disc-minion guard])
+        (with-disc-fixture {:source-kind :territory
+                            :source-board-index 3
+                            :piece-id :rose-disc-minion
+                            :target-board-index 4}))))
+
+(defn create-disc-no-medium-stash-game [world board-index orientation]
+  (let [world (create-game-with-options
+               world
+               {:deck-order (deck-with-board-card 2 board-index "coins2")})
+        minion (assoc rose-disc-minion
+                      :space-index board-index
+                      :size :small
+                      :orientation orientation)]
+    (-> world
+        (put-pieces (vec (cons minion rose-medium-pieces)))
+        (with-disc-fixture {:source-kind :territory
+                            :source-board-index board-index
+                            :piece-id :rose-disc-minion
+                            :target-piece-id :rose-disc-minion}))))
+
+(defn create-star-disc-territory-growth-game [world]
+  (let [world (create-game-with-options
+               world
+               {:deck-order (deck-with-cards-at
+                             {0 "star"
+                              (board-deck-position 2 4) "cupsking"})})]
+    (-> world
+        (put-pieces [rose-disc-minion])
+        (with-disc-fixture {:source-kind :hand-card
+                            :source-card-id "star"
+                            :piece-id :rose-disc-minion
+                            :target-board-index 4}))))
+
+(defn create-strength-disc-shortcut-game [world board-index orientation]
+  (let [world (create-game-with-options
+               world
+               {:deck-order (deck-starting-with ["strength"])})
+        minion (assoc rose-disc-minion
+                      :space-index board-index
+                      :size :small
+                      :orientation orientation)]
+    (-> world
+        (put-pieces (vec (cons minion rose-medium-pieces)))
+        (with-disc-fixture {:source-kind :hand-card
+                            :source-card-id "strength"
+                            :piece-id :rose-disc-minion
+                            :target-piece-id :rose-disc-minion}))))
+
 (defn create-rod-enemy-landing-territory-push-game [world]
   (let [world (create-game-with-options
                world
@@ -216,6 +395,15 @@
                            :target-board-index 5}))))
 
 (defn rod-source [{:keys [source-kind source-board-index source-card-id piece-id]}]
+  (case source-kind
+    :territory {:kind :territory
+                :board-index source-board-index
+                :piece-id piece-id}
+    :hand-card {:kind :hand-card
+                :card-id source-card-id
+                :piece-id piece-id}))
+
+(defn disc-source [{:keys [source-kind source-board-index source-card-id piece-id]}]
   (case source-kind
     :territory {:kind :territory
                 :board-index source-board-index
@@ -265,6 +453,40 @@
                           :board-index (:target-board-index fixture)}
                  :distance distance}]
     (apply-rod-command world command)))
+
+(defn apply-disc-command [world command]
+  (apply-action world :disc-move game-state/apply-disc-move command))
+
+(defn apply-disc-piece-growth [world orientation]
+  (let [fixture (:disc-fixture world)
+        command (cond-> {:player-id :rose
+                         :source (disc-source fixture)
+                         :target {:kind :piece
+                                  :piece-id (:target-piece-id fixture)}}
+                  orientation (assoc :orientation orientation))]
+    (apply-disc-command world command)))
+
+(defn apply-disc-territory-growth [world replacement-source replacement-card-id]
+  (let [fixture (:disc-fixture world)
+        command (cond-> {:player-id :rose
+                         :source (disc-source fixture)
+                         :target {:kind :territory
+                                  :board-index (:target-board-index fixture)}}
+                  replacement-source
+                  (assoc :replacement-card-source replacement-source)
+                  replacement-card-id
+                  (assoc :replacement-card-id replacement-card-id))]
+    (apply-disc-command world command)))
+
+(defn apply-strength-disc-piece-shortcut [world]
+  (let [fixture (:disc-fixture world)
+        target {:kind :piece
+                :piece-id (:target-piece-id fixture)}
+        command {:player-id :rose
+                 :source (disc-source fixture)
+                 :disc-actions [{:target target}
+                                {:target target}]}]
+    (apply-disc-command world command)))
 
 (defn state-at [world path]
   (get-in (:state world) path))
