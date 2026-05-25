@@ -1,6 +1,7 @@
 (ns gnostica.game-state
   (:require [gnostica.game-state.core :as core]
             [gnostica.game-state.cup :as cup]
+            [gnostica.game-state.disc :as disc]
             [gnostica.game-state.draw :as draw]
             [gnostica.game-state.placement :as placement]
             [gnostica.game-state.rod :as rod]))
@@ -58,6 +59,14 @@
 
 (defn apply-rod-move [state command]
   (rod/apply-rod-move state command))
+
+(def disc-territory-card-sources disc/disc-territory-card-sources)
+(def disc-direction-offsets disc/disc-direction-offsets)
+(defn disc-target-coordinate [coordinate orientation]
+  (disc/disc-target-coordinate coordinate orientation))
+
+(defn resolve-disc-command [state command]
+  (disc/resolve-disc-command state command))
 
 (defn apply-draw-move [state command]
   (draw/apply-draw-move state command))

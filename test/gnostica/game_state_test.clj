@@ -5,6 +5,7 @@
             [gnostica.game-schema :as game-schema]
             [gnostica.game-state :as game-state]
             [gnostica.game-state.cup :as game-state-cup]
+            [gnostica.game-state.disc :as game-state-disc]
             [gnostica.game-state.draw :as game-state-draw]
             [gnostica.game-state.placement :as game-state-placement]
             [gnostica.game-state.rod :as game-state-rod]
@@ -75,6 +76,13 @@
 
 (def rose-rod-minion
   {:id :rose-rod-minion
+   :player-id :rose
+   :space-index 3
+   :size :medium
+   :orientation :east})
+
+(def rose-disc-minion
+  {:id :rose-disc-minion
    :player-id :rose
    :space-index 3
    :size :medium
@@ -293,7 +301,16 @@
                               :piece-id :rose-rod-minion}
                      :mode :move-minion
                      :distance 1
-                     :orientation :south}]
+                     :orientation :south}
+        disc-state (-> (state-with-pieces [rose-disc-minion])
+                       (state-with-board-card 3 "coins2"))
+        disc-command {:player-id :rose
+                      :source {:kind :territory
+                               :board-index 3
+                               :piece-id :rose-disc-minion}
+                      :target {:kind :piece
+                               :piece-id :rose-disc-minion}
+                      :orientation :south}]
     (is (= (game-state/apply-draw-move draw-state draw-command)
            (game-state-draw/apply-draw-move draw-state draw-command)))
     (is (= (game-state/apply-orient-move orient-state orient-command)
@@ -303,7 +320,9 @@
     (is (= (game-state/resolve-rod-command rod-state rod-command)
            (game-state-rod/resolve-rod-command rod-state rod-command)))
     (is (= (game-state/apply-rod-move rod-state rod-command)
-           (game-state-rod/apply-rod-move rod-state rod-command)))))
+           (game-state-rod/apply-rod-move rod-state rod-command)))
+    (is (= (game-state/resolve-disc-command disc-state disc-command)
+           (game-state-disc/resolve-disc-command disc-state disc-command)))))
 
 (deftest draw-move-discards-selected-cards-and-draws-to-hand
   (let [initial-state (deterministic-game)
@@ -889,6 +908,246 @@
            (get-in no-small-result [:error :data :player-id])))
     (is (not (contains? own-target-result :state)))
     (is (not (contains? no-small-result :state)))))
+
+(deftest disc-command-normalizes-territory-source-and-piece-target
+  (let [target-piece {:id :indigo-disc-target
+                      :player-id :indigo
+                      :space-index 4
+                      :size :small
+                      :orientation :north}
+        state (-> (state-with-pieces [rose-disc-minion target-piece])
+                  (state-with-board-card 3 "coins2"))
+        command {:player-id :rose
+                 :source {:kind :territory
+                          :board-index 3
+                          :piece-id :rose-disc-minion}
+                 :target {:kind :piece
+                          :piece-id :indigo-disc-target}}
+        result (game-state/resolve-disc-command state command)]
+    (is (:ok? result))
+    (is (= {:player-id :rose
+            :source {:kind :territory
+                     :board-index 3
+                     :piece-id :rose-disc-minion}
+            :disc-variant :disc
+            :target {:kind :piece
+                     :piece-id :indigo-disc-target
+                     :player-id :indigo
+                     :board-index 4
+                     :row 1
+                     :col 1}}
+           (:command result)))
+    (is (= "coins2" (get-in result [:source-card :id])))
+    (is (= rose-disc-minion (:piece result)))
+    (is (= target-piece (:target-piece result)))))
+
+(deftest disc-command-normalizes-hand-card-source-and-territory-target_options
+  (let [deck-order (deck-starting-with ["coins2" "cupsking"])
+        state (:state (game-state/create-game player-specs {:deck-order deck-order}))
+        state (game-state/with-board-pieces state [(assoc rose-disc-minion
+                                                          :orientation :up)])
+        result (game-state/resolve-disc-command
+                state
+                {:player-id :rose
+                 :source {:kind :hand-card
+                          :card-id "coins2"
+                          :piece-id :rose-disc-minion}
+                 :target {:kind :territory
+                          :board-index 3}
+                 :replacement-card-id "cupsking"})]
+    (is (:ok? result))
+    (is (= {:player-id :rose
+            :source {:kind :hand-card
+                     :card-id "coins2"
+                     :piece-id :rose-disc-minion}
+            :disc-variant :disc
+            :target {:kind :territory
+                     :board-index 3
+                     :row 1
+                     :col 0}
+            :replacement-card-source :hand
+            :replacement-card-id "cupsking"}
+           (:command result)))
+    (is (= "coins2" (get-in result [:source-card :id])))
+    (is (= 3 (get-in result [:target-cell :index])))))
+
+(deftest disc-command-allows-upright_current_space_and_minion_self_targeting
+  (let [upright-state (-> (state-with-pieces [(assoc rose-disc-minion
+                                                     :orientation :up)])
+                          (state-with-board-card 3 "coins2"))
+        territory-result (game-state/resolve-disc-command
+                          upright-state
+                          {:player-id :rose
+                           :source {:kind :territory
+                                    :board-index 3
+                                    :piece-id :rose-disc-minion}
+                           :target {:kind :territory
+                                    :board-index 3}})
+        self-state (-> (state-with-pieces [rose-disc-minion])
+                       (state-with-board-card 3 "coins2"))
+        self-result (game-state/resolve-disc-command
+                     self-state
+                     {:player-id :rose
+                      :source {:kind :territory
+                               :board-index 3
+                               :piece-id :rose-disc-minion}
+                      :target {:kind :piece
+                               :piece-id :rose-disc-minion}
+                      :orientation :south})]
+    (is (:ok? territory-result))
+    (is (= {:kind :territory
+            :board-index 3
+            :row 1
+            :col 0}
+           (get-in territory-result [:command :target])))
+    (is (:ok? self-result))
+    (is (= {:kind :piece
+            :piece-id :rose-disc-minion
+            :player-id :rose
+            :board-index 3
+            :row 1
+            :col 0
+            :orientation :south}
+           (get-in self-result [:command :target])))
+    (is (= :south (get-in self-result [:command :orientation])))))
+
+(deftest disc-command-carries-source-variants
+  (let [base-command {:player-id :rose
+                      :source {:kind :territory
+                               :board-index 3
+                               :piece-id :rose-disc-minion}
+                      :target {:kind :piece
+                               :piece-id :rose-disc-minion}}
+        strength-result (game-state/resolve-disc-command
+                         (-> (state-with-pieces [rose-disc-minion])
+                             (state-with-board-card 3 "strength"))
+                         base-command)
+        star-result (game-state/resolve-disc-command
+                     (-> (state-with-pieces [rose-disc-minion])
+                         (state-with-board-card 3 "star"))
+                     base-command)
+        sun-result (game-state/resolve-disc-command
+                    (-> (state-with-pieces [rose-disc-minion])
+                        (state-with-board-card 3 "sun"))
+                    base-command)
+        magician-result (game-state/resolve-disc-command
+                         (-> (state-with-pieces [rose-disc-minion])
+                             (state-with-board-card 3 "magician"))
+                         base-command)]
+    (is (:ok? strength-result))
+    (is (:ok? star-result))
+    (is (:ok? sun-result))
+    (is (:ok? magician-result))
+    (is (= :disc (get-in strength-result [:command :disc-variant])))
+    (is (= :disc-from-discard (get-in star-result [:command :disc-variant])))
+    (is (= :disc (get-in sun-result [:command :disc-variant])))
+    (is (= :wild-suits (get-in magician-result [:command :disc-variant])))))
+
+(deftest disc-command-rejects-unavailable_and_invalid_variants
+  (let [state (-> (state-with-pieces [rose-disc-minion])
+                  (state-with-board-card 3 "coins2"))
+        base-command {:player-id :rose
+                      :source {:kind :territory
+                               :board-index 3
+                               :piece-id :rose-disc-minion}
+                      :target {:kind :piece
+                               :piece-id :rose-disc-minion}}
+        unavailable-result (game-state/resolve-disc-command
+                            state
+                            (assoc base-command :disc-variant :disc-from-discard))
+        invalid-result (game-state/resolve-disc-command
+                        state
+                        (assoc base-command :disc-variant :rod))
+        discard-source-result (game-state/resolve-disc-command
+                               state
+                               (assoc base-command
+                                      :target {:kind :territory
+                                               :board-index 4}
+                                      :replacement-card-source :discard-pile
+                                      :replacement-card-id "cupsking"))
+        non-disc-result (game-state/resolve-disc-command
+                         (-> (state-with-pieces [rose-disc-minion])
+                             (state-with-board-card 3 "wands2"))
+                         base-command)]
+    (is (= :disc-variant-unavailable
+           (get-in unavailable-result [:error :code])))
+    (is (= :invalid-disc-variant
+           (get-in invalid-result [:error :code])))
+    (is (= :disc-variant-option-unavailable
+           (get-in discard-source-result [:error :code])))
+    (is (= :source-card-not-disc
+           (get-in non-disc-result [:error :code])))))
+
+(deftest disc-command-rejects_invalid_targets_and_options_without_mutation
+  (let [off-axis-target {:id :indigo-off-axis-disc-target
+                         :player-id :indigo
+                         :space-index 0
+                         :size :small
+                         :orientation :north}
+        enemy-target {:id :indigo-disc-target
+                      :player-id :indigo
+                      :space-index 4
+                      :size :small
+                      :orientation :north}
+        state (-> (state-with-pieces [rose-disc-minion off-axis-target enemy-target])
+                  (state-with-board-card 3 "coins2"))
+        base-command {:player-id :rose
+                      :source {:kind :territory
+                               :board-index 3
+                               :piece-id :rose-disc-minion}}
+        off-axis-result (game-state/resolve-disc-command
+                         state
+                         (assoc base-command
+                                :target {:kind :piece
+                                         :piece-id :indigo-off-axis-disc-target}))
+        enemy-orientation-result (game-state/resolve-disc-command
+                                  state
+                                  (assoc base-command
+                                         :target {:kind :piece
+                                                  :piece-id :indigo-disc-target}
+                                         :orientation :west))
+        enemy-territory-result (game-state/resolve-disc-command
+                                state
+                                (assoc base-command
+                                       :target {:kind :territory
+                                                :board-index 4}))
+        piece-replacement-result (game-state/resolve-disc-command
+                                  state
+                                  (assoc base-command
+                                         :target {:kind :piece
+                                                  :piece-id :rose-disc-minion}
+                                         :replacement-card-id "cupsking"))]
+    (is (= :invalid-disc-target
+           (get-in off-axis-result [:error :code])))
+    (is (= :invalid-orientation
+           (get-in enemy-orientation-result [:error :code])))
+    (is (= :target-territory-occupied-by-enemy
+           (get-in enemy-territory-result [:error :code])))
+    (is (= :invalid-disc-replacement
+           (get-in piece-replacement-result [:error :code])))
+    (is (false? (:ok? off-axis-result)))
+    (is (not (contains? off-axis-result :state)))
+    (is (= [rose-disc-minion off-axis-target enemy-target]
+           (get-in state [:pieces :on-board])))))
+
+(deftest star-disc-command-allows_discard_pile_replacement_source
+  (let [state (-> (state-with-pieces [rose-disc-minion])
+                  (state-with-board-card 3 "star"))
+        result (game-state/resolve-disc-command
+                state
+                {:player-id :rose
+                 :source {:kind :territory
+                          :board-index 3
+                          :piece-id :rose-disc-minion}
+                 :target {:kind :territory
+                          :board-index 4}
+                 :replacement-card-source :discard-pile
+                 :replacement-card-id "cupsking"})]
+    (is (:ok? result))
+    (is (= :disc-from-discard
+           (get-in result [:command :disc-variant])))
+    (is (= :discard-pile
+           (get-in result [:command :replacement-card-source])))))
 
 (deftest rod-command-normalizes-territory-source
   (let [state (-> (state-with-pieces [rose-rod-minion])

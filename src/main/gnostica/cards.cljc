@@ -135,6 +135,15 @@
 
 (def rod-icon-ids (set (keys rod-icon-variants)))
 
+(def disc-icon-variants
+  {:disc :disc
+   :disc-from-discard :disc-from-discard
+   :wild-suits :wild-suits})
+
+(def disc-variant-ids (set (vals disc-icon-variants)))
+
+(def disc-icon-ids (set (keys disc-icon-variants)))
+
 (def rank-titles
   {"1" "One"
    "2" "Two"
@@ -152,6 +161,8 @@
    "knight" "Knight"
    "queen" "Queen"
    "king" "King"})
+
+(def royalty-rank-keys #{"page" "knight" "queen" "king"})
 
 (defn- stem [file-name]
   (str/replace file-name #"\.png$" ""))
@@ -246,9 +257,44 @@
 (defn rod-card? [card]
   (boolean (seq (rod-variants card))))
 
+(defn disc-variants [card]
+  (let [card (known-card card)
+        [suit-key] (minor-parts card)]
+    (reduce conj-new
+            (cond-> []
+              (= "coins" suit-key) (conj :disc))
+            (keep disc-icon-variants (:gnostica-icons card)))))
+
+(defn disc-variant [card]
+  (first (disc-variants card)))
+
+(defn disc-card? [card]
+  (boolean (seq (disc-variants card))))
+
 (defn one-point-card? [card]
   (let [card (known-card card)
         [suit-key rank-key] (minor-parts card)]
     (and (= :minor (:arcana card))
          (contains? (set suit-prefixes) suit-key)
          (contains? one-point-rank-keys rank-key))))
+
+(defn card-point-value [card]
+  (let [card (known-card card)
+        [suit-key rank-key] (minor-parts card)]
+    (cond
+      (one-point-card? card)
+      1
+
+      (and (= :minor (:arcana card))
+           (contains? (set suit-prefixes) suit-key)
+           (contains? royalty-rank-keys rank-key))
+      2
+
+      (= :major (:arcana card))
+      3)))
+
+(defn card-worth-one-more? [replacement-card original-card]
+  (let [original-value (card-point-value original-card)
+        replacement-value (card-point-value replacement-card)]
+    (and (some? original-value)
+         (= (inc original-value) replacement-value))))

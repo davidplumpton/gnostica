@@ -100,6 +100,37 @@
   (is (not (cards/rod-card? (cards/card-by-id "cups2"))))
   (is (not (cards/rod-card? (cards/card-by-id "sun")))))
 
+(deftest disc-card-helper-identifies-disc-sources
+  (is (cards/disc-card? (cards/card-by-id "coins2")))
+  (is (cards/disc-card? (cards/card-by-id "coinsqueen")))
+  (is (cards/disc-card? (cards/card-by-id "strength")))
+  (is (cards/disc-card? (cards/card-by-id "star")))
+  (is (cards/disc-card? (cards/card-by-id "sun")))
+  (is (cards/disc-card? (cards/card-by-id "magician")))
+  (is (= [:disc] (cards/disc-variants (cards/card-by-id "coins2"))))
+  (is (= [:disc] (cards/disc-variants (cards/card-by-id "coinsqueen"))))
+  (is (= [:disc] (cards/disc-variants (cards/card-by-id "strength"))))
+  (is (= [:disc-from-discard] (cards/disc-variants (cards/card-by-id "star"))))
+  (is (= [:disc] (cards/disc-variants (cards/card-by-id "sun"))))
+  (is (= [:wild-suits] (cards/disc-variants (cards/card-by-id "magician"))))
+  (is (cards/disc-card? {:id "coins3"
+                         :title "Three of Coins"
+                         :image "/images/coins3.png"}))
+  (is (not (cards/disc-card? (cards/card-by-id "cups2"))))
+  (is (not (cards/disc-card? (cards/card-by-id "chariot")))))
+
+(deftest card-point-values-support-territory-growth_steps
+  (is (= 1 (cards/card-point-value (cards/card-by-id "coins2"))))
+  (is (= 2 (cards/card-point-value (cards/card-by-id "cupsking"))))
+  (is (= 3 (cards/card-point-value (cards/card-by-id "sun"))))
+  (is (nil? (cards/card-point-value {:id "unknown"})))
+  (is (cards/card-worth-one-more? (cards/card-by-id "cupsking")
+                                  (cards/card-by-id "coins2")))
+  (is (cards/card-worth-one-more? (cards/card-by-id "sun")
+                                  (cards/card-by-id "cupsking")))
+  (is (not (cards/card-worth-one-more? (cards/card-by-id "sun")
+                                       (cards/card-by-id "coins2")))))
+
 (defn -main [& _]
   (let [{:keys [fail error]} (run-tests 'gnostica.cards-test)]
     (System/exit (if (zero? (+ fail error)) 0 1))))
