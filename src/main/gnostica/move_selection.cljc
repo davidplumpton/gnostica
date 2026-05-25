@@ -39,7 +39,7 @@
     :requirements [:target-space :orientation]}})
 
 (def move-power-order
-  [:cup :rod :disc :sword])
+  [:cup :rod :disc :sun :sword])
 
 (def move-power-definitions
   {:cup {:id :cup
@@ -48,6 +48,8 @@
          :label "Rod"}
    :disc {:id :disc
           :label "Disc"}
+   :sun {:id :sun
+         :label "Sun"}
    :sword {:id :sword
            :label "Sword"}})
 
@@ -219,6 +221,7 @@
       (cards/cup-card? card) (conj :cup)
       (cards/rod-card? card) (conj :rod)
       (cards/disc-card? card) (conj :disc)
+      (= "sun" (:id card)) (conj :sun)
       (cards/sword-card? card) (conj :sword))))
 
 (defn- selected-power [db source-id params]
@@ -1600,6 +1603,11 @@
 
       (= :disc (move-power db))
       (game-state/apply-disc-move (game db) command)
+
+      (= :sun (move-power db))
+      (game-state/failure :move-transition-unavailable
+                          "Sun's Cup-then-Disc browser move staging is not implemented yet."
+                          {:command command})
 
       :else
       (game-state/failure :move-transition-unavailable
