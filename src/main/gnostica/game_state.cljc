@@ -83,6 +83,9 @@
 (defn resolve-sword-command [state command]
   (sword/resolve-sword-command state command))
 
+(defn apply-sword-move [state command]
+  (sword/apply-sword-move state command))
+
 (defn apply-draw-move [state command]
   (draw/apply-draw-move state command))
 

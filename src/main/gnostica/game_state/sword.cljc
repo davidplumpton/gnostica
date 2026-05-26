@@ -16,6 +16,14 @@
    :medium 2
    :large 3})
 
+(def sword-piece-sizes-by-rank
+  (into {} (map (fn [[size rank]] [rank size]) sword-piece-size-ranks)))
+
+(defn- sword-piece-size-after [size damage]
+  (get sword-piece-sizes-by-rank
+       (- (get sword-piece-size-ranks size -100)
+          damage)))
+
 (defn- coordinate-map [coordinate]
   (cond
     (map? coordinate)
@@ -577,5 +585,91 @@
                                                    source-result)
                            :piece (:piece source-result)
                            :destroyed? (:destroyed? target-result)}
-                           (select-keys target-result
-                                        [:target-piece :target-cell]))))))))))))
+	                           (select-keys target-result
+	                                        [:target-piece :target-cell]))))))))))))
+
+(defn- piece-space [piece]
+  (select-keys piece [:space-index :space]))
+
+(defn- remove-piece-by-id [state piece-id]
+  (update-in state [:pieces :on-board]
+             (fn [board-pieces]
+               (vec (remove #(= piece-id (:id %)) board-pieces)))))
+
+(defn- apply-sword-piece-attack
+  [state player-id {:keys [command source-card discard-source-card? target-piece]}]
+  (let [{:keys [source target sword-variant damage]} command
+        owner-id (:player-id target-piece)
+        old-size (:size target-piece)
+        next-size (sword-piece-size-after old-size damage)
+        destroyed? (nil? next-size)]
+    (cond
+      (and (not destroyed?)
+           (not (pos? (core/stash-count state owner-id next-size))))
+      (core/failure :no-smaller-piece-available
+                    "Sword piece attacks require the target owner to have the smaller replacement piece in stash."
+                    {:player-id owner-id
+                     :piece-id (:id target-piece)
+                     :from-size old-size
+                     :to-size next-size})
+
+      :else
+      (let [source-cost {:source-card source-card
+                         :discard-source-card? discard-source-card?}
+            cost-state (core/apply-source-cost state player-id source-cost)
+            event-target (select-keys target
+                                      [:kind :piece-id :player-id :board-index :row :col])
+            base-event {:player-id player-id
+                        :source source
+                        :sword-variant sword-variant
+                        :target event-target
+                        :damage damage
+                        :from-size old-size}]
+        (if destroyed?
+          (let [event (assoc base-event
+                             :type :sword/piece-destroyed
+                             :destroyed-piece target-piece)
+                next-state (-> cost-state
+                               (core/increment-stash owner-id old-size)
+                               (remove-piece-by-id (:id target-piece))
+                               (core/append-history event))]
+            (core/success next-state [event]))
+          (let [shrunk-piece (merge {:id (core/next-piece-id state owner-id next-size)
+                                     :player-id owner-id
+                                     :size next-size
+                                     :orientation (or (:orientation target)
+                                                      (:orientation target-piece))}
+                                    (piece-space target-piece))
+                event (assoc base-event
+                             :type :sword/piece-shrunk
+                             :to-size next-size
+                             :replaced-piece target-piece
+                             :piece shrunk-piece)
+                next-state (-> cost-state
+                               (core/increment-stash owner-id old-size)
+                               (core/decrement-stash owner-id next-size)
+                               (core/replace-piece-by-id (:id target-piece) shrunk-piece)
+                               (core/append-history event))]
+            (core/success next-state [event])))))))
+
+(defn- apply-resolved-sword-action [state player-id result]
+  (case (get-in result [:command :target :kind])
+    :piece
+    (apply-sword-piece-attack state player-id result)
+
+    :territory
+    (core/failure :sword-territory-transition-unavailable
+                  "Sword territory attack application is not implemented yet."
+                  {:target (get-in result [:command :target])})
+
+    (core/failure :invalid-sword-target
+                  "Sword move targets must be :piece or :territory."
+                  {:target (get-in result [:command :target])})))
+
+(defn apply-sword-move [state command]
+  (let [result (resolve-sword-command state command)]
+    (if-not (:ok? result)
+      result
+      (apply-resolved-sword-action state
+                                   (get-in result [:command :player-id])
+                                   result))))

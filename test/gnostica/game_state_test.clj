@@ -360,10 +360,12 @@
            (game-state-rod/apply-rod-move rod-state rod-command)))
 	    (is (= (game-state/resolve-disc-command disc-state disc-command)
 	           (game-state-disc/resolve-disc-command disc-state disc-command)))
-	    (is (= (game-state/apply-disc-move disc-state disc-command)
-	           (game-state-disc/apply-disc-move disc-state disc-command)))
+    (is (= (game-state/apply-disc-move disc-state disc-command)
+           (game-state-disc/apply-disc-move disc-state disc-command)))
     (is (= (game-state/resolve-sword-command sword-state sword-command)
-           (game-state-sword/resolve-sword-command sword-state sword-command)))))
+           (game-state-sword/resolve-sword-command sword-state sword-command)))
+    (is (= (game-state/apply-sword-move sword-state sword-command)
+           (game-state-sword/apply-sword-move sword-state sword-command)))))
 
 (deftest draw-move-discards-selected-cards-and-draws-to-hand
   (let [initial-state (deterministic-game)
@@ -1504,6 +1506,219 @@
            (get-in result [:command :sword-variant])))
     (is (= :discard-pile
            (get-in result [:command :replacement-card-source])))))
+
+(deftest sword-move-shrinks-current-player-piece-and-may-reorient-it
+  (let [state (:state (game-state/create-game
+                       player-specs
+                       {:deck-order (deck-with-board-card 3 "swords2")}))
+        state (game-state/with-board-pieces state [rose-sword-minion])
+        command {:player-id :rose
+                 :source {:kind :territory
+                          :board-index 3
+                          :piece-id :rose-sword-minion}
+                 :target {:kind :piece
+                          :piece-id :rose-sword-minion}
+                 :damage 1
+                 :orientation :south}
+        {:keys [ok? state events]} (game-state/apply-sword-move state command)
+        shrunk-piece (piece-by-id state :rose-small-1)]
+    (is ok?)
+    (is (nil? (piece-by-id state :rose-sword-minion)))
+    (is (= {:id :rose-small-1
+            :player-id :rose
+            :space-index 3
+            :size :small
+            :orientation :south}
+           shrunk-piece))
+    (is (= 4 (get-in state [:players-by-id :rose :stash :small])))
+    (is (= 5 (get-in state [:players-by-id :rose :stash :medium])))
+    (is (= 4 (get-in state [:pieces :stashes :rose :small])))
+    (is (= 5 (get-in state [:pieces :stashes :rose :medium])))
+    (is (= [{:type :sword/piece-shrunk
+             :player-id :rose
+             :source {:kind :territory
+                      :board-index 3
+                      :piece-id :rose-sword-minion}
+             :sword-variant :sword
+             :target {:kind :piece
+                      :piece-id :rose-sword-minion
+                      :player-id :rose
+                      :board-index 3
+                      :row 1
+                      :col 0}
+             :damage 1
+             :from-size :medium
+             :to-size :small
+             :replaced-piece rose-sword-minion
+             :piece shrunk-piece}]
+           events))
+    (is (= events [(peek (:history state))]))
+    (is (= (count cards/deck) (count (all-card-ids state))))
+    (is (= (count cards/deck) (count (set (all-card-ids state)))))
+    (is (game-schema/valid-game? state))))
+
+(deftest sword-move-shrinks-enemy-piece-and-discards-hand-source
+  (let [enemy-piece {:id :indigo-sword-target
+                     :player-id :indigo
+                     :space-index 4
+                     :size :large
+                     :orientation :north}
+        state (:state (game-state/create-game
+                       player-specs
+                       {:deck-order (deck-starting-with ["swords2"])}))
+        state (game-state/with-board-pieces state [rose-sword-minion enemy-piece])
+        command {:player-id :rose
+                 :source {:kind :hand-card
+                          :card-id "swords2"
+                          :piece-id :rose-sword-minion}
+                 :target {:kind :piece
+                          :piece-id :indigo-sword-target}
+                 :damage 1}
+        {:keys [ok? state events]} (game-state/apply-sword-move state command)
+        shrunk-piece (piece-by-id state :indigo-medium-1)]
+    (is ok?)
+    (is (nil? (piece-by-id state :indigo-sword-target)))
+    (is (= {:id :indigo-medium-1
+            :player-id :indigo
+            :space-index 4
+            :size :medium
+            :orientation :north}
+           shrunk-piece))
+    (is (= ["swords2"] (mapv :id (:discard-pile state))))
+    (is (not (some #{"swords2"} (player-hand-ids state :rose))))
+    (is (= 4 (get-in state [:players-by-id :indigo :stash :medium])))
+    (is (= 5 (get-in state [:players-by-id :indigo :stash :large])))
+    (is (= :sword/piece-shrunk (get-in events [0 :type])))
+    (is (= :indigo (get-in events [0 :target :player-id])))
+    (is (= enemy-piece (get-in events [0 :replaced-piece])))
+    (is (= (count cards/deck) (count (all-card-ids state))))
+    (is (= (count cards/deck) (count (set (all-card-ids state)))))
+    (is (game-schema/valid-game? state))))
+
+(deftest sword-move-destroys-small-piece
+  (let [enemy-piece {:id :indigo-sword-target
+                     :player-id :indigo
+                     :space-index 4
+                     :size :small
+                     :orientation :north}
+        state (:state (game-state/create-game
+                       player-specs
+                       {:deck-order (deck-starting-with ["swords2"])}))
+        state (game-state/with-board-pieces state [rose-sword-minion enemy-piece])
+        command {:player-id :rose
+                 :source {:kind :hand-card
+                          :card-id "swords2"
+                          :piece-id :rose-sword-minion}
+                 :target {:kind :piece
+                          :piece-id :indigo-sword-target}
+                 :damage 1}
+        {:keys [ok? state events]} (game-state/apply-sword-move state command)]
+    (is ok?)
+    (is (= [rose-sword-minion]
+           (get-in state [:pieces :on-board])))
+    (is (= 5 (get-in state [:players-by-id :indigo :stash :small])))
+    (is (= 5 (get-in state [:pieces :stashes :indigo :small])))
+    (is (= ["swords2"] (mapv :id (:discard-pile state))))
+    (is (= [{:type :sword/piece-destroyed
+             :player-id :rose
+             :source {:kind :hand-card
+                      :card-id "swords2"
+                      :piece-id :rose-sword-minion}
+             :sword-variant :sword
+             :target {:kind :piece
+                      :piece-id :indigo-sword-target
+                      :player-id :indigo
+                      :board-index 4
+                      :row 1
+                      :col 1}
+             :damage 1
+             :from-size :small
+             :destroyed-piece enemy-piece}]
+           events))
+    (is (= events [(peek (:history state))]))
+    (is (= (count cards/deck) (count (all-card-ids state))))
+    (is (= (count cards/deck) (count (set (all-card-ids state)))))
+    (is (game-schema/valid-game? state))))
+
+(deftest sword-move-rejects-missing-smaller-piece-and-overdamage_without_mutation
+  (let [target-piece {:id :indigo-sword-target
+                      :player-id :indigo
+                      :space-index 4
+                      :size :medium
+                      :orientation :north}
+        small-pieces [{:id :indigo-small-a
+                       :player-id :indigo
+                       :space-index 0
+                       :size :small
+                       :orientation :north}
+                      {:id :indigo-small-b
+                       :player-id :indigo
+                       :space-index 1
+                       :size :small
+                       :orientation :east}
+                      {:id :indigo-small-c
+                       :player-id :indigo
+                       :space-index 2
+                       :size :small
+                       :orientation :south}
+                      {:id :indigo-small-d
+                       :player-id :indigo
+                       :space-index 5
+                       :size :small
+                       :orientation :west}
+                      {:id :indigo-small-e
+                       :player-id :indigo
+                       :space-index 6
+                       :size :small
+                       :orientation :up}]
+        no-small-pieces (vec (concat [rose-sword-minion target-piece]
+                                     small-pieces))
+        no-small-state (:state (game-state/create-game
+                                player-specs
+                                {:deck-order (deck-with-board-card 3 "swords2")}))
+        no-small-state (game-state/with-board-pieces no-small-state
+                                                     no-small-pieces)
+        no-small-result (game-state/apply-sword-move
+                         no-small-state
+                         {:player-id :rose
+                          :source {:kind :territory
+                                   :board-index 3
+                                   :piece-id :rose-sword-minion}
+                          :target {:kind :piece
+                                   :piece-id :indigo-sword-target}
+                          :damage 1})
+        small-target {:id :indigo-small-target
+                      :player-id :indigo
+                      :space-index 4
+                      :size :small
+                      :orientation :north}
+        overdamage-state (:state (game-state/create-game
+                                  player-specs
+                                  {:deck-order (deck-with-board-card 3 "swords2")}))
+        overdamage-state (game-state/with-board-pieces
+                          overdamage-state
+                          [rose-sword-minion small-target])
+        overdamage-result (game-state/apply-sword-move
+                           overdamage-state
+                           {:player-id :rose
+                            :source {:kind :territory
+                                     :board-index 3
+                                     :piece-id :rose-sword-minion}
+                            :target {:kind :piece
+                                     :piece-id :indigo-small-target}
+                            :damage 2})]
+    (is (= :no-smaller-piece-available
+           (get-in no-small-result [:error :code])))
+    (is (= :invalid-sword-damage
+           (get-in overdamage-result [:error :code])))
+    (is (not (contains? no-small-result :state)))
+    (is (not (contains? overdamage-result :state)))
+    (is (= no-small-pieces
+           (get-in no-small-state [:pieces :on-board])))
+    (is (= [rose-sword-minion small-target]
+           (get-in overdamage-state [:pieces :on-board])))
+    (is (empty? (:discard-pile no-small-state)))
+    (is (empty? (:discard-pile overdamage-state)))))
 
 (deftest disc-move-grows-spot-territory-with-hand-replacement
   (let [deck-order (deck-with-cards-at {0 "cupsking"
