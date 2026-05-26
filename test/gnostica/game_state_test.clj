@@ -1524,6 +1524,109 @@
     (is (= :discard-pile
            (get-in result [:command :replacement-card-source])))))
 
+(deftest plain-sword-major-hand-sources-use-single_attack_contract
+  (doseq [card-id ["justice" "death" "moon"]]
+    (let [enemy-piece {:id :indigo-sword-target
+                       :player-id :indigo
+                       :space-index 4
+                       :size :large
+                       :orientation :north}
+          state (:state (game-state/create-game
+                         player-specs
+                         {:deck-order (deck-starting-with [card-id])}))
+          state (game-state/with-board-pieces state [rose-sword-minion enemy-piece])
+          command {:player-id :rose
+                   :source {:kind :hand-card
+                            :card-id card-id
+                            :piece-id :rose-sword-minion}
+                   :target {:kind :piece
+                            :piece-id :indigo-sword-target}
+                   :damage 1}
+          {:keys [ok? state events]} (game-state/apply-sword-move state command)
+          shrunk-piece (piece-by-id state :indigo-medium-1)]
+      (is ok? card-id)
+      (is (= :sword/piece-shrunk (get-in events [0 :type])) card-id)
+      (is (= :sword (get-in events [0 :sword-variant])) card-id)
+      (is (= {:kind :hand-card
+              :card-id card-id
+              :piece-id :rose-sword-minion}
+             (get-in events [0 :source]))
+          card-id)
+      (is (= {:id :indigo-medium-1
+              :player-id :indigo
+              :space-index 4
+              :size :medium
+              :orientation :north}
+             shrunk-piece)
+          card-id)
+      (is (= [card-id] (mapv :id (:discard-pile state))) card-id)
+      (is (not (some #{card-id} (player-hand-ids state :rose))) card-id)
+      (is (= events [(peek (:history state))]) card-id)
+      (is (= (count cards/deck) (count (all-card-ids state))) card-id)
+      (is (= (count cards/deck) (count (set (all-card-ids state)))) card-id)
+      (is (game-schema/valid-game? state) card-id))))
+
+(deftest magician-wild_suit_sword_variant_is_carried_through_attack_application
+  (let [enemy-piece {:id :indigo-sword-target
+                     :player-id :indigo
+                     :space-index 4
+                     :size :medium
+                     :orientation :north}
+        state (:state (game-state/create-game
+                       player-specs
+                       {:deck-order (deck-starting-with ["magician"])}))
+        state (game-state/with-board-pieces state [rose-sword-minion enemy-piece])
+        command {:player-id :rose
+                 :source {:kind :hand-card
+                          :card-id "magician"
+                          :piece-id :rose-sword-minion}
+                 :target {:kind :piece
+                          :piece-id :indigo-sword-target}
+                 :damage 1}
+        {:keys [ok? state events]} (game-state/apply-sword-move state command)]
+    (is (= [:wild-suits] (cards/sword-variants (cards/card-by-id "magician"))))
+    (is ok?)
+    (is (= :sword/piece-shrunk (get-in events [0 :type])))
+    (is (= :wild-suits (get-in events [0 :sword-variant])))
+    (is (= ["magician"] (mapv :id (:discard-pile state))))
+    (is (not (some #{"magician"} (player-hand-ids state :rose))))
+    (is (= events [(peek (:history state))]))
+    (is (game-schema/valid-game? state))))
+
+(deftest tower-sword-discard_pile_replacement_is_only_for_surviving_territories
+  (let [state (-> (state-with-pieces [rose-sword-minion])
+                  (state-with-board-card 3 "tower")
+                  (state-with-board-card 4 "cups2")
+                  (move-card-to-discard "cupsking"))
+        piece-result (game-state/resolve-sword-command
+                      state
+                      {:player-id :rose
+                       :source {:kind :territory
+                                :board-index 3
+                                :piece-id :rose-sword-minion}
+                       :target {:kind :piece
+                                :piece-id :rose-sword-minion}
+                       :damage 1
+                       :replacement-card-source :discard-pile
+                       :replacement-card-id "cupsking"})
+        destroyed-territory-result (game-state/resolve-sword-command
+                                    state
+                                    {:player-id :rose
+                                     :source {:kind :territory
+                                              :board-index 3
+                                              :piece-id :rose-sword-minion}
+                                     :target {:kind :territory
+                                              :board-index 4}
+                                     :damage 1
+                                     :replacement-card-source :discard-pile
+                                     :replacement-card-id "cupsking"})]
+    (is (= :invalid-sword-replacement
+           (get-in piece-result [:error :code])))
+    (is (= :invalid-sword-replacement
+           (get-in destroyed-territory-result [:error :code])))
+    (is (not (contains? piece-result :state)))
+    (is (not (contains? destroyed-territory-result :state)))))
+
 (deftest sword-move-shrinks-current-player-piece-and-may-reorient-it
   (let [state (:state (game-state/create-game
                        player-specs
