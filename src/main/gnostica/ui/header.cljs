@@ -57,20 +57,24 @@
      label]))
 
 (defn app-header []
-  (let [{:keys [current-player card-icon-mode open-panels]} @(rf/subscribe [events/header-view])]
+  (let [{:keys [current-player card-icon-mode open-panels lobby?]} @(rf/subscribe [events/header-view])]
     [:header.app-header
      [:div.brand
       [:span.brand__mark "G"]
       [:span.brand__name "Gnostica"]]
      [:div.app-header__actions
-      [:div.panel-toggles
-       [panel-toggle open-panels :move]
-       [panel-toggle open-panels :territory]
-       [panel-toggle open-panels :cards]]
+      (when-not lobby?
+        [:div.panel-toggles
+         [panel-toggle open-panels :move]
+         [panel-toggle open-panels :territory]
+         [panel-toggle open-panels :cards]])
       [hotkey-help-toggle]
       [icon-help-toggle]
       [card-icon-mode-toggle card-icon-mode]
-      (when current-player
+      (when (or lobby? current-player)
         [:div.app-status
-         [:span "Current player"]
-         [:strong (:name current-player)]])]]))
+         (if lobby?
+           [:strong "Lobby"]
+           [:<>
+            [:span "Current player"]
+            [:strong (:name current-player)]])])]]))

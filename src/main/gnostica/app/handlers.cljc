@@ -17,10 +17,14 @@
       (assoc :shuffle-fn shuffle-fn))))
 
 (defn initialize-options [opts injections]
-  (update (or opts {})
-          :game-options
-          add-initialize-shuffle
-          injections))
+  (let [opts (or opts {})]
+    (if (and (:start-in-lobby? opts)
+             (not (:bypass-lobby? opts)))
+      opts
+      (update opts
+              :game-options
+              add-initialize-shuffle
+              injections))))
 
 (defn initialize-db
   ([opts] (app-state/initialize opts))
@@ -37,3 +41,8 @@
   ([db] (app-state/confirm-move db))
   ([db injections]
    (app-state/confirm-move db (transition-options injections))))
+
+(defn start-lobby-game-db
+  ([db] (app-state/start-lobby-game db))
+  ([db injections]
+   (app-state/start-lobby-game db (transition-options injections))))

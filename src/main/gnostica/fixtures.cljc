@@ -1,5 +1,6 @@
 (ns gnostica.fixtures
-  (:require [gnostica.cards :as cards]))
+  (:require [gnostica.cards :as cards]
+            [gnostica.pieces :as pieces]))
 
 (def smoke-query-param "gnostica-smoke")
 
@@ -42,6 +43,14 @@
   ([player-specs]
    {:demo-board-pieces (demo-board-pieces-for player-specs)}))
 
+(def default-browser-lobby-player-specs
+  (mapv #(select-keys % [:id :name])
+        (take 2 pieces/players)))
+
+(defn lobby-init-options []
+  {:start-in-lobby? true
+   :player-specs default-browser-lobby-player-specs})
+
 (defn major-icon-smoke-deck-order []
   (let [major-hand-card (cards/card-by-id "magician")
         major-board-cards [(cards/card-by-id "chariot")
@@ -65,7 +74,11 @@
 
 (defn smoke-init-options [smoke-mode]
   (when (= smoke-major-icons-mode smoke-mode)
-    {:game-options {:deck-order (major-icon-smoke-deck-order)}}))
+    {:start-in-lobby? false
+     :bypass-lobby? true
+     :player-specs (mapv #(select-keys % [:id :name]) pieces/players)
+     :demo-board-pieces demo-board-pieces
+     :game-options {:deck-order (major-icon-smoke-deck-order)}}))
 
 (defn merge-init-options [& options]
   (reduce (fn [merged option]
@@ -88,5 +101,5 @@
    (defn browser-init-options
      ([] (browser-init-options (.. js/window -location -search)))
      ([search]
-      (merge-init-options (demo-init-options)
+      (merge-init-options (lobby-init-options)
                           (smoke-init-options (smoke-mode-from-search search))))))

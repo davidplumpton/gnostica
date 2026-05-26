@@ -228,6 +228,112 @@
     (is (empty? (app-state/board db)))
     (is (empty? (app-state/board-pieces db)))))
 
+(deftest initialize-can-start-in-local-lobby
+  (let [db (app-state/initialize {:start-in-lobby? true
+                                  :player-specs test-player-specs})
+        lobby-view (app-state/lobby-view db)
+        header-view (app-state/header-view db)
+        app-view (app-state/app-view db)]
+    (is (nil? (app-state/game db)))
+    (is (true? (app-state/lobby-active? db)))
+    (is (= [:rose :indigo]
+           (mapv :id (:players lobby-view))))
+    (is (= ["Rose" "Indigo"]
+           (mapv :name (:players lobby-view))))
+    (is (= 2 (:player-count lobby-view)))
+    (is (true? (:can-start? lobby-view)))
+    (is (true? (:can-add? lobby-view)))
+    (is (true? (:lobby? header-view)))
+    (is (nil? (:current-player header-view)))
+    (is (true? (:lobby? app-view)))))
+
+(deftest lobby-can-add-remove-and-enforce-player-limits
+  (let [db (app-state/initialize {:start-in-lobby? true
+                                  :player-specs test-player-specs})
+        full-db (-> db
+                    app-state/add-lobby-player
+                    app-state/add-lobby-player
+                    app-state/add-lobby-player
+                    app-state/add-lobby-player)
+        overfull-db (app-state/add-lobby-player full-db)
+        first-slot-id (-> full-db app-state/lobby-players first :slot-id)
+        removed-db (app-state/remove-lobby-player full-db first-slot-id)
+        underfilled-db (-> db
+                           (app-state/remove-lobby-player 1))]
+    (is (= game-state/max-players
+           (count (app-state/lobby-players full-db))))
+    (is (false? (:can-add? (app-state/lobby-view full-db))))
+    (is (= :too-many-players
+           (get-in overfull-db [:lobby :error :code])))
+    (is (= (dec game-state/max-players)
+           (count (app-state/lobby-players removed-db))))
+    (is (= 1 (count (app-state/lobby-players underfilled-db))))
+    (is (= :too-few-players
+           (get-in underfilled-db [:lobby :error :code])))
+    (is (false? (:can-start? (app-state/lobby-view underfilled-db))))))
+
+(deftest lobby-edits-names-and-rejects-duplicate-colours
+  (let [db (app-state/initialize {:start-in-lobby? true
+                                  :player-specs test-player-specs})
+        renamed-db (app-state/set-lobby-player-name db 1 "Ada")
+        duplicate-db (app-state/set-lobby-player-colour renamed-db 2 :rose)
+        recoloured-db (app-state/set-lobby-player-colour renamed-db 2 :gold)
+        gold-player (second (app-state/lobby-players recoloured-db))]
+    (is (= "Ada" (get-in renamed-db [:lobby :players 0 :name])))
+    (is (= :duplicate-player-colour
+           (get-in duplicate-db [:lobby :error :code])))
+    (is (= :indigo
+           (get-in duplicate-db [:lobby :players 1 :id])))
+    (is (= :gold (:id gold-player)))
+    (is (= "Gold" (:name gold-player)))
+    (is (nil? (get-in recoloured-db [:lobby :error])))))
+
+(deftest starting-lobby-game-uses-selected-players-and-injected-shuffle
+  (let [db (app-state/initialize {:start-in-lobby? true
+                                  :player-specs [{:id :rose
+                                                  :name "Ada"}
+                                                 {:id :indigo
+                                                  :name "Babbage"}]})
+        started-db (app-handlers/start-lobby-game-db db {:shuffle-seed 8675309})
+        seeded-deck (deterministic-shuffle/shuffle-with-seed 8675309 cards/deck)]
+    (is (nil? (app-state/lobby started-db)))
+    (is (nil? (app-state/setup-error started-db)))
+    (is (= "Ada" (get-in started-db [:game :players-by-id :rose :name])))
+    (is (= "Babbage" (get-in started-db [:game :players-by-id :indigo :name])))
+    (is (= [:rose :indigo]
+           (get-in started-db [:game :turn :order])))
+    (is (= (mapv :id (take game-state/starting-hand-size seeded-deck))
+           (mapv :id (app-state/current-player-hand started-db))))
+    (is (game-schema/valid-game? (app-state/game started-db)))))
+
+(deftest bypass-lobby-initializes-game-for-fixtures
+  (let [db (app-state/initialize {:start-in-lobby? true
+                                  :bypass-lobby? true
+                                  :player-specs test-player-specs
+                                  :game-options {:shuffle-fn identity}
+                                  :demo-board-pieces (fixtures/demo-board-pieces-for
+                                                      test-player-specs)})]
+    (is (nil? (app-state/lobby db)))
+    (is (some? (app-state/game db)))
+    (is (= #{:rose :indigo}
+           (set (map :player-id (app-state/board-pieces db)))))
+    (is (game-schema/valid-game? (app-state/game db)))))
+
+(deftest pre-game-view-models-handle-missing-game
+  (let [db (app-state/initialize {:start-in-lobby? true
+                                  :player-specs test-player-specs})
+        board-view (app-state/board-view db)
+        card-view (app-state/card-zones-view db)
+        territory-view (app-state/territory-view db)
+        move-view (app-state/move-panel-view db)]
+    (is (true? (:empty? board-view)))
+    (is (empty? (:cells board-view)))
+    (is (nil? (:current-player card-view)))
+    (is (empty? (get-in card-view [:zones :hand])))
+    (is (nil? (:cell territory-view)))
+    (is (nil? (:current-player move-view)))
+    (is (every? (comp false? :enabled?) (:source-options move-view)))))
+
 (deftest selecting-board-card-updates-selected-territory
   (let [db (app-state/initialize {:game-options {:shuffle-fn identity}
                                   :demo-board-pieces fixtures/demo-board-pieces})

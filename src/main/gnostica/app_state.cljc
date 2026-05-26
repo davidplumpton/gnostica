@@ -1,11 +1,15 @@
 (ns gnostica.app-state
-  (:require [gnostica.board-layout :as layout]
+  (:require [clojure.string :as str]
+            [gnostica.board-layout :as layout]
             [gnostica.game-state :as game-state]
             [gnostica.move-selection :as move-selection]
             [gnostica.pieces :as pieces]))
 
 (def default-player-specs
   (mapv #(select-keys % [:id :name]) pieces/players))
+
+(def default-lobby-player-specs
+  (subvec default-player-specs 0 game-state/min-players))
 
 (def default-selected-board-index 0)
 
@@ -33,6 +37,126 @@
 
 (def empty-move-selection move-selection/empty-move-selection)
 
+(declare initialize-game-db)
+
+(defn- player-colour [player-id]
+  (get pieces/players-by-id player-id))
+
+(defn- known-player-id? [player-id]
+  (contains? pieces/players-by-id player-id))
+
+(defn- trim-name [name]
+  (str/trim (str name)))
+
+(defn- lobby-error [code message data]
+  {:code code
+   :message message
+   :data data})
+
+(defn- duplicate-lobby-player-ids [players]
+  (->> players
+       (map :id)
+       frequencies
+       (keep (fn [[player-id n]]
+               (when (< 1 n)
+                 player-id)))
+       vec))
+
+(defn- first-available-player-id [players]
+  (let [used (set (map :id players))]
+    (some #(when-not (contains? used (:id %))
+             (:id %))
+          pieces/players)))
+
+(defn- normalize-lobby-player [slot-id player-spec]
+  (let [requested-id (:id player-spec)
+        player-id (if (known-player-id? requested-id)
+                    requested-id
+                    (:id (first pieces/players)))
+        colour (player-colour player-id)
+        name (trim-name (or (:name player-spec)
+                            (:name colour)))]
+    {:slot-id slot-id
+     :id player-id
+     :name name}))
+
+(defn- normalize-lobby-players [player-specs]
+  (mapv normalize-lobby-player
+        (range 1 (inc (count player-specs)))
+        player-specs))
+
+(defn- next-lobby-slot-id [players]
+  (inc (reduce max 0 (map :slot-id players))))
+
+(defn- lobby-player-specs [lobby]
+  (mapv (fn [{:keys [id name]}]
+          {:id id
+           :name (trim-name name)})
+        (:players lobby)))
+
+(defn lobby-validation-error [lobby]
+  (let [players (:players lobby)
+        player-specs (lobby-player-specs lobby)
+        duplicate-ids (duplicate-lobby-player-ids players)
+        unknown-ids (->> players
+                         (map :id)
+                         (remove known-player-id?)
+                         vec)
+        blank-name-slot-ids (->> players
+                                 (filter #(str/blank? (trim-name (:name %))))
+                                 (mapv :slot-id))]
+    (cond
+      (< (count players) game-state/min-players)
+      (lobby-error :too-few-players
+                   "Add at least two players before starting."
+                   {:count (count players)
+                    :minimum game-state/min-players})
+
+      (< game-state/max-players (count players))
+      (lobby-error :too-many-players
+                   "Gnostica supports no more than six players."
+                   {:count (count players)
+                    :maximum game-state/max-players})
+
+      (seq unknown-ids)
+      (lobby-error :unknown-player-colours
+                   "Every player must use a known player colour."
+                   {:player-ids unknown-ids
+                    :known-ids (mapv :id pieces/players)})
+
+      (seq duplicate-ids)
+      (lobby-error :duplicate-player-colours
+                   "Each player colour can only be used once."
+                   {:player-ids duplicate-ids})
+
+      (seq blank-name-slot-ids)
+      (lobby-error :blank-player-names
+                   "Every player needs a display name."
+                   {:slot-ids blank-name-slot-ids})
+
+      (not (game-state/valid-player-count? player-specs))
+      (lobby-error :invalid-player-count
+                   "Gnostica requires between two and six players."
+                   {:count (count player-specs)
+                    :minimum game-state/min-players
+                    :maximum game-state/max-players}))))
+
+(defn lobby-valid? [lobby]
+  (nil? (lobby-validation-error lobby)))
+
+(defn- create-lobby [{:keys [player-specs lobby-player-specs game-options demo-board-pieces]
+                      :as opts
+                      :or {player-specs default-lobby-player-specs
+                           game-options {}}}]
+  (let [players (normalize-lobby-players (or lobby-player-specs player-specs))]
+    (cond-> {:players players
+             :next-slot-id (next-lobby-slot-id players)
+             :start-options (cond-> {:game-options (or game-options {})}
+                              (contains? opts :demo-board-pieces)
+                              (assoc :demo-board-pieces demo-board-pieces))}
+      (lobby-validation-error {:players players})
+      (assoc :error (lobby-validation-error {:players players})))))
+
 (defn normalize-open-panels [open-panels]
   (set (filter panel-ids open-panels)))
 
@@ -52,34 +176,234 @@
            (select-keys status [:code :revision :expected-revision :message])
            {:ok? (true? (:ok? status))})))
 
+(defn- base-db
+  [{:keys [selected-board-index card-icon-mode open-panels three-runtime-status]
+    :or {selected-board-index default-selected-board-index
+         card-icon-mode default-card-icon-mode
+         open-panels default-open-panels}}]
+  {:selected-board-index selected-board-index
+   :card-icon-mode (normalize-card-icon-mode card-icon-mode)
+   :open-panels (normalize-open-panels open-panels)
+   :hotkey-help-open? default-hotkey-help-open?
+   :icon-help-open? default-icon-help-open?
+   :move-selection (empty-move-selection)
+   :three-runtime-status (normalize-three-runtime-status three-runtime-status)
+   :three-texture-errors []})
+
+(defn- initialize-game-db [db opts player-specs game-options]
+  (let [result (game-state/create-game player-specs (or game-options {}))]
+    (if (:ok? result)
+      (-> db
+          (assoc :game (state-with-demo-board-pieces (:state result) opts))
+          (dissoc :setup-error :lobby))
+      (-> db
+          (assoc :setup-error (:error result))
+          (dissoc :game)))))
+
 (defn initialize
   ([] (initialize {}))
-  ([{:keys [player-specs game-options selected-board-index card-icon-mode
-            open-panels three-runtime-status]
+  ([{:keys [player-specs game-options start-in-lobby? bypass-lobby?]
      :as opts
      :or {player-specs default-player-specs
-          game-options {}
-          selected-board-index default-selected-board-index
-          card-icon-mode default-card-icon-mode
-          open-panels default-open-panels}}]
-   (let [result (game-state/create-game player-specs game-options)
-         base-db {:selected-board-index selected-board-index
-                  :card-icon-mode (normalize-card-icon-mode card-icon-mode)
-                  :open-panels (normalize-open-panels open-panels)
-                  :hotkey-help-open? default-hotkey-help-open?
-                  :icon-help-open? default-icon-help-open?
-                  :move-selection (empty-move-selection)
-                  :three-runtime-status (normalize-three-runtime-status three-runtime-status)
-                  :three-texture-errors []}]
-     (if (:ok? result)
-       (assoc base-db :game (state-with-demo-board-pieces (:state result) opts))
-       (assoc base-db :setup-error (:error result))))))
+          game-options {}}}]
+   (let [db (base-db opts)]
+     (if (and start-in-lobby?
+              (not bypass-lobby?))
+       (assoc db :lobby (create-lobby opts))
+       (initialize-game-db db opts player-specs game-options)))))
 
 (defn game [db]
   (:game db))
 
 (defn setup-error [db]
   (:setup-error db))
+
+(defn lobby [db]
+  (:lobby db))
+
+(defn lobby-active? [db]
+  (some? (lobby db)))
+
+(defn lobby-players [db]
+  (get-in db [:lobby :players] []))
+
+(defn- refresh-lobby-error [db]
+  (if-let [lobby (lobby db)]
+    (let [validation-error (lobby-validation-error lobby)]
+      (if validation-error
+        (assoc-in db [:lobby :error] validation-error)
+        (update db :lobby dissoc :error)))
+    db))
+
+(defn add-lobby-player [db]
+  (let [players (lobby-players db)]
+    (cond
+      (not (lobby-active? db))
+      db
+
+      (<= game-state/max-players (count players))
+      (assoc-in db [:lobby :error]
+                (lobby-error :too-many-players
+                             "Gnostica supports no more than six players."
+                             {:count (count players)
+                              :maximum game-state/max-players}))
+
+      :else
+      (if-let [player-id (first-available-player-id players)]
+        (let [slot-id (get-in db [:lobby :next-slot-id] (next-lobby-slot-id players))
+              colour (player-colour player-id)
+              player {:slot-id slot-id
+                      :id player-id
+                      :name (:name colour)}]
+          (-> db
+              (update-in [:lobby :players] conj player)
+              (assoc-in [:lobby :next-slot-id] (inc slot-id))
+              refresh-lobby-error))
+        (assoc-in db [:lobby :error]
+                  (lobby-error :no-player-colours-available
+                               "No unused player colours are available."
+                               {:known-ids (mapv :id pieces/players)}))))))
+
+(defn remove-lobby-player [db slot-id]
+  (if-not (lobby-active? db)
+    db
+    (-> db
+        (update-in [:lobby :players]
+                   (fn [players]
+                     (vec (remove #(= slot-id (:slot-id %)) players))))
+        refresh-lobby-error)))
+
+(defn set-lobby-player-name [db slot-id name]
+  (if-not (lobby-active? db)
+    db
+    (-> db
+        (update-in [:lobby :players]
+                   (fn [players]
+                     (mapv (fn [player]
+                             (if (= slot-id (:slot-id player))
+                               (assoc player :name (str name))
+                               player))
+                           players)))
+        refresh-lobby-error)))
+
+(defn set-lobby-player-colour [db slot-id player-id]
+  (let [player-id (if (string? player-id)
+                    (keyword player-id)
+                    player-id)
+        players (lobby-players db)
+        existing-player (some #(when (= slot-id (:slot-id %)) %) players)
+        duplicate? (some #(and (not= slot-id (:slot-id %))
+                               (= player-id (:id %)))
+                         players)]
+    (cond
+      (not (lobby-active? db))
+      db
+
+      (nil? existing-player)
+      (assoc-in db [:lobby :error]
+                (lobby-error :unknown-lobby-player
+                             "The selected lobby player no longer exists."
+                             {:slot-id slot-id}))
+
+      (not (known-player-id? player-id))
+      (assoc-in db [:lobby :error]
+                (lobby-error :unknown-player-colour
+                             "Choose one of the known player colours."
+                             {:player-id player-id
+                              :known-ids (mapv :id pieces/players)}))
+
+      duplicate?
+      (assoc-in db [:lobby :error]
+                (lobby-error :duplicate-player-colour
+                             "Each player colour can only be used once."
+                             {:player-id player-id}))
+
+      :else
+      (let [old-default-name (:name (player-colour (:id existing-player)))
+            new-default-name (:name (player-colour player-id))]
+        (-> db
+            (update-in [:lobby :players]
+                       (fn [players]
+                         (mapv (fn [player]
+                                 (if (= slot-id (:slot-id player))
+                                   (cond-> (assoc player :id player-id)
+                                     (= old-default-name (:name player))
+                                     (assoc :name new-default-name))
+                                   player))
+                               players)))
+            refresh-lobby-error)))))
+
+(defn- game-options-with-transition-shuffle [game-options transition-options]
+  (let [game-options (or game-options {})
+        shuffle-fn (:shuffle-fn transition-options)]
+    (cond-> game-options
+      (and shuffle-fn
+           (not (contains? game-options :deck-order))
+           (not (contains? game-options :shuffle-fn)))
+      (assoc :shuffle-fn shuffle-fn))))
+
+(defn start-lobby-game
+  ([db] (start-lobby-game db {}))
+  ([db transition-options]
+   (if-not (lobby-active? db)
+     db
+     (let [db (refresh-lobby-error db)
+           lobby (lobby db)
+           validation-error (lobby-validation-error lobby)]
+       (if validation-error
+         (assoc-in db [:lobby :error] validation-error)
+         (let [start-options (:start-options lobby)
+               game-options (game-options-with-transition-shuffle
+                             (:game-options start-options)
+                             transition-options)]
+           (initialize-game-db
+            (assoc db :move-selection (empty-move-selection))
+            start-options
+            (lobby-player-specs lobby)
+            game-options)))))))
+
+(defn- lobby-colour-option [used-player-ids current-player-id colour]
+  (let [player-id (:id colour)
+        selected? (= current-player-id player-id)]
+    (assoc (select-keys colour [:id :name :css-color])
+           :selected? selected?
+           :disabled? (and (not selected?)
+                           (contains? used-player-ids player-id)))))
+
+(defn lobby-view-model [{:keys [lobby]}]
+  (let [players (:players lobby)
+        used-player-ids (set (map :id players))
+        validation-error (when lobby
+                           (lobby-validation-error lobby))
+        error (or (:error lobby)
+                  validation-error)]
+    {:active? (some? lobby)
+     :players (mapv (fn [player]
+                      (let [colour (player-colour (:id player))]
+                        (assoc player
+                               :colour (select-keys colour [:id :name :css-color])
+                               :colour-options (mapv #(lobby-colour-option
+                                                       used-player-ids
+                                                       (:id player)
+                                                       %)
+                                                     pieces/players))))
+                    players)
+     :available-colours (mapv #(assoc (select-keys % [:id :name :css-color])
+                                      :available?
+                                      (not (contains? used-player-ids (:id %))))
+                              pieces/players)
+     :player-count (count players)
+     :min-players game-state/min-players
+     :max-players game-state/max-players
+     :can-add? (boolean
+                (and (some? lobby)
+                     (< (count players) game-state/max-players)
+                     (some #(not (contains? used-player-ids (:id %)))
+                           pieces/players)))
+     :can-start? (boolean
+                  (and (some? lobby)
+                       (nil? validation-error)))
+     :error error}))
 
 (defn board [db]
   (get-in db [:game :board] []))
@@ -196,6 +520,7 @@
   (let [wastelands (layout/wasteland-spaces cells)
         runtime-status (normalize-three-runtime-status three-runtime-status)]
     {:cells cells
+     :empty? (empty? cells)
      :board-pieces board-pieces
      :pieces-by-space (pieces/pieces-by-space board-pieces)
      :wastelands wastelands
@@ -383,16 +708,21 @@
     :damage-options (move-damage-options db)
     :draw-options (draw-count-options db)}))
 
-(defn header-view-model [{:keys [current-player card-icon-mode open-panels]}]
+(defn header-view-model [{:keys [current-player card-icon-mode open-panels lobby?]}]
   {:current-player current-player
    :card-icon-mode card-icon-mode
-   :open-panels (normalize-open-panels open-panels)})
+   :open-panels (normalize-open-panels open-panels)
+   :lobby? (true? lobby?)})
 
 (defn header-view [db]
   (header-view-model
    {:current-player (current-player db)
     :card-icon-mode (card-icon-mode db)
-    :open-panels (open-panels db)}))
+    :open-panels (open-panels db)
+    :lobby? (lobby-active? db)}))
+
+(defn lobby-view [db]
+  (lobby-view-model {:lobby (lobby db)}))
 
 (defn help-dialogs-view-model
   [{:keys [hotkey-help-open? icon-help-open?]}]
@@ -405,16 +735,18 @@
     :icon-help-open? (icon-help-open? db)}))
 
 (defn app-view-model
-  [{:keys [setup-error card-icon-mode open-panels]}]
+  [{:keys [setup-error card-icon-mode open-panels lobby?]}]
   {:setup-error setup-error
    :card-icon-mode card-icon-mode
-   :open-panels (normalize-open-panels open-panels)})
+   :open-panels (normalize-open-panels open-panels)
+   :lobby? (true? lobby?)})
 
 (defn app-view [db]
   (app-view-model
    {:setup-error (setup-error db)
     :card-icon-mode (card-icon-mode db)
-    :open-panels (open-panels db)}))
+    :open-panels (open-panels db)
+    :lobby? (lobby-active? db)}))
 
 (defn confirm-move
   ([db] (move-selection/confirm-move db))

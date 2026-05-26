@@ -86,7 +86,12 @@
         @(rf/subscribe [events/board-view])]
     [:section.board-area
      {:data-three-revision (or three-revision "unavailable")}
-     (if three-renderer-available?
+     (cond
+       (empty? cells)
+       [:div.board-empty
+        [:p "Board setup pending"]]
+
+       three-renderer-available?
        [three-board/scene
         cells
         board-pieces
@@ -97,6 +102,8 @@
          :on-clear-texture-errors #(rf/dispatch [events/clear-three-texture-errors])
          :on-renderer-error #(rf/dispatch [events/three-renderer-error %])
          :on-texture-error #(rf/dispatch [events/three-texture-error %])}]
+
+       :else
        [:div.board-fallback
         [:p.board-3d-status.is-error
          three-renderer-message]

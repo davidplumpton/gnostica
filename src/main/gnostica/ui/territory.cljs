@@ -18,31 +18,34 @@
         :aria-label "Close territory panel"
         :on-click #(rf/dispatch [events/set-panel-open :territory false])}
        "Close"]]
-     [:h1 title]
-     [:dl.territory-facts
-      [:div
-       [:dt "Arcana"]
-       [:dd group]]
-      (when rank
-        [:div
-         [:dt "Rank"]
-         [:dd rank]])
-      [:div
-       [:dt "Orientation"]
-       [:dd (ui/orientation-label orientation)]]
-      [:div
-       [:dt "Position"]
-       [:dd (str "Row " (inc row) ", Column " (inc col))]]
-      [:div
-       [:dt "Pieces"]
-       [:dd
-        (if (seq selected-pieces)
-          [:ul.territory-pieces
-           (for [piece selected-pieces]
-             (let [player (pieces/player-for piece)]
-               ^{:key (:id piece)}
-               [:li
-                [:span.territory-piece-swatch
-                 {:style {"--piece-color" (:css-color player)}}]
-                [:span (ui/piece-summary piece)]]))]
-          "None")]]]]))
+     (if cell
+       [:<>
+        [:h1 title]
+        [:dl.territory-facts
+         [:div
+          [:dt "Arcana"]
+          [:dd group]]
+         (when rank
+           [:div
+            [:dt "Rank"]
+            [:dd rank]])
+         [:div
+          [:dt "Orientation"]
+          [:dd (ui/orientation-label orientation)]]
+         [:div
+          [:dt "Position"]
+          [:dd (str "Row " (inc row) ", Column " (inc col))]]
+         [:div
+          [:dt "Pieces"]
+          [:dd
+           (if (seq selected-pieces)
+             [:ul.territory-pieces
+              (for [piece selected-pieces]
+                (let [player (pieces/player-for piece)]
+                  ^{:key (:id piece)}
+                  [:li
+                   [:span.territory-piece-swatch
+                    {:style {"--piece-color" (:css-color player)}}]
+                   [:span (ui/piece-summary piece)]]))]
+             "None")]]]]
+       [:p.territory-empty "No territory selected."])]))

@@ -10,6 +10,11 @@
 (def initialize :gnostica.app/initialize)
 (def install-keyboard-shortcuts :gnostica.app/install-keyboard-shortcuts)
 (def uninstall-keyboard-shortcuts :gnostica.app/uninstall-keyboard-shortcuts)
+(def add-lobby-player :gnostica.app/add-lobby-player)
+(def remove-lobby-player :gnostica.app/remove-lobby-player)
+(def set-lobby-player-name :gnostica.app/set-lobby-player-name)
+(def set-lobby-player-colour :gnostica.app/set-lobby-player-colour)
+(def start-lobby-game :gnostica.app/start-lobby-game)
 (def select-board-card :gnostica.app/select-board-card)
 (def select-move-source :gnostica.app/select-move-source)
 (def select-move-piece :gnostica.app/select-move-piece)
@@ -47,6 +52,7 @@
 
 (def game :gnostica.app/game)
 (def setup-error :gnostica.app/setup-error)
+(def lobby :gnostica.app/lobby)
 (def board :gnostica.app/board)
 (def pieces :gnostica.app/pieces)
 (def selected-board-index :gnostica.app/selected-board-index)
@@ -90,6 +96,7 @@
 (def icon-help-open? :gnostica.app/icon-help-open?)
 
 (def app-view :gnostica.app/app-view)
+(def lobby-view :gnostica.app/lobby-view)
 (def header-view :gnostica.app/header-view)
 (def board-view :gnostica.app/board-view)
 (def card-zones-view :gnostica.app/card-zones-view)
@@ -132,6 +139,33 @@
  (fn [coeffects [_ opts]]
    {:db (-> (handlers/initialize-db opts {:shuffle-seed (get coeffects shuffle-seed)})
             (app-state/set-three-runtime-status (get coeffects three-runtime-status)))}))
+
+(rf/reg-event-db
+ add-lobby-player
+ (fn [db _]
+   (app-state/add-lobby-player db)))
+
+(rf/reg-event-db
+ remove-lobby-player
+ (fn [db [_ slot-id]]
+   (app-state/remove-lobby-player db slot-id)))
+
+(rf/reg-event-db
+ set-lobby-player-name
+ (fn [db [_ slot-id name]]
+   (app-state/set-lobby-player-name db slot-id name)))
+
+(rf/reg-event-db
+ set-lobby-player-colour
+ (fn [db [_ slot-id player-id]]
+   (app-state/set-lobby-player-colour db slot-id player-id)))
+
+(rf/reg-event-fx
+ start-lobby-game
+ [(rf/inject-cofx shuffle-seed)]
+ (fn [coeffects _]
+   {:db (handlers/start-lobby-game-db (:db coeffects)
+                                      {:shuffle-seed (get coeffects shuffle-seed)})}))
 
 (rf/reg-event-db
  select-board-card
@@ -316,6 +350,11 @@ select-move-rod-mode
  setup-error
  (fn [db _]
    (app-state/setup-error db)))
+
+(rf/reg-sub
+ lobby
+ (fn [db _]
+   (app-state/lobby db)))
 
 (rf/reg-sub
  board
@@ -538,22 +577,32 @@ move-rod-orientation-required?
 (rf/reg-sub
  app-view
  :<- [setup-error]
+ :<- [lobby]
  :<- [card-icon-mode]
  :<- [open-panels]
- (fn [[setup-error card-icon-mode open-panels] _]
+ (fn [[setup-error lobby card-icon-mode open-panels] _]
    (app-state/app-view-model
     {:setup-error setup-error
+     :lobby? (some? lobby)
      :card-icon-mode card-icon-mode
      :open-panels open-panels})))
 
 (rf/reg-sub
+ lobby-view
+ :<- [lobby]
+ (fn [lobby _]
+   (app-state/lobby-view-model {:lobby lobby})))
+
+(rf/reg-sub
  header-view
  :<- [current-player]
+ :<- [lobby]
  :<- [card-icon-mode]
  :<- [open-panels]
- (fn [[current-player card-icon-mode open-panels] _]
+ (fn [[current-player lobby card-icon-mode open-panels] _]
    (app-state/header-view-model
     {:current-player current-player
+     :lobby? (some? lobby)
      :card-icon-mode card-icon-mode
      :open-panels open-panels})))
 

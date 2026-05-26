@@ -42,5 +42,17 @@
     (is (= ["magician"] (mapv :id (filter :gnostica-icons current-hand))))
     (is (= ["chariot" "devil"]
            (mapv :id (filter :gnostica-icons board-cards))))
-    (is (= {:game-options {:deck-order deck-order}}
+    (is (= {:start-in-lobby? false
+            :bypass-lobby? true
+            :player-specs (mapv #(select-keys % [:id :name]) pieces/players)
+            :demo-board-pieces fixtures/demo-board-pieces
+            :game-options {:deck-order deck-order}}
            (fixtures/smoke-init-options fixtures/smoke-major-icons-mode)))))
+
+(deftest browser-lobby-init-options-prefill-two-local-players
+  (is (= {:start-in-lobby? true
+          :player-specs [{:id :rose
+                          :name "Rose"}
+                         {:id :indigo
+                          :name "Indigo"}]}
+         (fixtures/lobby-init-options))))
