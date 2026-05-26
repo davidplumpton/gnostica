@@ -21,11 +21,13 @@
 (def select-move-power :gnostica.app/select-move-power)
 (def select-move-rod-mode :gnostica.app/select-move-rod-mode)
 (def select-move-disc-target-kind :gnostica.app/select-move-disc-target-kind)
+(def select-move-sword-target-kind :gnostica.app/select-move-sword-target-kind)
 (def set-move-disc-action-count :gnostica.app/set-move-disc-action-count)
 (def set-move-minion-orientation :gnostica.app/set-move-minion-orientation)
 (def select-move-target-piece :gnostica.app/select-move-target-piece)
 (def set-move-orientation :gnostica.app/set-move-orientation)
 (def set-move-distance :gnostica.app/set-move-distance)
+(def set-move-damage :gnostica.app/set-move-damage)
 (def set-move-draw-count :gnostica.app/set-move-draw-count)
 (def toggle-move-discard-card :gnostica.app/toggle-move-discard-card)
 (def confirm-move :gnostica.app/confirm-move)
@@ -71,10 +73,13 @@
 (def move-disc-action-count-options :gnostica.app/move-disc-action-count-options)
 (def move-disc-minion-orientation-required? :gnostica.app/move-disc-minion-orientation-required?)
 (def move-disc-target-kind-options :gnostica.app/move-disc-target-kind-options)
+(def move-sword-target-kind-options :gnostica.app/move-sword-target-kind-options)
 (def move-target-piece-options :gnostica.app/move-target-piece-options)
 (def move-distance-options :gnostica.app/move-distance-options)
+(def move-damage-options :gnostica.app/move-damage-options)
 (def move-rod-orientation-required? :gnostica.app/move-rod-orientation-required?)
 (def move-disc-orientation-available? :gnostica.app/move-disc-orientation-available?)
+(def move-sword-orientation-available? :gnostica.app/move-sword-orientation-available?)
 (def move-replacement-card-options :gnostica.app/move-replacement-card-options)
 (def move-orientation-options :gnostica.app/move-orientation-options)
 (def move-discard-card-options :gnostica.app/move-discard-card-options)
@@ -184,6 +189,11 @@ select-move-rod-mode
    (app-state/select-move-disc-target-kind db target-kind)))
 
 (rf/reg-event-db
+ select-move-sword-target-kind
+ (fn [db [_ target-kind]]
+   (app-state/select-move-sword-target-kind db target-kind)))
+
+(rf/reg-event-db
  set-move-disc-action-count
  (fn [db [_ action-count]]
    (app-state/set-move-disc-action-count db action-count)))
@@ -207,6 +217,11 @@ select-move-rod-mode
  set-move-distance
  (fn [db [_ distance]]
    (app-state/set-move-distance db distance)))
+
+(rf/reg-event-db
+ set-move-damage
+ (fn [db [_ damage]]
+   (app-state/set-move-damage db damage)))
 
 (rf/reg-event-db
  set-move-draw-count
@@ -451,6 +466,11 @@ move-rod-mode-options
    (app-state/move-disc-target-kind-options db)))
 
 (rf/reg-sub
+ move-sword-target-kind-options
+ (fn [db _]
+   (app-state/move-sword-target-kind-options db)))
+
+(rf/reg-sub
 move-target-piece-options
  (fn [db _]
    (app-state/move-target-piece-options db)))
@@ -461,6 +481,11 @@ move-target-piece-options
    (app-state/move-distance-options db)))
 
 (rf/reg-sub
+ move-damage-options
+ (fn [db _]
+   (app-state/move-damage-options db)))
+
+(rf/reg-sub
 move-rod-orientation-required?
 (fn [db _]
   (app-state/move-rod-orientation-required? db)))
@@ -469,6 +494,11 @@ move-rod-orientation-required?
  move-disc-orientation-available?
  (fn [db _]
    (app-state/move-disc-orientation-available? db)))
+
+(rf/reg-sub
+ move-sword-orientation-available?
+ (fn [db _]
+   (app-state/move-sword-orientation-available? db)))
 
 (rf/reg-sub
  move-replacement-card-options
@@ -581,6 +611,7 @@ move-rod-orientation-required?
  :<- [move-disc-action-count-options]
  :<- [move-disc-minion-orientation-required?]
  :<- [move-disc-target-kind-options]
+ :<- [move-sword-target-kind-options]
  :<- [move-piece-options]
  :<- [move-target-piece-options]
  :<- [move-hand-card-options]
@@ -594,16 +625,19 @@ move-rod-orientation-required?
  :<- [move-orientation-options]
  :<- [move-rod-orientation-required?]
  :<- [move-disc-orientation-available?]
+ :<- [move-sword-orientation-available?]
  :<- [move-distance-options]
+ :<- [move-damage-options]
  :<- [draw-count-options]
  (fn [[current-player selection source-options prompt ready? board power
        power-options rod-mode-options disc-action-count-options
-       disc-minion-orientation-required? disc-target-kind-options piece-options target-piece-options
+       disc-minion-orientation-required? disc-target-kind-options
+       sword-target-kind-options piece-options target-piece-options
        hand-options discard-card-options source-board-options target-board-options
        target-wasteland-options territory-card-source-options
        one-point-card-options replacement-card-options orientation-options orientation-required?
-       disc-orientation-available?
-       distance-options draw-options] _]
+       disc-orientation-available? sword-orientation-available?
+       distance-options damage-options draw-options] _]
    (app-state/move-panel-view-model
     {:current-player current-player
      :selection selection
@@ -617,6 +651,7 @@ move-rod-orientation-required?
      :disc-action-count-options disc-action-count-options
      :disc-minion-orientation-required? disc-minion-orientation-required?
      :disc-target-kind-options disc-target-kind-options
+     :sword-target-kind-options sword-target-kind-options
      :piece-options piece-options
      :target-piece-options target-piece-options
      :hand-options hand-options
@@ -630,7 +665,9 @@ move-rod-orientation-required?
      :orientation-options orientation-options
      :orientation-required? orientation-required?
      :disc-orientation-available? disc-orientation-available?
+     :sword-orientation-available? sword-orientation-available?
      :distance-options distance-options
+     :damage-options damage-options
      :draw-options draw-options})))
 
 (rf/reg-sub

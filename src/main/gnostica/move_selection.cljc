@@ -82,6 +82,19 @@
    :territory {:id :territory
                :label "Grow territory"}})
 
+(def sword-target-kind-order
+  [:piece
+   :territory])
+
+(def sword-target-kinds
+  (set sword-target-kind-order))
+
+(def sword-target-kind-definitions
+  {:piece {:id :piece
+           :label "Attack piece"}
+   :territory {:id :territory
+               :label "Attack territory"}})
+
 (def strength-disc-action-count-order
   [1 2])
 
@@ -112,6 +125,7 @@
    :disc-action-count "Choose how many Disc actions to apply."
    :minion-orientation "Choose the minion orientation."
    :disc-target-kind "Choose piece or territory growth."
+   :sword-target-kind "Choose piece or territory attack."
    :target-piece-id "Choose a target piece."
    :target-board-index "Choose a target territory."
    :target-space "Choose a target territory, enemy piece, or wasteland."
@@ -122,6 +136,7 @@
    :replacement-card-id "Choose a replacement card."
    :orientation "Choose an orientation."
    :distance "Choose a distance."
+   :damage "Choose damage."
    :draw-count "Choose cards to discard, then how many cards to draw."})
 
 (defn empty-move-selection []
@@ -309,6 +324,14 @@
   (when (sword-move? db source-id params)
     (cards/sword-variant (source-card db source-id params))))
 
+(defn- card-worth-sword-damage-less? [replacement-card original-card damage]
+  (let [original-value (cards/card-point-value original-card)
+        replacement-value (cards/card-point-value replacement-card)]
+    (and (some? original-value)
+         (pos? (- original-value damage))
+         (= (- original-value damage)
+            replacement-value))))
+
 (defn- one-point-card-options-for [db source-id params]
   (let [source-card-id (source-hand-card-id source-id params)]
     (->> (current-player-hand db)
@@ -437,6 +460,136 @@
 (defn- disc-replacement-card-by-id [db source-id params card-id]
   (some #(when (= card-id (:id %)) %)
         (disc-replacement-card-options-for db source-id params)))
+
+(defn- sword-base-command [db source-id params]
+  (when (and (sword-move? db source-id params)
+             (current-player-id db)
+             (:piece-id params))
+    (cond-> {:player-id (current-player-id db)
+             :source (source-command source-id params)}
+      (selected-sword-variant db source-id params)
+      (assoc :sword-variant (selected-sword-variant db source-id params)))))
+
+(defn- sword-command-resolves? [db command]
+  (let [state (game db)]
+    (boolean
+     (and state
+          command
+          (:ok? (game-state/resolve-sword-command state command))))))
+
+(defn- sword-piece-target? [db source-id params piece]
+  (and piece
+       (= :piece (:sword-target-kind params))
+       (sword-command-resolves?
+        db
+        (assoc (sword-base-command db source-id params)
+               :target {:kind :piece
+                        :piece-id (:id piece)}
+               :damage 1))))
+
+(defn- sword-territory-target? [db source-id params cell]
+  (and cell
+       (= :territory (:sword-target-kind params))
+       (sword-command-resolves?
+        db
+        (assoc (sword-base-command db source-id params)
+               :target {:kind :territory
+                        :board-index (:index cell)}
+               :damage 1))))
+
+(defn- sword-target-piece [db source-id params]
+  (let [piece (piece-by-id db (:target-piece-id params))]
+    (when (sword-piece-target? db source-id params piece)
+      piece)))
+
+(defn- sword-territory-destroyed? [db params]
+  (let [target-value (some-> (target-board-cell db params)
+                             :card
+                             cards/card-point-value)]
+    (and (some? target-value)
+         (= target-value (:damage params)))))
+
+(defn- sword-replacement-card-source-option-ids [db source-id params]
+  (when (and (sword-move? db source-id params)
+             (= :territory (:sword-target-kind params))
+             (some? (:target-board-index params))
+             (some? (:damage params))
+             (not (sword-territory-destroyed? db params)))
+    (if (= :sword-from-discard (selected-sword-variant db source-id params))
+      disc-replacement-card-source-order
+      [:hand])))
+
+(defn- selected-sword-replacement-card-source [db source-id params]
+  (let [options (set (sword-replacement-card-source-option-ids db source-id params))
+        selected (:replacement-card-source params)]
+    (cond
+      (contains? options selected)
+      selected
+
+      (= 1 (count options))
+      (first options)
+
+      :else
+      nil)))
+
+(defn- sword-replacement-card-options-for [db source-id params]
+  (let [target-cell (target-board-cell db params)
+        original-card (:card target-cell)
+        damage (:damage params)
+        source-card-id (source-hand-card-id source-id params)
+        replacement-source (selected-sword-replacement-card-source db source-id params)]
+    (if-not (and original-card damage replacement-source)
+      []
+      (->> (case replacement-source
+             :hand (current-player-hand db)
+             :discard-pile (discard-replacement-options db source-id params)
+             [])
+           (filter #(and (card-worth-sword-damage-less?
+                          %
+                          original-card
+                          damage)
+                         (or (not= :hand replacement-source)
+                             (not= source-card-id (:id %)))))
+           vec))))
+
+(defn- sword-replacement-card-by-id [db source-id params card-id]
+  (some #(when (= card-id (:id %)) %)
+        (sword-replacement-card-options-for db source-id params)))
+
+(defn- sword-damage-options-for [db source-id params]
+  (if-not (sword-move? db source-id params)
+    []
+    (let [piece (piece-by-id db (:piece-id params))
+          max-damage (pieces/pips piece)
+          target-pips (case (:sword-target-kind params)
+                        :piece (some-> (sword-target-piece db source-id params)
+                                       pieces/pips)
+                        :territory (when (sword-territory-target?
+                                          db
+                                          source-id
+                                          params
+                                          (target-board-cell db params))
+                                     (some-> (target-board-cell db params)
+                                             :card
+                                             cards/card-point-value))
+                        nil)]
+      (if (and (int? max-damage)
+               (pos? max-damage)
+               (int? target-pips)
+               (pos? target-pips))
+        (vec (range 1 (inc (min max-damage target-pips))))
+        []))))
+
+(defn- sword-orientation-available? [db source-id params]
+  (let [target-piece (sword-target-piece db source-id params)
+        target-pips (pieces/pips target-piece)
+        damage (:damage params)]
+    (and (sword-move? db source-id params)
+         (= :piece (:sword-target-kind params))
+         (current-player-piece? db target-piece)
+         (int? target-pips)
+         (int? damage)
+         (< damage target-pips))))
 
 (defn- cup-target-piece? [db piece]
   (and piece
@@ -665,6 +818,10 @@
       (filterv #(disc-piece-target? db source params %)
                (board-pieces db))
 
+      (sword-move? db source params)
+      (filterv #(sword-piece-target? db source params %)
+               (board-pieces db))
+
       :else
       [])))
 
@@ -684,6 +841,10 @@
     (and (disc-move? db source params)
          (= :piece (:disc-target-kind params))
          (current-player-piece? db (disc-target-piece db params)))))
+
+(defn move-sword-orientation-available? [db]
+  (let [{:keys [source params]} (move-selection db)]
+    (sword-orientation-available? db source params)))
 
 (defn- move-error [code message data]
   {:code code
@@ -730,6 +891,10 @@
     (and (disc-move? db source-id params)
          (contains? disc-target-kinds (:disc-target-kind params)))
 
+    :sword-target-kind
+    (and (sword-move? db source-id params)
+         (contains? sword-target-kinds (:sword-target-kind params)))
+
     :target-piece-id
     (cond
       (rod-move? db source-id params)
@@ -738,15 +903,27 @@
       (disc-move? db source-id params)
       (some? (disc-target-piece db params))
 
+      (sword-move? db source-id params)
+      (some? (sword-target-piece db source-id params))
+
       :else
       false)
 
     :target-board-index
-    (if (and (disc-move? db source-id params)
-             (= :territory (:disc-target-kind params)))
+    (cond
+      (and (disc-move? db source-id params)
+           (= :territory (:disc-target-kind params)))
       (some #(= (:target-board-index params) (:index %))
             (filterv #(disc-territory-target? db source-id params %)
                      (board db)))
+
+      (and (sword-move? db source-id params)
+           (= :territory (:sword-target-kind params)))
+      (some #(= (:target-board-index params) (:index %))
+            (filterv #(sword-territory-target? db source-id params %)
+                     (board db)))
+
+      :else
       (valid-board-index? db (:target-board-index params)))
 
     :target-space
@@ -760,13 +937,32 @@
          (target-resolution-complete? db source-id params))
 
     :replacement-card-source
-    (some? (selected-disc-replacement-card-source db source-id params))
+    (cond
+      (disc-move? db source-id params)
+      (some? (selected-disc-replacement-card-source db source-id params))
+
+      (sword-move? db source-id params)
+      (some? (selected-sword-replacement-card-source db source-id params))
+
+      :else
+      false)
 
     :replacement-card-id
-    (some? (disc-replacement-card-by-id db
-                                        source-id
-                                        params
-                                        (:replacement-card-id params)))
+    (cond
+      (disc-move? db source-id params)
+      (some? (disc-replacement-card-by-id db
+                                          source-id
+                                          params
+                                          (:replacement-card-id params)))
+
+      (sword-move? db source-id params)
+      (some? (sword-replacement-card-by-id db
+                                           source-id
+                                           params
+                                           (:replacement-card-id params)))
+
+      :else
+      false)
 
     :orientation
     (contains? pieces/legal-orientations (:orientation params))
@@ -777,6 +973,9 @@
 
     :distance
     (some #{(:distance params)} (move-distance-options db))
+
+    :damage
+    (some #{(:damage params)} (sword-damage-options-for db source-id params))
 
     false))
 
@@ -812,6 +1011,32 @@
                      [:replacement-card-id])
              []))))
 
+(defn- sword-requirements [db source-id params]
+  (vec
+   (concat [:sword-target-kind]
+           (case (:sword-target-kind params)
+             :piece
+             (concat [:target-piece-id :damage]
+                     (when (and (some? (:damage params))
+                                (sword-orientation-available? db source-id params))
+                       [:orientation]))
+
+             :territory
+             (concat [:target-board-index :damage]
+                     (when (and (some? (:damage params))
+                                (< 1 (count (sword-replacement-card-source-option-ids
+                                             db
+                                             source-id
+                                             params))))
+                       [:replacement-card-source])
+                     (when (seq (sword-replacement-card-source-option-ids
+                                 db
+                                 source-id
+                                 params))
+                       [:replacement-card-id]))
+
+             []))))
+
 (defn- gameplay-source-requirements [db source-id params]
   (let [base (case source-id
                :activate-territory [:source-board-index :piece-id]
@@ -826,6 +1051,7 @@
                :cup [:target-space :target-resolution]
                :rod (rod-requirements db params)
                :disc (disc-requirements db source-id params)
+               :sword (sword-requirements db source-id params)
                [])))))
 
 (defn- move-requirements [db source-id params]
@@ -854,6 +1080,7 @@
     :disc-action-count :disc-action-count
     :minion-orientation :minion-orientation
     :disc-target-kind :disc-target-kind
+    :sword-target-kind :sword-target-kind
     :target-piece-id :target-piece
     :target-board-index :target
     :target-space :target
@@ -874,6 +1101,7 @@
     :replacement-card-id :replacement-card
     :orientation :orientation
     :distance :distance
+    :damage :damage
     :draw-count :draw-count
     :confirm))
 
@@ -920,6 +1148,9 @@
                           (disc-move? db source (move-params db))
                           (:target-board-index requirement-prompts)
 
+                          (sword-move? db source (move-params db))
+                          (:target-board-index requirement-prompts)
+
                           (= :place-initial-small source)
                           (:initial-target-space requirement-prompts)
 
@@ -937,9 +1168,11 @@
                   :disc-action-count (:disc-action-count requirement-prompts)
                   :minion-orientation (:minion-orientation requirement-prompts)
                   :disc-target-kind (:disc-target-kind requirement-prompts)
+                  :sword-target-kind (:sword-target-kind requirement-prompts)
                   :target-piece (:target-piece-id requirement-prompts)
                   :orientation (:orientation requirement-prompts)
                   :distance (:distance requirement-prompts)
+                  :damage (:damage requirement-prompts)
                   :draw-count (:draw-count requirement-prompts)}
                  stage
                  "Complete the move selection."))))
@@ -985,6 +1218,7 @@
               :power
               :rod-mode
               :disc-target-kind
+              :sword-target-kind
               :disc-action-count
               :minion-orientation
               :target-board-index
@@ -995,7 +1229,8 @@
               :replacement-card-source
               :replacement-card-id
               :orientation
-              :distance))))
+              :distance
+              :damage))))
 
 (defn- set-territory-target [params board-index]
   (-> params
@@ -1004,7 +1239,9 @@
               :target-piece-id
               :territory-card-source
               :one-point-card-id
-              :replacement-card-id)))
+              :replacement-card-source
+              :replacement-card-id
+              :damage)))
 
 (defn- set-wasteland-target [params space]
   (-> params
@@ -1015,7 +1252,8 @@
               :territory-card-source
               :one-point-card-id
               :replacement-card-source
-              :replacement-card-id)))
+              :replacement-card-id
+              :damage)))
 
 (defn- set-hand-card-source [params card-id]
   (-> params
@@ -1024,6 +1262,7 @@
               :power
               :rod-mode
               :disc-target-kind
+              :sword-target-kind
               :disc-action-count
               :minion-orientation
               :target-board-index
@@ -1034,7 +1273,8 @@
               :replacement-card-source
               :replacement-card-id
               :orientation
-              :distance)))
+              :distance
+              :damage)))
 
 (defn- set-acting-piece [params piece-id]
   (let [next-params (assoc params :piece-id piece-id)]
@@ -1050,7 +1290,8 @@
               :replacement-card-source
               :replacement-card-id
               :orientation
-              :distance))))
+              :distance
+              :damage))))
 
 (defn- set-power-param [params power]
   (let [next-params (assoc params :power power)]
@@ -1059,6 +1300,7 @@
       (dissoc next-params
               :rod-mode
               :disc-target-kind
+              :sword-target-kind
               :disc-action-count
               :minion-orientation
               :target-board-index
@@ -1069,7 +1311,8 @@
               :replacement-card-source
               :replacement-card-id
               :orientation
-              :distance))))
+              :distance
+              :damage))))
 
 (defn- set-rod-mode-param [params mode]
   (let [next-params (assoc params :rod-mode mode)]
@@ -1083,7 +1326,8 @@
               :one-point-card-id
               :replacement-card-source
               :replacement-card-id
-              :orientation))))
+              :orientation
+              :damage))))
 
 (defn- set-disc-target-kind-param [params target-kind]
   (let [next-params (assoc params :disc-target-kind target-kind)]
@@ -1097,13 +1341,38 @@
               :one-point-card-id
               :replacement-card-source
               :replacement-card-id
-              :orientation))))
+              :orientation
+              :damage))))
+
+(defn- set-sword-target-kind-param [params target-kind]
+  (let [next-params (assoc params :sword-target-kind target-kind)]
+    (if (= (:sword-target-kind params) target-kind)
+      next-params
+      (dissoc next-params
+              :target-board-index
+              :target-wasteland
+              :target-piece-id
+              :territory-card-source
+              :one-point-card-id
+              :replacement-card-source
+              :replacement-card-id
+              :orientation
+              :damage))))
 
 (defn- set-disc-action-count-param [params action-count]
   (let [next-params (assoc params :disc-action-count action-count)]
     (if (= (:disc-action-count params) action-count)
       next-params
       (dissoc next-params :replacement-card-id))))
+
+(defn- set-damage-param [params damage]
+  (let [next-params (assoc params :damage damage)]
+    (if (= (:damage params) damage)
+      next-params
+      (dissoc next-params
+              :replacement-card-source
+              :replacement-card-id
+              :orientation))))
 
 (defn- set-minion-orientation-param [params orientation]
   (let [next-params (assoc params :minion-orientation orientation)]
@@ -1114,7 +1383,8 @@
               :target-wasteland
               :target-piece-id
               :replacement-card-id
-              :orientation))))
+              :orientation
+              :damage))))
 
 (defn- set-target-piece [params piece-id]
   (let [next-params (assoc params :target-piece-id piece-id)]
@@ -1127,7 +1397,8 @@
               :one-point-card-id
               :replacement-card-source
               :replacement-card-id
-              :orientation))))
+              :orientation
+              :damage))))
 
 (defn select-board-for-active-move [db index]
   (if-not (valid-board-index? db index)
@@ -1141,20 +1412,26 @@
           (cond
             (and has-source?
                  has-piece?
-                 (disc-move? db source params)
-                 (= :territory (:disc-target-kind params))
-                 (disc-territory-target? db source params (get (board db) index)))
+                 (or (and (disc-move? db source params)
+                          (= :territory (:disc-target-kind params))
+                          (disc-territory-target? db source params (get (board db) index)))
+                     (and (sword-move? db source params)
+                          (= :territory (:sword-target-kind params))
+                          (sword-territory-target? db source params (get (board db) index)))))
             (update-move-selection-success db update :params set-territory-target index)
 
             (and has-source?
                  has-piece?
-                 (disc-move? db source params)
-                 (not= :territory (:disc-target-kind params)))
+                 (or (and (disc-move? db source params)
+                          (not= :territory (:disc-target-kind params)))
+                     (and (sword-move? db source params)
+                          (not= :territory (:sword-target-kind params)))))
             db
 
             (and has-source?
                  has-piece?
-                 (not (disc-move? db source params)))
+                 (not (or (disc-move? db source params)
+                          (sword-move? db source params))))
             (update-move-selection-success db update :params set-territory-target index)
 
             (and has-source?
@@ -1164,6 +1441,15 @@
                                    :error
                                    (move-error :invalid-disc-target
                                                "Choose a Disc-targetable territory."
+                                               {:board-index index}))
+
+            (and has-source?
+                 has-piece?
+                 (sword-move? db source params))
+            (update-move-selection db assoc
+                                   :error
+                                   (move-error :invalid-sword-target
+                                               "Choose a Sword-targetable territory."
                                                {:board-index index}))
 
             (seq current-pieces)
@@ -1182,12 +1468,24 @@
                (not= :territory (:disc-target-kind params)))
           db
 
+          (and (sword-move? db source params)
+               (not= :territory (:sword-target-kind params)))
+          db
+
           (and (disc-move? db source params)
                (not (disc-territory-target? db source params (get (board db) index))))
           (update-move-selection db assoc
                                  :error
                                  (move-error :invalid-disc-target
                                              "Choose a Disc-targetable territory."
+                                             {:board-index index}))
+
+          (and (sword-move? db source params)
+               (not (sword-territory-target? db source params (get (board db) index))))
+          (update-move-selection db assoc
+                                 :error
+                                 (move-error :invalid-sword-target
+                                             "Choose a Sword-targetable territory."
                                              {:board-index index}))
 
           :else
@@ -1312,6 +1610,18 @@
                                          {:target-kind target-kind
                                           :options disc-target-kind-order})))))
 
+(defn select-move-sword-target-kind [db target-kind]
+  (let [{:keys [source params]} (move-selection db)]
+    (if (and (sword-move? db source params)
+             (contains? sword-target-kinds target-kind))
+      (update-move-selection-success db update :params set-sword-target-kind-param target-kind)
+      (update-move-selection db assoc
+                             :error
+                             (move-error :invalid-sword-target-kind
+                                         "Choose a supported Sword attack target."
+                                         {:target-kind target-kind
+                                          :options sword-target-kind-order})))))
+
 (defn set-move-disc-action-count [db action-count]
   (let [{:keys [source params]} (move-selection db)
         options (disc-action-count-option-values db source params)]
@@ -1384,11 +1694,22 @@
                                          "Choose a Disc-targetable piece."
                                          {:piece-id piece-id}))
 
+      (and (sword-move? db source params)
+           selectable-piece?)
+      (update-move-selection-success db update :params set-target-piece (:id piece))
+
+      (sword-move? db source params)
+      (update-move-selection db assoc
+                             :error
+                             (move-error :invalid-target-piece
+                                         "Choose a Sword-targetable piece."
+                                         {:piece-id piece-id}))
+
       :else
       (update-move-selection db assoc
                              :error
                              (move-error :invalid-target-piece
-                                         "Target pieces are only available for Cup, Rod, or Disc moves."
+                                         "Target pieces are only available for Cup, Rod, Disc, or Sword moves."
                                          {:piece-id piece-id})))))
 
 (defn- set-territory-card-source [params territory-card-source]
@@ -1398,14 +1719,22 @@
 
 (defn select-move-territory-card-source [db territory-card-source]
   (let [{:keys [source params]} (move-selection db)
-        option-ids (set (if (disc-move? db source params)
+        replacement-source? (or (disc-move? db source params)
+                                (sword-move? db source params))
+        option-ids (set (cond
+                          (disc-move? db source params)
                           (disc-replacement-card-source-option-ids db source params)
+
+                          (sword-move? db source params)
+                          (sword-replacement-card-source-option-ids db source params)
+
+                          :else
                           (territory-card-source-option-ids db source params)))]
     (if (contains? option-ids territory-card-source)
       (update-move-selection-success db
                                      update
                                      :params
-                                     (if (disc-move? db source params)
+                                     (if replacement-source?
                                        (fn [params card-source]
                                          (-> params
                                              (assoc :replacement-card-source card-source)
@@ -1432,13 +1761,34 @@
 
 (defn select-move-replacement-card [db card-id]
   (let [{:keys [source params]} (move-selection db)]
-    (if (and (disc-move? db source params)
-             (disc-replacement-card-by-id db source params card-id))
+    (cond
+      (and (disc-move? db source params)
+           (disc-replacement-card-by-id db source params card-id))
       (update-move-selection-success db assoc-in [:params :replacement-card-id] card-id)
+
+      (and (sword-move? db source params)
+           (sword-replacement-card-by-id db source params card-id))
+      (update-move-selection-success db assoc-in [:params :replacement-card-id] card-id)
+
+      (disc-move? db source params)
       (update-move-selection db assoc
                              :error
                              (move-error :invalid-disc-replacement-card
                                          "Choose a replacement card worth exactly one more point."
+                                         {:card-id card-id}))
+
+      (sword-move? db source params)
+      (update-move-selection db assoc
+                             :error
+                             (move-error :invalid-sword-replacement-card
+                                         "Choose a replacement card worth the selected damage less."
+                                         {:card-id card-id}))
+
+      :else
+      (update-move-selection db assoc
+                             :error
+                             (move-error :invalid-replacement-card
+                                         "Replacement cards are not available for this move."
                                          {:card-id card-id})))))
 
 (defn set-move-orientation [db orientation]
@@ -1505,6 +1855,21 @@
                                        {:distance distance
                                         :options (move-distance-options db)}))))
 
+(defn move-damage-options [db]
+  (let [{:keys [source params]} (move-selection db)]
+    (sword-damage-options-for db source params)))
+
+(defn set-move-damage [db damage]
+  (let [options (move-damage-options db)]
+    (if (some #{damage} options)
+      (update-move-selection-success db update :params set-damage-param damage)
+      (update-move-selection db assoc
+                             :error
+                             (move-error :invalid-sword-damage
+                                         "Choose damage the acting minion can deal."
+                                         {:damage damage
+                                          :options options})))))
+
 (defn move-piece-options [db]
   (let [{:keys [source params]} (move-selection db)]
     (case source
@@ -1545,6 +1910,11 @@
       (filterv #(disc-territory-target? db source params %)
                (board db))
 
+      (and (sword-move? db source params)
+           (= :territory (:sword-target-kind params)))
+      (filterv #(sword-territory-target? db source params %)
+               (board db))
+
       :else
       (board db))))
 
@@ -1566,6 +1936,10 @@
       (mapv disc-replacement-card-source-definitions
             (disc-replacement-card-source-option-ids db source params))
 
+      (sword-move? db source params)
+      (mapv disc-replacement-card-source-definitions
+            (sword-replacement-card-source-option-ids db source params))
+
       :else
       [])))
 
@@ -1574,10 +1948,21 @@
     (mapv disc-target-kind-definitions disc-target-kind-order)
     []))
 
+(defn move-sword-target-kind-options [db]
+  (if (sword-move? db (move-source db) (move-params db))
+    (mapv sword-target-kind-definitions sword-target-kind-order)
+    []))
+
 (defn move-replacement-card-options [db]
   (let [{:keys [source params]} (move-selection db)]
-    (if (disc-move? db source params)
+    (cond
+      (disc-move? db source params)
       (disc-replacement-card-options-for db source params)
+
+      (sword-move? db source params)
+      (sword-replacement-card-options-for db source params)
+
+      :else
       [])))
 
 (defn move-orientation-options [_db]
@@ -1666,9 +2051,32 @@
            (:minion-orientation params))
       (assoc :minion-orientation (:minion-orientation params)))))
 
+(defn- sword-target-command [db source params]
+  (case (:sword-target-kind params)
+    :piece
+    (cond-> {:target {:kind :piece
+                      :piece-id (:target-piece-id params)}
+             :damage (:damage params)}
+      (and (sword-orientation-available? db source params)
+           (:orientation params))
+      (assoc :orientation (:orientation params)))
+
+    :territory
+    (cond-> {:target {:kind :territory
+                      :board-index (:target-board-index params)}
+             :damage (:damage params)}
+      (seq (sword-replacement-card-source-option-ids db source params))
+      (assoc :replacement-card-source
+             (selected-sword-replacement-card-source db source params))
+
+      (:replacement-card-id params)
+      (assoc :replacement-card-id (:replacement-card-id params)))
+
+    {}))
+
 (defn- sword-command [db source params]
   (let [sword-variant (selected-sword-variant db source params)]
-    (cond-> {:power :sword}
+    (cond-> (sword-target-command db source params)
       sword-variant
       (assoc :sword-variant sword-variant))))
 
@@ -1749,6 +2157,9 @@
 
       (= :disc (move-power db))
       (game-state/apply-disc-move (game db) command)
+
+      (= :sword (move-power db))
+      (game-state/apply-sword-move (game db) command)
 
       (= :sun (move-power db))
       (game-state/failure :move-transition-unavailable

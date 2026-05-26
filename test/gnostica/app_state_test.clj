@@ -1212,55 +1212,176 @@
     (is (= (app-state/game staged-db)
            (app-state/game confirmed-db)))))
 
-(deftest sword-only-territory-source-reports-unavailable-transition
-  (let [deck-order (deck-with-card-at (board-card-position test-player-specs 0)
-                                      "swords2")
+(deftest sword-hand-card-can_shrink_own_piece_and_reorient_survivor
+  (let [target-piece {:id :rose-sword-target
+                      :player-id :rose
+                      :space-index 4
+                      :size :medium
+                      :orientation :north}
         db (app-state/initialize {:player-specs test-player-specs
-                                  :game-options {:deck-order deck-order}
-                                  :demo-board-pieces [rose-source-piece]})
-        staged-db (-> db
-                      (app-state/select-move-source :activate-territory)
-                      (app-state/select-move-piece :rose-scout))
-        confirmed-db (app-state/confirm-move staged-db)]
-    (is (= :sword (app-state/move-power staged-db)))
-    (is (= [:sword] (mapv :id (app-state/move-power-options staged-db))))
-    (is (= :confirm (:stage (app-state/move-selection staged-db))))
-    (is (= {:player-id :rose
-            :source {:kind :territory
-                     :board-index 0
-                     :piece-id :rose-scout}
-            :power :sword
-            :sword-variant :sword}
-           (app-state/move-command staged-db)))
-    (is (= :rejected (:stage (app-state/move-selection confirmed-db))))
-    (is (= :move-transition-unavailable
-           (get-in confirmed-db [:move-selection :error :code])))
-    (is (= (app-state/move-params staged-db)
-           (app-state/move-params confirmed-db)))
-    (is (= (app-state/game staged-db)
-           (app-state/game confirmed-db)))))
-
-(deftest sword-only-hand-card-source-reports-unavailable-transition
-  (let [db (app-state/initialize {:player-specs test-player-specs
                                   :game-options {:deck-order (deck-starting-with ["swords2"])}
-                                  :demo-board-pieces [rose-source-piece]})
-        staged-db (-> db
-                      (app-state/select-move-source :play-hand-card)
-                      (app-state/select-move-hand-card "swords2")
-                      (app-state/select-move-piece :rose-scout))
-        confirmed-db (app-state/confirm-move staged-db)]
-    (is (= :sword (app-state/move-power staged-db)))
-    (is (= :confirm (:stage (app-state/move-selection staged-db))))
+                                  :demo-board-pieces [rose-rod-minion target-piece]})
+        piece-db (-> db
+                     (app-state/select-move-source :play-hand-card)
+                     (app-state/select-move-hand-card "swords2")
+                     (app-state/select-move-piece :rose-rod-minion))
+        kind-db (app-state/select-move-sword-target-kind piece-db :piece)
+        target-db (app-state/select-move-target-piece kind-db :rose-sword-target)
+        damage-db (app-state/set-move-damage target-db 1)
+        oriented-db (app-state/set-move-orientation damage-db :west)
+        confirmed-db (app-state/confirm-move oriented-db)
+        zones (app-state/card-zones confirmed-db)
+        shrunk-piece (piece-by-id confirmed-db :rose-small-1)]
+    (is (= :sword (app-state/move-power piece-db)))
+    (is (= :sword-target-kind (:stage (app-state/move-selection piece-db))))
+    (is (= [:piece :territory]
+           (mapv :id (get-in (app-state/move-panel-view piece-db)
+                             [:controls :sword-target-kind-options]))))
+    (is (= [:rose-rod-minion :rose-sword-target]
+           (mapv :id (app-state/move-target-piece-options kind-db))))
+    (is (= :damage (:stage (app-state/move-selection target-db))))
+    (is (= [1 2] (app-state/move-damage-options target-db)))
+    (is (= :orientation (:stage (app-state/move-selection damage-db))))
+    (is (true? (get-in (app-state/move-panel-view damage-db)
+                       [:controls :sword-orientation-available?])))
+    (is (= :confirm (:stage (app-state/move-selection oriented-db))))
     (is (= {:player-id :rose
             :source {:kind :hand-card
                      :card-id "swords2"
-                     :piece-id :rose-scout}
-            :power :sword
+                     :piece-id :rose-rod-minion}
+            :target {:kind :piece
+                     :piece-id :rose-sword-target}
+            :damage 1
+            :orientation :west
             :sword-variant :sword}
-           (app-state/move-command staged-db)))
-    (is (= :move-transition-unavailable
+           (app-state/move-command oriented-db)))
+    (is (:ok? (get-in confirmed-db [:move-selection :last-result])))
+    (is (= {:id :rose-small-1
+            :player-id :rose
+            :space-index 4
+            :size :small
+            :orientation :west}
+           shrunk-piece))
+    (is (= ["swords2"] (mapv :id (:discard-pile zones))))
+    (is (not (some #{"swords2"} (map :id (:hand zones)))))
+    (is (game-schema/valid-game? (app-state/game confirmed-db)))))
+
+(deftest sword-hand-card-can_shrink_territory_with_hand_replacement
+  (let [deck-order (deck-with-cards-at {0 "swords2"
+                                        1 "cups2"
+                                        (board-card-position test-player-specs 4) "cupsking"})
+        db (app-state/initialize {:player-specs test-player-specs
+                                  :game-options {:deck-order deck-order}
+                                  :demo-board-pieces [rose-rod-minion]})
+        kind-db (-> db
+                    (app-state/select-move-source :play-hand-card)
+                    (app-state/select-move-hand-card "swords2")
+                    (app-state/select-move-piece :rose-rod-minion)
+                    (app-state/select-move-sword-target-kind :territory))
+        target-db (app-state/select-board-card kind-db 4)
+        damage-db (app-state/set-move-damage target-db 1)
+        replacement-db (app-state/select-move-replacement-card damage-db "cups2")
+        confirmed-db (app-state/confirm-move replacement-db)
+        zones (app-state/card-zones confirmed-db)
+        shrunk-cell (board-cell-by-index confirmed-db 4)
+        replacement-option-ids (mapv :id (app-state/move-replacement-card-options damage-db))]
+    (is (= [4] (mapv :index (app-state/move-target-board-options kind-db))))
+    (is (= :damage (:stage (app-state/move-selection target-db))))
+    (is (= [1 2] (app-state/move-damage-options target-db)))
+    (is (= :replacement-card (:stage (app-state/move-selection damage-db))))
+    (is (some #{"cups2"} replacement-option-ids))
+    (is (not (some #{"swords2"} replacement-option-ids)))
+    (is (= :confirm (:stage (app-state/move-selection replacement-db))))
+    (is (= {:player-id :rose
+            :source {:kind :hand-card
+                     :card-id "swords2"
+                     :piece-id :rose-rod-minion}
+            :target {:kind :territory
+                     :board-index 4}
+            :damage 1
+            :replacement-card-source :hand
+            :replacement-card-id "cups2"
+            :sword-variant :sword}
+           (app-state/move-command replacement-db)))
+    (is (:ok? (get-in confirmed-db [:move-selection :last-result])))
+    (is (= "cups2" (get-in shrunk-cell [:card :id])))
+    (is (= ["swords2" "cupsking"] (mapv :id (:discard-pile zones))))
+    (is (not (some #{"swords2" "cups2"} (map :id (:hand zones)))))
+    (is (game-schema/valid-game? (app-state/game confirmed-db)))))
+
+(deftest tower-sword-can_stage_discard_pile_territory_replacement
+  (let [deck-order (deck-with-cards-at {0 "tower"
+                                        (board-card-position test-player-specs 4) "sun"})
+        discarded-card (cards/card-by-id "cupsking")
+        db (-> (app-state/initialize {:player-specs test-player-specs
+                                      :game-options {:deck-order deck-order}
+                                      :demo-board-pieces [rose-rod-minion]})
+               (update-in [:game :draw-pile]
+                          #(vec (remove (fn [card]
+                                          (= (:id discarded-card) (:id card)))
+                                        %)))
+               (assoc-in [:game :discard-pile] [discarded-card]))
+        target-db (-> db
+                      (app-state/select-move-source :play-hand-card)
+                      (app-state/select-move-hand-card "tower")
+                      (app-state/select-move-piece :rose-rod-minion)
+                      (app-state/select-move-sword-target-kind :territory)
+                      (app-state/select-board-card 4))
+        damage-db (app-state/set-move-damage target-db 1)
+        source-db (app-state/select-move-territory-card-source damage-db :discard-pile)
+        replacement-db (app-state/select-move-replacement-card source-db "cupsking")
+        confirmed-db (app-state/confirm-move replacement-db)
+        zones (app-state/card-zones confirmed-db)
+        shrunk-cell (board-cell-by-index confirmed-db 4)]
+    (is (= [:hand :discard-pile]
+           (mapv :id (app-state/move-territory-card-source-options damage-db))))
+    (is (= :replacement-card-source
+           (:stage (app-state/move-selection damage-db))))
+    (is (= ["cupsking"]
+           (mapv :id (app-state/move-replacement-card-options source-db))))
+    (is (= {:player-id :rose
+            :source {:kind :hand-card
+                     :card-id "tower"
+                     :piece-id :rose-rod-minion}
+            :target {:kind :territory
+                     :board-index 4}
+            :damage 1
+            :replacement-card-source :discard-pile
+            :replacement-card-id "cupsking"
+            :sword-variant :sword-from-discard}
+           (app-state/move-command replacement-db)))
+    (is (:ok? (get-in confirmed-db [:move-selection :last-result])))
+    (is (= "cupsking" (get-in shrunk-cell [:card :id])))
+    (is (= ["tower" "sun"] (mapv :id (:discard-pile zones))))
+    (is (game-schema/valid-game? (app-state/game confirmed-db)))))
+
+(deftest rejected-sword-confirmation-keeps-staged-selection
+  (let [deck-order (deck-with-cards-at {0 "swords2"
+                                        1 "cups2"
+                                        (board-card-position test-player-specs 4) "cupsking"})
+        db (app-state/initialize {:player-specs test-player-specs
+                                  :game-options {:deck-order deck-order}
+                                  :demo-board-pieces [rose-rod-minion]})
+        replacement-db (-> db
+                           (app-state/select-move-source :play-hand-card)
+                           (app-state/select-move-hand-card "swords2")
+                           (app-state/select-move-piece :rose-rod-minion)
+                           (app-state/select-move-sword-target-kind :territory)
+                           (app-state/select-board-card 4)
+                           (app-state/set-move-damage 1)
+                           (app-state/select-move-replacement-card "cups2"))
+        stale-game (game-state/with-board-pieces
+                    (app-state/game replacement-db)
+                    [rose-rod-minion indigo-rod-target])
+        stale-db (assoc replacement-db :game stale-game)
+        confirmed-db (app-state/confirm-move stale-db)]
+    (is (= :confirm (:stage (app-state/move-selection stale-db))))
+    (is (= :rejected (:stage (app-state/move-selection confirmed-db))))
+    (is (= :target-territory-occupied-by-enemy
            (get-in confirmed-db [:move-selection :error :code])))
-    (is (= (app-state/game staged-db)
+    (is (= (app-state/move-params stale-db)
+           (app-state/move-params confirmed-db)))
+    (is (= stale-game
            (app-state/game confirmed-db)))))
 
 (deftest incomplete-moves-report_recoverable_errors

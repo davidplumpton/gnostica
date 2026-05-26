@@ -258,10 +258,13 @@
 (def move-disc-action-count-options move-selection/move-disc-action-count-options)
 (def move-disc-minion-orientation-required? move-selection/move-disc-minion-orientation-required?)
 (def move-disc-target-kind-options move-selection/move-disc-target-kind-options)
+(def move-sword-target-kind-options move-selection/move-sword-target-kind-options)
 (def move-distance-options move-selection/move-distance-options)
+(def move-damage-options move-selection/move-damage-options)
 (def move-target-piece-options move-selection/move-target-piece-options)
 (def move-rod-orientation-required? move-selection/move-rod-orientation-required?)
 (def move-disc-orientation-available? move-selection/move-disc-orientation-available?)
+(def move-sword-orientation-available? move-selection/move-sword-orientation-available?)
 (def move-ready? move-selection/move-ready?)
 (def move-prompt move-selection/move-prompt)
 (def select-move-source move-selection/select-move-source)
@@ -283,6 +286,7 @@
 (def select-move-power move-selection/select-move-power)
 (def select-move-rod-mode move-selection/select-move-rod-mode)
 (def select-move-disc-target-kind move-selection/select-move-disc-target-kind)
+(def select-move-sword-target-kind move-selection/select-move-sword-target-kind)
 (def set-move-disc-action-count move-selection/set-move-disc-action-count)
 (def set-move-minion-orientation move-selection/set-move-minion-orientation)
 (def select-move-target-piece move-selection/select-move-target-piece)
@@ -293,6 +297,7 @@
 (def set-move-draw-count move-selection/set-move-draw-count)
 (def toggle-move-discard-card move-selection/toggle-move-discard-card)
 (def set-move-distance move-selection/set-move-distance)
+(def set-move-damage move-selection/set-move-damage)
 (def move-piece-options move-selection/move-piece-options)
 (def move-hand-card-options move-selection/move-hand-card-options)
 (def move-discard-card-options move-selection/move-discard-card-options)
@@ -307,12 +312,13 @@
 (defn move-panel-view-model
   [{:keys [current-player selection source-options prompt ready?
            board power power-options rod-mode-options disc-action-count-options
-           disc-minion-orientation-required? disc-target-kind-options piece-options
+           disc-minion-orientation-required? disc-target-kind-options
+           sword-target-kind-options piece-options
            target-piece-options hand-options discard-card-options source-board-options
            target-board-options target-wasteland-options
            territory-card-source-options one-point-card-options replacement-card-options
-           orientation-options orientation-required? disc-orientation-available? distance-options
-           draw-options]}]
+           orientation-options orientation-required? disc-orientation-available?
+           sword-orientation-available? distance-options damage-options draw-options]}]
   {:current-player current-player
    :selection selection
    :source-options source-options
@@ -325,6 +331,7 @@
               :disc-action-count-options disc-action-count-options
               :disc-minion-orientation-required? disc-minion-orientation-required?
               :disc-target-kind-options disc-target-kind-options
+              :sword-target-kind-options sword-target-kind-options
               :piece-options piece-options
               :target-piece-options target-piece-options
               :hand-options hand-options
@@ -338,7 +345,9 @@
               :orientation-options orientation-options
               :orientation-required? orientation-required?
               :disc-orientation-available? disc-orientation-available?
+              :sword-orientation-available? sword-orientation-available?
               :distance-options distance-options
+              :damage-options damage-options
               :draw-options draw-options}})
 
 (defn move-panel-view [db]
@@ -355,6 +364,7 @@
     :disc-action-count-options (move-disc-action-count-options db)
     :disc-minion-orientation-required? (move-disc-minion-orientation-required? db)
     :disc-target-kind-options (move-disc-target-kind-options db)
+    :sword-target-kind-options (move-sword-target-kind-options db)
     :piece-options (move-piece-options db)
     :target-piece-options (move-target-piece-options db)
     :hand-options (move-hand-card-options db)
@@ -368,7 +378,9 @@
     :orientation-options (move-orientation-options db)
     :orientation-required? (move-rod-orientation-required? db)
     :disc-orientation-available? (move-disc-orientation-available? db)
+    :sword-orientation-available? (move-sword-orientation-available? db)
     :distance-options (move-distance-options db)
+    :damage-options (move-damage-options db)
     :draw-options (draw-count-options db)}))
 
 (defn header-view-model [{:keys [current-player card-icon-mode open-panels]}]

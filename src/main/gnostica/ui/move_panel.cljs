@@ -209,10 +209,10 @@
         :on-click #(rf/dispatch [events/select-move-rod-mode id])}
          label])]])
 
-(defn- disc-target-kind-choices [options selected-kind]
+(defn- target-kind-choices [label event-id options selected-kind]
   [:div.move-step
    [:div.move-step__header
-    [:span "Disc move"]
+    [:span label]
     [:strong
      (or (:label (some #(when (= selected-kind (:id %)) %) options))
          "None")]]
@@ -223,8 +223,14 @@
        {:type "button"
         :class (when (= selected-kind id) "is-selected")
         :aria-pressed (= selected-kind id)
-        :on-click #(rf/dispatch [events/select-move-disc-target-kind id])}
+        :on-click #(rf/dispatch [event-id id])}
        label])]])
+
+(defn- disc-target-kind-choices [options selected-kind]
+  [target-kind-choices "Disc move" events/select-move-disc-target-kind options selected-kind])
+
+(defn- sword-target-kind-choices [options selected-kind]
+  [target-kind-choices "Sword move" events/select-move-sword-target-kind options selected-kind])
 
 (defn- piece-choice-label [board piece]
   (let [cell (get board (:space-index piece))]
@@ -338,6 +344,21 @@
         :on-click #(rf/dispatch [events/set-move-distance distance])}
        distance])]])
 
+(defn- damage-choices [options selected-damage]
+  [:div.move-step
+   [:div.move-step__header
+    [:span "Damage"]
+    [:strong (or selected-damage "None")]]
+   [:div.move-choice-list.is-compact
+    (for [damage options]
+      ^{:key damage}
+      [:button.move-chip
+       {:type "button"
+        :class (when (= selected-damage damage) "is-selected")
+        :aria-pressed (= selected-damage damage)
+        :on-click #(rf/dispatch [events/set-move-damage damage])}
+       damage])]])
+
 (defn- cup-move-controls
   [params board target-piece-options target-board-options target-wasteland-options
    territory-card-source-options one-point-card-options orientation-options]
@@ -427,17 +448,50 @@
 
          nil))]))
 
+(defn- sword-move-controls
+  [params board sword-target-kind-options target-piece-options target-board-options
+   replacement-source-options replacement-card-options orientation-options
+   orientation-available? damage-options]
+  [:<>
+   [sword-target-kind-choices sword-target-kind-options (:sword-target-kind params)]
+   (case (:sword-target-kind params)
+     :piece
+     [:<>
+      [target-piece-choices board target-piece-options (:target-piece-id params)]
+      (when (:target-piece-id params)
+        [damage-choices damage-options (:damage params)])
+      (when (and orientation-available? (:damage params))
+        [orientation-choices orientation-options (:orientation params)])]
+
+     :territory
+     [:<>
+      [board-choice-grid "Target territory" target-board-options (:target-board-index params)]
+      (when (:target-board-index params)
+        [damage-choices damage-options (:damage params)])
+      (when (and (:target-board-index params)
+                 (:damage params))
+        [territory-card-source-choices "Replacement source"
+         replacement-source-options
+         (:replacement-card-source params)])
+      (when (and (:target-board-index params)
+                 (:damage params)
+                 (or (= 1 (count replacement-source-options))
+                     (:replacement-card-source params)))
+        [replacement-card-choices replacement-card-options (:replacement-card-id params)])]
+
+     nil)])
+
 (defn- move-active-controls [selection controls]
   (let [{:keys [source params]} selection
         {:keys [board power power-options rod-mode-options piece-options
                 disc-action-count-options disc-minion-orientation-required?
-                disc-target-kind-options
+                disc-target-kind-options sword-target-kind-options
                 target-piece-options hand-options discard-card-options source-board-options
                 target-board-options target-wasteland-options
                 territory-card-source-options one-point-card-options
                 replacement-card-options orientation-options orientation-required?
-                disc-orientation-available? distance-options
-                draw-options]} controls]
+                disc-orientation-available? sword-orientation-available?
+                distance-options damage-options draw-options]} controls]
     (case source
       :activate-territory
       [:<>
@@ -475,6 +529,16 @@
                    replacement-card-options
                    orientation-options
                    disc-orientation-available?]
+            :sword [sword-move-controls params
+                    board
+                    sword-target-kind-options
+                    target-piece-options
+                    target-board-options
+                    territory-card-source-options
+                    replacement-card-options
+                    orientation-options
+                    sword-orientation-available?
+                    damage-options]
             nil)])]
 
       :play-hand-card
@@ -513,6 +577,16 @@
                    replacement-card-options
                    orientation-options
                    disc-orientation-available?]
+            :sword [sword-move-controls params
+                    board
+                    sword-target-kind-options
+                    target-piece-options
+                    target-board-options
+                    territory-card-source-options
+                    replacement-card-options
+                    orientation-options
+                    sword-orientation-available?
+                    damage-options]
             nil)])]
 
       :draw-cards
