@@ -280,8 +280,7 @@
 
 (def Board
   [:and
-   [:vector {:min board/board-card-count
-             :max 78}
+   [:vector {:max 78}
     BoardCell]
    [:fn {:error/message "board cell indexes must be unique"} board-indexes-unique?]
    [:fn {:error/message "board cell coordinates must be unique"} board-cell-coordinates-unique?]

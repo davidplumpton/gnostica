@@ -583,18 +583,78 @@
                             :source-card (:source-card source-result)
                             :discard-source-card? (:discard-source-card?
                                                    source-result)
-                           :piece (:piece source-result)
-                           :destroyed? (:destroyed? target-result)}
-	                           (select-keys target-result
-	                                        [:target-piece :target-cell]))))))))))))
+                            :piece (:piece source-result)
+                            :destroyed? (:destroyed? target-result)}
+                           (select-keys target-result
+                                        [:target-piece :target-cell]))))))))))))
 
 (defn- piece-space [piece]
   (select-keys piece [:space-index :space]))
+
+(defn- remove-card-from-discard [state card-id]
+  (update state :discard-pile
+          (fn [discard-pile]
+            (vec (remove #(= card-id (:id %)) discard-pile)))))
+
+(defn- replace-board-cell-card [state board-index replacement-card]
+  (update state :board
+          (fn [cells]
+            (mapv (fn [cell]
+                    (if (= board-index (:index cell))
+                      (assoc cell :card replacement-card)
+                      cell))
+                  cells))))
+
+(defn- remove-board-cell [state board-index]
+  (update state :board
+          (fn [cells]
+            (vec (remove #(= board-index (:index %)) cells)))))
+
+(defn- discard-pile-card [state card-id]
+  (some (fn [card]
+          (when (= card-id (:id card))
+            card))
+        (:discard-pile state)))
+
+(defn- replacement-card-from-source
+  [state player-id replacement-card-source replacement-card-id]
+  (case replacement-card-source
+    :hand (core/player-hand-card state player-id replacement-card-id)
+    :discard-pile (discard-pile-card state replacement-card-id)
+    nil))
+
+(defn- remove-replacement-card
+  [state player-id replacement-card-source replacement-card-id]
+  (case replacement-card-source
+    :hand (core/remove-card-from-hand state player-id replacement-card-id)
+    :discard-pile (remove-card-from-discard state replacement-card-id)
+    state))
 
 (defn- remove-piece-by-id [state piece-id]
   (update-in state [:pieces :on-board]
              (fn [board-pieces]
                (vec (remove #(= piece-id (:id %)) board-pieces)))))
+
+(defn- legal-piece-coordinate? [state [row col]]
+  (or (some? (core/board-cell-at state row col))
+      (core/wasteland-target? state {:kind :wasteland
+                                     :row row
+                                     :col col})))
+
+(defn- void-pieces [state]
+  (->> (get-in state [:pieces :on-board])
+       (filterv (fn [piece]
+                  (let [coordinate (core/piece-coordinate state piece)]
+                    (or (nil? coordinate)
+                        (not (legal-piece-coordinate? state coordinate))))))))
+
+(defn- return-pieces-to-stash [state pieces]
+  (reduce (fn [next-state piece]
+            (-> next-state
+                (core/increment-stash (:player-id piece) (:size piece))
+                (remove-piece-by-id (:id piece))))
+          state
+          pieces))
 
 (defn- apply-sword-piece-attack
   [state player-id {:keys [command source-card discard-source-card? target-piece]}]
@@ -652,15 +712,118 @@
                                (core/append-history event))]
             (core/success next-state [event])))))))
 
+(defn- apply-sword-territory-attack
+  [state player-id {:keys [command source-card discard-source-card? target-cell]}]
+  (let [{:keys [source target sword-variant damage
+                replacement-card-source replacement-card-id]} command
+        replacement-card-source (or replacement-card-source :hand)
+        original-card (:card target-cell)
+        original-value (cards/card-point-value original-card)
+        replacement-value-target (- original-value damage)
+        destroyed? (zero? replacement-value-target)]
+    (cond
+      (and (not destroyed?)
+           (nil? replacement-card-id))
+      (core/failure :invalid-sword-replacement
+                    "Sword territory attacks require a selected replacement card unless the territory is destroyed."
+                    {:target (select-keys target [:kind :board-index :row :col])
+                     :replacement-card-source replacement-card-source})
+
+      (not (contains? sword-territory-card-sources replacement-card-source))
+      (core/failure :invalid-sword-replacement-card-source
+                    "Sword territory attacks require a supported replacement card source."
+                    {:replacement-card-source replacement-card-source
+                     :valid-sources sword-territory-card-sources})
+
+      (and (not destroyed?)
+           (= :hand replacement-card-source)
+           (= :hand-card (:kind source))
+           (= (:id source-card) replacement-card-id))
+      (core/failure :card-already-used
+                    "A played source card cannot also become the replacement territory."
+                    {:card-id replacement-card-id})
+
+      :else
+      (let [source-cost {:source-card source-card
+                         :discard-source-card? discard-source-card?}
+            cost-state (core/apply-source-cost state player-id source-cost)]
+        (if destroyed?
+          (let [base-state (-> cost-state
+                               (core/move-board-index-pieces-to-wasteland (:index target-cell)
+                                                                          (:row target-cell)
+                                                                          (:col target-cell))
+                               (remove-board-cell (:index target-cell))
+                               (core/discard-card original-card))
+                destroyed-pieces (void-pieces base-state)
+                event (cond-> {:type :sword/territory-destroyed
+                               :player-id player-id
+                               :source source
+                               :sword-variant sword-variant
+                               :target (select-keys target [:kind :board-index :row :col])
+                               :damage damage
+                               :original-card-id (:id original-card)
+                               :from-value original-value
+                               :destroyed-territory target-cell}
+                        (seq destroyed-pieces)
+                        (assoc :destroyed-pieces destroyed-pieces))
+                next-state (-> base-state
+                               (return-pieces-to-stash destroyed-pieces)
+                               (core/append-history event))]
+            (core/success next-state [event]))
+          (let [replacement-card (replacement-card-from-source cost-state
+                                                               player-id
+                                                               replacement-card-source
+                                                               replacement-card-id)
+                replacement-value (cards/card-point-value replacement-card)]
+            (cond
+              (nil? replacement-card)
+              (core/failure :invalid-sword-replacement-card
+                            "Sword territory attacks require a replacement card from the selected source."
+                            {:card-id replacement-card-id
+                             :player-id player-id
+                             :replacement-card-source replacement-card-source})
+
+              (not= replacement-value-target replacement-value)
+              (core/failure :invalid-sword-replacement-card
+                            "Sword territory attacks require a replacement card worth the original territory value minus the selected damage."
+                            {:original-card-id (:id original-card)
+                             :original-value original-value
+                             :replacement-card-id (:id replacement-card)
+                             :replacement-value replacement-value
+                             :damage damage
+                             :required-value replacement-value-target})
+
+              :else
+              (let [shrunk-cell (assoc target-cell :card replacement-card)
+                    event {:type :sword/territory-shrunk
+                           :player-id player-id
+                           :source source
+                           :sword-variant sword-variant
+                           :target (select-keys target [:kind :board-index :row :col])
+                           :damage damage
+                           :replacement-card-source replacement-card-source
+                           :original-card-id (:id original-card)
+                           :replacement-card-id (:id replacement-card)
+                           :from-value original-value
+                           :to-value replacement-value
+                           :territory shrunk-cell}
+                    next-state (-> cost-state
+                                   (remove-replacement-card player-id
+                                                            replacement-card-source
+                                                            replacement-card-id)
+                                   (replace-board-cell-card (:index target-cell)
+                                                            replacement-card)
+                                   (core/discard-card original-card)
+                                   (core/append-history event))]
+                (core/success next-state [event])))))))))
+
 (defn- apply-resolved-sword-action [state player-id result]
   (case (get-in result [:command :target :kind])
     :piece
     (apply-sword-piece-attack state player-id result)
 
     :territory
-    (core/failure :sword-territory-transition-unavailable
-                  "Sword territory attack application is not implemented yet."
-                  {:target (get-in result [:command :target])})
+    (apply-sword-territory-attack state player-id result)
 
     (core/failure :invalid-sword-target
                   "Sword move targets must be :piece or :territory."

@@ -156,6 +156,23 @@
            :players players
            :players-by-id (into {} (map (juxt :id identity) players)))))
 
+(defn- remove-card-id [cards card-id]
+  (vec (remove #(= card-id (:id %)) cards)))
+
+(defn- move-card-to-discard [state card-id]
+  (let [card (cards/card-by-id card-id)]
+    (-> (reduce (fn [next-state player-id]
+                  (replace-player-hand next-state
+                                       player-id
+                                       (remove-card-id
+                                        (get-in next-state
+                                                [:players-by-id player-id :hand])
+                                        card-id)))
+                state
+                (map :id (:players state)))
+        (update :draw-pile remove-card-id card-id)
+        (update :discard-pile conj card))))
+
 (deftest creates-deterministic-initial-state
   (let [hand-count (hand-card-count (count player-specs))
         board-deck (drop hand-count cards/deck)
@@ -1719,6 +1736,191 @@
            (get-in overdamage-state [:pieces :on-board])))
     (is (empty? (:discard-pile no-small-state)))
     (is (empty? (:discard-pile overdamage-state)))))
+
+(deftest sword-move-shrinks-royalty-territory-with-hand-replacement
+  (let [deck-order (deck-with-cards-at {0 "cups2"
+                                        (board-deck-position 3) "swords2"
+                                        (board-deck-position 4) "cupsking"})
+        target-piece (assoc rose-target-minion
+                            :space-index 4
+                            :orientation :south)
+        state (:state (game-state/create-game player-specs {:deck-order deck-order}))
+        state (game-state/with-board-pieces state [rose-sword-minion target-piece])
+        original-cell (board-cell-by-index state 4)
+        command {:player-id :rose
+                 :source {:kind :territory
+                          :board-index 3
+                          :piece-id :rose-sword-minion}
+                 :target {:kind :territory
+                          :board-index 4}
+                 :damage 1
+                 :replacement-card-source :hand
+                 :replacement-card-id "cups2"}
+        {:keys [ok? state events]} (game-state/apply-sword-move state command)
+        shrunk-cell (board-cell-by-index state 4)]
+    (is ok?)
+    (is (= "cups2" (get-in shrunk-cell [:card :id])))
+    (is (= (select-keys original-cell [:index :row :col :orientation :face])
+           (select-keys shrunk-cell [:index :row :col :orientation :face])))
+    (is (= target-piece (piece-by-id state :rose-target-minion)))
+    (is (= ["cupsking"] (mapv :id (:discard-pile state))))
+    (is (not (some #{"cups2"} (player-hand-ids state :rose))))
+    (is (= [{:type :sword/territory-shrunk
+             :player-id :rose
+             :source {:kind :territory
+                      :board-index 3
+                      :piece-id :rose-sword-minion}
+             :sword-variant :sword
+             :target {:kind :territory
+                      :board-index 4
+                      :row 1
+                      :col 1}
+             :damage 1
+             :replacement-card-source :hand
+             :original-card-id "cupsking"
+             :replacement-card-id "cups2"
+             :from-value 2
+             :to-value 1
+             :territory shrunk-cell}]
+           events))
+    (is (= events [(peek (:history state))]))
+    (is (= (count cards/deck) (count (all-card-ids state))))
+    (is (= (count cards/deck) (count (set (all-card-ids state)))))
+    (is (game-schema/valid-game? state))))
+
+(deftest sword-move-rejects-missing_reused_and_invalid_territory_replacements_without_mutation
+  (let [deck-order (deck-with-cards-at {0 "swords2"
+                                        1 "swordsking"
+                                        (board-deck-position 4) "cupsking"})
+        state (:state (game-state/create-game player-specs {:deck-order deck-order}))
+        state (game-state/with-board-pieces state [rose-sword-minion])
+        base-command {:player-id :rose
+                      :source {:kind :hand-card
+                               :card-id "swords2"
+                               :piece-id :rose-sword-minion}
+                      :target {:kind :territory
+                               :board-index 4}
+                      :damage 1}
+        missing-result (game-state/apply-sword-move state base-command)
+        reused-result (game-state/apply-sword-move
+                       state
+                       (assoc base-command :replacement-card-id "swords2"))
+        invalid-result (game-state/apply-sword-move
+                        state
+                        (assoc base-command :replacement-card-id "swordsking"))]
+    (is (= :invalid-sword-replacement
+           (get-in missing-result [:error :code])))
+    (is (= :card-already-used
+           (get-in reused-result [:error :code])))
+    (is (= :invalid-sword-replacement-card
+           (get-in invalid-result [:error :code])))
+    (is (not (contains? missing-result :state)))
+    (is (not (contains? reused-result :state)))
+    (is (not (contains? invalid-result :state)))
+    (is (= "cupsking" (get-in (board-cell-by-index state 4) [:card :id])))
+    (is (= ["swords2" "swordsking"]
+           (filterv #{"swords2" "swordsking"} (player-hand-ids state :rose))))
+    (is (empty? (:discard-pile state)))))
+
+(deftest tower-sword-move-can-shrink-major-territory-from-discard_source
+  (let [deck-order (deck-with-cards-at {0 "cupsking"
+                                        (board-deck-position 3) "tower"
+                                        (board-deck-position 4) "star"})
+        state (:state (game-state/create-game player-specs {:deck-order deck-order}))
+        state (-> state
+                  (move-card-to-discard "cupsking")
+                  (game-state/with-board-pieces [rose-sword-minion]))
+        command {:player-id :rose
+                 :source {:kind :territory
+                          :board-index 3
+                          :piece-id :rose-sword-minion}
+                 :target {:kind :territory
+                          :board-index 4}
+                 :damage 1
+                 :replacement-card-source :discard-pile
+                 :replacement-card-id "cupsking"}
+        {:keys [ok? state events]} (game-state/apply-sword-move state command)]
+    (is ok?)
+    (is (= "cupsking" (get-in (board-cell-by-index state 4) [:card :id])))
+    (is (= ["star"] (mapv :id (:discard-pile state))))
+    (is (= :sword/territory-shrunk (get-in events [0 :type])))
+    (is (= :sword-from-discard (get-in events [0 :sword-variant])))
+    (is (= :discard-pile (get-in events [0 :replacement-card-source])))
+    (is (= 3 (get-in events [0 :from-value])))
+    (is (= 2 (get-in events [0 :to-value])))
+    (is (= (count cards/deck) (count (all-card-ids state))))
+    (is (= (count cards/deck) (count (set (all-card-ids state)))))
+    (is (game-schema/valid-game? state))))
+
+(deftest sword-move-destroys-spot-territory-and-voided-pieces
+  (let [deck-order (deck-with-cards-at {(board-deck-position 0) "cups2"
+                                        (board-deck-position 1) "swords2"})
+        sword-minion (assoc rose-sword-minion
+                            :space-index 1
+                            :size :small
+                            :orientation :west)
+        target-piece {:id :rose-target-territory-minion
+                      :player-id :rose
+                      :space-index 0
+                      :size :medium
+                      :orientation :south}
+        voided-piece {:id :rose-outboard-minion
+                      :player-id :rose
+                      :space {:kind :wasteland
+                              :row 0
+                              :col -1}
+                      :size :small
+                      :orientation :north}
+        state (:state (game-state/create-game player-specs {:deck-order deck-order}))
+        state (game-state/with-board-pieces state [sword-minion
+                                                   target-piece
+                                                   voided-piece])
+        original-cell (board-cell-by-index state 0)
+        command {:player-id :rose
+                 :source {:kind :territory
+                          :board-index 1
+                          :piece-id :rose-sword-minion}
+                 :target {:kind :territory
+                          :board-index 0}
+                 :damage 1}
+        {:keys [ok? state events]} (game-state/apply-sword-move state command)
+        surviving-target-piece (piece-by-id state :rose-target-territory-minion)]
+    (is ok?)
+    (is (nil? (board-cell-by-index state 0)))
+    (is (= "cups2" (get-in original-cell [:card :id])))
+    (is (= ["cups2"] (mapv :id (:discard-pile state))))
+    (is (= sword-minion (piece-by-id state :rose-sword-minion)))
+    (is (= {:id :rose-target-territory-minion
+            :player-id :rose
+            :space {:kind :wasteland
+                    :row 0
+                    :col 0}
+            :size :medium
+            :orientation :south}
+           surviving-target-piece))
+    (is (nil? (piece-by-id state :rose-outboard-minion)))
+    (is (= 4 (get-in state [:players-by-id :rose :stash :small])))
+    (is (= 4 (get-in state [:players-by-id :rose :stash :medium])))
+    (is (= [{:type :sword/territory-destroyed
+             :player-id :rose
+             :source {:kind :territory
+                      :board-index 1
+                      :piece-id :rose-sword-minion}
+             :sword-variant :sword
+             :target {:kind :territory
+                      :board-index 0
+                      :row 0
+                      :col 0}
+             :damage 1
+             :original-card-id "cups2"
+             :from-value 1
+             :destroyed-territory original-cell
+             :destroyed-pieces [voided-piece]}]
+           events))
+    (is (= events [(peek (:history state))]))
+    (is (= (count cards/deck) (count (all-card-ids state))))
+    (is (= (count cards/deck) (count (set (all-card-ids state)))))
+    (is (game-schema/valid-game? state))))
 
 (deftest disc-move-grows-spot-territory-with-hand-replacement
   (let [deck-order (deck-with-cards-at {0 "cupsking"
