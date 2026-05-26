@@ -10,6 +10,9 @@
 (def table-surface-css-color "#1c0715")
 (def table-clear-color 0x0a0308)
 (def table-clear-css-color "#0a0308")
+(def table-fade-texture-size 256)
+(def table-surface-rgb [28 7 21])
+(def table-clear-rgb [10 3 8])
 (def pip-marker-color 0xfff4d3)
 (def piece-edge-outline-color 0x050505)
 (def piece-edge-outline-opacity 0.9)
@@ -64,16 +67,62 @@
   (resources/invoke-callback callbacks :on-renderer-error message)
   (render!))
 
-(defn- add-table-plane! [scene geometries materials spaces]
-  (let [{:keys [width height center]} (layout/board-plane spaces)
+(defn- clamp01 [value]
+  (max 0 (min 1 value)))
+
+(defn- smoothstep [value]
+  (* value value (- 3 (* 2 value))))
+
+(defn- lerp [start end amount]
+  (+ start (* (- end start) amount)))
+
+(defn- create-table-fade-texture! [{:keys [width height velvet-width velvet-height fade-distance]}]
+  (let [canvas (.createElement js/document "canvas")]
+    (set! (.-width canvas) table-fade-texture-size)
+    (set! (.-height canvas) table-fade-texture-size)
+    (let [context (.getContext canvas "2d")
+          texture (js/THREE.Texture. canvas)
+          half-width (/ width 2)
+          half-height (/ height 2)
+          half-velvet-width (/ velvet-width 2)
+          half-velvet-height (/ velvet-height 2)
+          image-data (.createImageData context table-fade-texture-size table-fade-texture-size)
+          data (.-data image-data)]
+      (doseq [py (range table-fade-texture-size)
+              px (range table-fade-texture-size)]
+        (let [world-x (- (* (/ (+ px 0.5) table-fade-texture-size) width) half-width)
+              world-y (- (* (/ (+ py 0.5) table-fade-texture-size) height) half-height)
+              dx (max 0 (- (js/Math.abs world-x) half-velvet-width))
+              dy (max 0 (- (js/Math.abs world-y) half-velvet-height))
+              distance (js/Math.sqrt (+ (* dx dx) (* dy dy)))
+              amount (smoothstep (clamp01 (/ distance fade-distance)))
+              offset (* 4 (+ px (* py table-fade-texture-size)))]
+          (doseq [[channel index] (map vector
+                                       (map #(js/Math.round (lerp %1 %2 amount))
+                                            table-surface-rgb
+                                            table-clear-rgb)
+                                       (range 3))]
+            (aset data (+ offset index) channel))
+          (aset data (+ offset 3) 255)))
+      (.putImageData context image-data 0 0)
+      (set! (.-encoding texture) js/THREE.sRGBEncoding)
+      (set! (.-minFilter texture) js/THREE.LinearFilter)
+      (set! (.-magFilter texture) js/THREE.LinearFilter)
+      (set! (.-needsUpdate texture) true)
+      texture)))
+
+(defn- add-table-plane! [scene geometries materials textures spaces]
+  (let [{:keys [width height center] :as table-plane} (layout/table-plane spaces)
         [center-x center-y] center
         geometry (js/THREE.PlaneGeometry. width height)
-        material (js/THREE.MeshBasicMaterial. #js {:color table-surface-color
+        texture (create-table-fade-texture! table-plane)
+        material (js/THREE.MeshBasicMaterial. #js {:map texture
                                                    :side js/THREE.DoubleSide})
         mesh (js/THREE.Mesh. geometry material)]
     (.set (.-position mesh) center-x center-y -0.03)
     (.add scene mesh)
     (swap! geometries conj geometry)
+    (swap! textures conj texture)
     (swap! materials conj material)))
 
 (defn- vector3 [x y z]
@@ -259,7 +308,7 @@
     (add-piece-lights! scene)
     (let [wastelands (layout/wasteland-spaces cells)
           board-spaces (vec (concat cells wastelands))]
-      (add-table-plane! scene geometries materials board-spaces)
+      (add-table-plane! scene geometries materials textures board-spaces)
       (add-wasteland-outlines! scene geometries materials wastelands))
     (doseq [cell cells]
       (add-card-plane! card-context cell))

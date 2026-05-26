@@ -29,6 +29,12 @@
 (def board-plane-size
   (+ (* 2 card-step) card-long (* 2 card-gap)))
 
+(def table-void-margin
+  (* card-step 0.35))
+
+(def table-fade-distance
+  (/ table-void-margin 2))
+
 (defn card-position [{:keys [row col]}]
   [(* (- col 1) card-step)
    (* (- 1 row) card-step)])
@@ -96,6 +102,17 @@
      :height (+ (* (- max-row min-row) card-step) card-long (* 2 card-gap))
      :center [(* (- center-col 1) card-step)
               (* (- 1 center-row) card-step)]}))
+
+(defn table-plane [spaces]
+  (let [{:keys [width height center] :as playable-plane} (board-plane spaces)]
+    (assoc playable-plane
+           :width (+ width (* 2 table-void-margin))
+           :height (+ height (* 2 table-void-margin))
+           :velvet-width width
+           :velvet-height height
+           :void-margin table-void-margin
+           :fade-distance table-fade-distance
+           :center center)))
 
 (defn cells-by-index [cells]
   (into {} (map (juxt :index identity) cells)))

@@ -51,7 +51,14 @@
     (is (roughly= (+ (* 4 layout/card-step) layout/card-long (* 2 layout/card-gap))
                   (:width (layout/board-plane (layout/board-spaces cells)))))
     (is (roughly= (+ (* 4 layout/card-step) layout/card-long (* 2 layout/card-gap))
-                  (:height (layout/board-plane (layout/board-spaces cells)))))))
+                  (:height (layout/board-plane (layout/board-spaces cells)))))
+    (is (roughly= (+ (:width (layout/board-plane (layout/board-spaces cells)))
+                     (* 2 layout/table-void-margin))
+                  (:width (layout/table-plane (layout/board-spaces cells)))))
+    (is (roughly= (:width (layout/board-plane (layout/board-spaces cells)))
+                  (:velvet-width (layout/table-plane (layout/board-spaces cells)))))
+    (is (roughly= (/ layout/table-void-margin 2)
+                  (:fade-distance (layout/table-plane (layout/board-spaces cells)))))))
 
 (deftest wasteland-detection-fills-internal-empty-spaces
   (let [cells [{:row 0 :col 0 :orientation :portrait}

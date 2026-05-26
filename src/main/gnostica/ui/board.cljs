@@ -7,10 +7,16 @@
             [re-frame.core :as rf]))
 
 (defn- css-space-offset [step-count edge-offset]
-  (str "calc(" step-count " * var(--card-step) + " edge-offset ")"))
+  (str "calc(var(--board-void-margin) + "
+       step-count
+       " * var(--card-step) + "
+       edge-offset
+       ")"))
 
 (defn- board-stage-length [min-value max-value]
-  (str "calc(" (- max-value min-value) " * var(--card-step) + var(--card-long))"))
+  (str "calc("
+       (- max-value min-value)
+       " * var(--card-step) + var(--card-long) + 2 * var(--board-void-margin))"))
 
 (defn- board-stage-style [{:keys [min-row max-row min-col max-col]}]
   {"width" (board-stage-length min-col max-col)

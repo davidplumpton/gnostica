@@ -817,9 +817,7 @@ img {
   overflow: hidden;
   border: 0;
   border-radius: 0;
-  background:
-    radial-gradient(circle at center, rgba(78, 24, 52, 0.22), transparent 66%),
-    var(--table);
+  background: var(--table-deep);
   box-shadow: none;
 }
 
@@ -894,7 +892,8 @@ img {
   width: 100%;
   min-height: 100%;
   min-width: 0;
-  padding: clamp(0.8rem, 2vw, 1.5rem);
+  padding: clamp(0.35rem, 1.5vw, 1.5rem);
+  background: var(--table-deep);
 }
 
 .board-3d-status {
@@ -922,12 +921,28 @@ img {
   --card-half-sum: clamp(4.16rem, min(14.3vw, 11.7vh), 10.4rem);
   --card-offset: clamp(0.96rem, min(3.3vw, 2.7vh), 2.4rem);
   --card-step: calc(var(--card-half-sum) + var(--card-gap));
+  --board-void-margin: clamp(0.25rem, min(2.5vw, 2vh), calc(var(--card-step) * 0.35));
+  --board-fade-distance: calc(var(--board-void-margin) / 2);
   position: relative;
   width: calc(var(--card-step) + var(--card-step) + var(--card-long));
   height: calc(var(--card-step) + var(--card-step) + var(--card-long));
   border-radius: 8px;
   background:
-    radial-gradient(circle at center, rgba(78, 24, 52, 0.22), transparent 66%),
+    radial-gradient(circle at center, rgba(78, 24, 52, 0.2), transparent 62%),
+    linear-gradient(to right,
+      rgba(10, 3, 8, 1) 0,
+      rgba(10, 3, 8, 1) var(--board-fade-distance),
+      rgba(10, 3, 8, 0) var(--board-void-margin),
+      rgba(10, 3, 8, 0) calc(100% - var(--board-void-margin)),
+      rgba(10, 3, 8, 1) calc(100% - var(--board-fade-distance)),
+      rgba(10, 3, 8, 1) 100%),
+    linear-gradient(to bottom,
+      rgba(10, 3, 8, 1) 0,
+      rgba(10, 3, 8, 1) var(--board-fade-distance),
+      rgba(10, 3, 8, 0) var(--board-void-margin),
+      rgba(10, 3, 8, 0) calc(100% - var(--board-void-margin)),
+      rgba(10, 3, 8, 1) calc(100% - var(--board-fade-distance)),
+      rgba(10, 3, 8, 1) 100%),
     var(--table);
   box-shadow: var(--shadow);
 }
