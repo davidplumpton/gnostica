@@ -47,7 +47,7 @@
   ([state player-id source cup-variant]
    (resolve-cup-source state player-id source cup-variant {}))
   ([state player-id source cup-variant
-    {:keys [source-card source-card-already-discarded?]}]
+    {:keys [source-card source-card-already-discarded? allow-major-minion?]}]
    (let [piece (core/piece-by-id state (:piece-id source))]
     (cond
       (not (map? source))
@@ -75,7 +75,8 @@
                    "Cup territory sources must reference an existing board cell."
                    {:board-index (:board-index source)})
 
-          (not= (:board-index source) (:space-index piece))
+          (and (not allow-major-minion?)
+               (not= (:board-index source) (:space-index piece)))
           (core/failure :source-piece-mismatch
                    "The acting minion must occupy the source territory."
                    {:piece-id (:piece-id source)

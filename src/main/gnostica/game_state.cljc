@@ -1,5 +1,6 @@
 (ns gnostica.game-state
-  (:require [gnostica.game-state.core :as core]
+  (:require [gnostica.game-state.composite :as composite]
+            [gnostica.game-state.core :as core]
             [gnostica.game-state.cup :as cup]
             [gnostica.game-state.disc :as disc]
             [gnostica.game-state.draw :as draw]
@@ -149,6 +150,24 @@
 
 (defn apply-devil-move [state command]
   (manipulation/apply-devil-move state command))
+
+(defn apply-empress-move [state command]
+  (composite/apply-empress-move state command))
+
+(defn apply-emperor-move [state command]
+  (composite/apply-emperor-move state command))
+
+(defn apply-lovers-move [state command]
+  (composite/apply-lovers-move state command))
+
+(defn apply-chariot-move [state command]
+  (composite/apply-chariot-move state command))
+
+(defn apply-hanged-man-move [state command]
+  (composite/apply-hanged-man-move state command))
+
+(defn apply-temperance-move [state command]
+  (composite/apply-temperance-move state command))
 
 (defn resolve-major-source [state command]
   (major/resolve-major-source state command))
