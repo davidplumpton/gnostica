@@ -1517,21 +1517,44 @@
                                        :maximum pieces/max-pieces-per-space})
                         rod-result))))))))))))
 
-(defn apply-sword-move [state command]
+(defn apply-sword-move-with-opts
+  ([state command]
+   (apply-sword-move-with-opts state command {}))
+  ([state command {:keys [source-opts] :as opts
+                   :or {source-opts {}}}]
   (cond
     (contains? command :sword-actions)
-    (apply-death-sword-move state command)
+    (if (seq source-opts)
+      (core/failure :sword-composite-source-opts-unavailable
+                    "Death Sword source overrides are not supported."
+                    {:command command})
+      (apply-death-sword-move state command))
 
     (or (contains? command :hand-trade-target)
         (contains? command :hand-trade-target-piece-id))
-    (apply-justice-sword-move state command)
+    (if (seq source-opts)
+      (core/failure :sword-composite-source-opts-unavailable
+                    "Justice Sword source overrides are not supported."
+                    {:command command})
+      (apply-justice-sword-move state command))
 
     (contains? command :minion-orientation)
-    (apply-tower-sword-move state command)
+    (if (seq source-opts)
+      (core/failure :sword-composite-source-opts-unavailable
+                    "Tower Sword source overrides are not supported."
+                    {:command command})
+      (apply-tower-sword-move state command))
 
     (or (contains? command :rod)
         (contains? command :sword))
-    (apply-moon-move state command)
+    (if (seq source-opts)
+      (core/failure :sword-composite-source-opts-unavailable
+                    "Moon source overrides are not supported."
+                    {:command command})
+      (apply-moon-move state command))
 
     :else
-    (apply-single-sword-move state command)))
+    (apply-single-sword-move state command opts))))
+
+(defn apply-sword-move [state command]
+  (apply-sword-move-with-opts state command {}))

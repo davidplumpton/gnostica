@@ -128,6 +128,15 @@
 (defn apply-draw-move [state command]
   (draw/apply-draw-move state command))
 
+(defn apply-fool-move [state command]
+  (draw/apply-fool-move state command))
+
+(defn apply-high-priestess-move [state command]
+  (draw/apply-high-priestess-move state command))
+
+(defn apply-judgement-move [state command]
+  (draw/apply-judgement-move state command))
+
 (defn resolve-major-source [state command]
   (major/resolve-major-source state command))
 

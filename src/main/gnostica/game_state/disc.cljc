@@ -1155,13 +1155,28 @@
                            {:disc (:disc command)
                             :cup-events (:events cup-result)}))))))))))
 
-(defn apply-disc-move [state command]
+(defn apply-disc-move-with-opts
+  ([state command]
+   (apply-disc-move-with-opts state command {}))
+  ([state command {:keys [source-opts] :as opts
+                   :or {source-opts {}}}]
   (cond
     (contains? command :disc-actions)
-    (apply-strength-disc-move state command)
+    (if (seq source-opts)
+      (core/failure :disc-composite-source-opts-unavailable
+               "Strength Disc source overrides are not supported."
+               {:command command})
+      (apply-strength-disc-move state command))
 
     (contains? command :minion-orientation)
-    (apply-star-disc-move state command)
+    (if (seq source-opts)
+      (core/failure :disc-composite-source-opts-unavailable
+               "Star Disc source overrides are not supported."
+               {:command command})
+      (apply-star-disc-move state command))
 
     :else
-    (apply-single-disc-move state command)))
+    (apply-single-disc-move state command opts))))
+
+(defn apply-disc-move [state command]
+  (apply-disc-move-with-opts state command {}))

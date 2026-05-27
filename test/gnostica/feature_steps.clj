@@ -214,6 +214,15 @@
             (parse-int board-index)
             (parse-keyword orientation)))}
 
+   {:pattern #"^a Fool hand-card reveal game$"
+    :run world/create-fool-hand-card-reveal-game}
+
+   {:pattern #"^a High Priestess hand-card redraw game$"
+    :run world/create-high-priestess-hand-card-redraw-game}
+
+   {:pattern #"^a Judgement hand-card limit game$"
+    :run world/create-judgement-hand-card-limit-game}
+
    {:pattern #"^an endgame challenge game where Rose controls 9 points$"
     :run world/create-endgame-winning-challenge-game}
 
@@ -275,6 +284,16 @@
    {:pattern #"^Rose uses Strength to grow the Rose Disc piece twice$"
     :run world/apply-strength-disc-piece-shortcut}
 
+   {:pattern #"^Rose uses Fool to reveal (\d+) cards without playing them$"
+    :run (fn [world reveal-count]
+           (world/apply-fool-skip-reveals world (parse-int reveal-count)))}
+
+   {:pattern #"^Rose uses High Priestess for two redraw passes$"
+    :run world/apply-high-priestess-redraws}
+
+   {:pattern #"^Rose tries to draw too many cards with Judgement$"
+    :run world/apply-judgement-over-hand-limit}
+
    {:pattern #"^Rose announces a final-turn challenge$"
     :run (fn [world]
            (world/apply-end-turn world :rose true))}
@@ -330,6 +349,30 @@
                      {:expected expected-code
                      :actual actual-code
                      :result result})))}
+
+   {:pattern #"^the draw-major action succeeds$"
+    :run (fn [world]
+           (let [result (:last-result world)]
+             (expect world
+                     (:ok? result)
+                     :draw-major-action-failed
+                     "The draw-major action was expected to succeed."
+                     {:error (:error result)
+                      :last-action (:last-action world)})))}
+
+   {:pattern #"^the draw-major action is rejected with code :([a-z0-9-]+)$"
+    :run (fn [world expected-code]
+           (let [expected-code (parse-keyword expected-code)
+                 result (:last-result world)
+                 actual-code (get-in result [:error :code])]
+             (expect world
+                     (and (false? (:ok? result))
+                          (= expected-code actual-code))
+                     :unexpected-draw-major-rejection
+                     "The draw-major action rejection did not match the expected error code."
+                     {:expected expected-code
+                      :actual actual-code
+                      :result result})))}
 
    {:pattern #"^the endgame action succeeds$"
     :run (fn [world]

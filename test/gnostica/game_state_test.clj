@@ -648,9 +648,36 @@
                        :target {:kind :piece
                                 :piece-id :rose-sword-minion}
                        :damage 1
-                       :orientation :south}]
+                       :orientation :south}
+        draw-major-state (-> (:state (game-state/create-game
+                                       player-specs
+                                       {:deck-order
+                                        (deck-starting-with
+                                         ["fool" "high-priestess" "judgement"])}))
+                             (game-state/with-board-pieces [rose-target-minion]))
+        fool-command {:player-id :rose
+                      :source {:kind :hand-card
+                               :card-id "fool"}
+                      :reveals []}
+        high-priestess-command {:player-id :rose
+                                :source {:kind :hand-card
+                                         :card-id "high-priestess"}
+                                :redraws []}
+        judgement-command {:player-id :rose
+                           :source {:kind :hand-card
+                                    :card-id "judgement"}
+                           :piece-id :rose-target-minion
+                           :card-ids []}]
     (is (= (game-state/apply-draw-move draw-state draw-command)
            (game-state-draw/apply-draw-move draw-state draw-command)))
+    (is (= (game-state/apply-fool-move draw-major-state fool-command)
+           (game-state-draw/apply-fool-move draw-major-state fool-command)))
+    (is (= (game-state/apply-high-priestess-move draw-major-state
+                                                  high-priestess-command)
+           (game-state-draw/apply-high-priestess-move draw-major-state
+                                                       high-priestess-command)))
+    (is (= (game-state/apply-judgement-move draw-major-state judgement-command)
+           (game-state-draw/apply-judgement-move draw-major-state judgement-command)))
     (is (= (game-state/apply-orient-move orient-state orient-command)
            (game-state-placement/apply-orient-move orient-state orient-command)))
     (is (= (game-state/apply-cup-move cup-state cup-command)
@@ -760,6 +787,182 @@
            (get-in missing-result [:error :code])))
     (is (false? (:ok? too-many-result)))
     (is (not (contains? too-many-result :state)))))
+
+(deftest high-priestess-applies-two-redraw-passes-after-paying-hand-source
+  (let [initial-state (-> (:state (game-state/create-game
+                                   player-specs
+                                   {:deck-order
+                                    (deck-starting-with
+                                     ["high-priestess" "cups2" "wands2"
+                                      "coins2" "swords2" "cups3"])}))
+                          (game-state/with-board-pieces [rose-target-minion]))
+        first-drawn-card (first (:draw-pile initial-state))
+        second-drawn-card (second (:draw-pile initial-state))
+        command {:player-id :rose
+                 :source {:kind :hand-card
+                          :card-id "high-priestess"}
+                 :redraws [{:discard-card-ids ["cups2"]
+                            :draw-count 1}
+                           {:discard-card-ids [(:id first-drawn-card)]
+                            :draw-count 1}]
+                 :shuffle-fn identity}
+        {:keys [ok? state events]} (game-state/apply-high-priestess-move
+                                    initial-state
+                                    command)]
+    (is ok?)
+    (is (= ["wands2" "coins2" "swords2" "cups3" (:id second-drawn-card)]
+           (player-hand-ids state :rose)))
+    (is (= ["high-priestess" "cups2" (:id first-drawn-card)]
+           (mapv :id (:discard-pile state))))
+    (is (= (mapv :id (drop 2 (:draw-pile initial-state)))
+           (mapv :id (:draw-pile state))))
+    (is (= [:high-priestess/redrawn :high-priestess/redrawn]
+           (mapv :type events)))
+    (is (= [1 2] (mapv :pass-index events)))
+    (is (= [["cups2"] [(:id first-drawn-card)]]
+           (mapv :discarded-card-ids events)))
+    (is (= [[(:id first-drawn-card)] [(:id second-drawn-card)]]
+           (mapv :drawn-card-ids events)))
+    (is (= events (take-last 2 (:history state))))
+    (is (= (count cards/deck) (count (all-card-ids state))))
+    (is (= (count cards/deck) (count (set (all-card-ids state)))))
+    (is (game-schema/valid-game? state))))
+
+(deftest judgement-draws-selected-discard-cards-from_anywhere_up_to_pips_and_hand_limit
+  (let [base-state (state-with-board-cards {4 "judgement"})
+        original-hand (get-in base-state [:players-by-id :rose :hand])
+        shortened-hand (vec (take 4 original-hand))
+        hand-discard-cards (vec (drop 4 original-hand))
+        draw-discard-cards (vec (take 3 (:draw-pile base-state)))
+        discard-cards (vec (concat hand-discard-cards draw-discard-cards))
+        selected-cards [(second draw-discard-cards) (first hand-discard-cards)]
+        state (-> base-state
+                  (replace-player-hand :rose shortened-hand)
+                  (assoc :draw-pile (vec (drop 3 (:draw-pile base-state)))
+                         :discard-pile discard-cards)
+                  (game-state/with-board-pieces [rose-target-minion]))
+        {:keys [ok? state events]} (game-state/apply-judgement-move
+                                    state
+                                    {:player-id :rose
+                                     :source {:kind :territory
+                                              :board-index 4}
+                                     :piece-id :rose-target-minion
+                                     :card-ids (mapv :id selected-cards)})]
+    (is ok?)
+    (is (= (mapv :id (concat shortened-hand selected-cards))
+           (player-hand-ids state :rose)))
+    (is (= (vec (remove (set (mapv :id selected-cards))
+                        (mapv :id discard-cards)))
+           (mapv :id (:discard-pile state))))
+    (is (= [{:type :judgement/cards-drawn
+             :player-id :rose
+             :source {:kind :territory
+                      :board-index 4}
+             :piece-id :rose-target-minion
+             :card-ids (mapv :id selected-cards)
+             :draw-count 2
+             :maximum 2}]
+           events))
+    (is (= events [(peek (:history state))]))
+    (is (= (count cards/deck) (count (all-card-ids state))))
+    (is (= (count cards/deck) (count (set (all-card-ids state)))))
+    (is (game-schema/valid-game? state))))
+
+(deftest hand-source-judgement-can-draw_itself_after_source_cost
+  (let [initial-state (-> (:state (game-state/create-game
+                                   player-specs
+                                   {:deck-order
+                                    (deck-starting-with
+                                     ["judgement" "cups2" "wands2"
+                                      "coins2" "swords2" "cups3"])}))
+                          (game-state/with-board-pieces [rose-target-minion]))
+        {:keys [ok? state events]} (game-state/apply-judgement-move
+                                    initial-state
+                                    {:player-id :rose
+                                     :source {:kind :hand-card
+                                              :card-id "judgement"}
+                                     :piece-id :rose-target-minion
+                                     :card-ids ["judgement"]})]
+    (is ok?)
+    (is (= ["cups2" "wands2" "coins2" "swords2" "cups3" "judgement"]
+           (player-hand-ids state :rose)))
+    (is (empty? (:discard-pile state)))
+    (is (= :judgement/cards-drawn (get-in events [0 :type])))
+    (is (game-schema/valid-game? state))))
+
+(deftest judgement-rejects-draws_over_pip_or_hand_limit
+  (let [initial-state (-> (:state (game-state/create-game
+                                   player-specs
+                                   {:deck-order
+                                    (deck-starting-with
+                                     ["judgement" "cups2" "wands2"
+                                      "coins2" "swords2" "cups3"])}))
+                          (game-state/with-board-pieces [rose-target-minion]))
+        extra-discard (first (:draw-pile initial-state))
+        state (-> initial-state
+                  (update :draw-pile remove-card-id (:id extra-discard))
+                  (assoc :discard-pile [extra-discard]))
+        result (game-state/apply-judgement-move
+                state
+                {:player-id :rose
+                 :source {:kind :hand-card
+                          :card-id "judgement"}
+                 :piece-id :rose-target-minion
+                 :card-ids ["judgement" (:id extra-discard)]})]
+    (is (= :invalid-judgement-card-count
+           (get-in result [:error :code])))
+    (is (= 1 (get-in result [:error :data :maximum])))
+    (is (false? (:ok? result)))
+    (is (not (contains? result :state)))))
+
+(deftest fool-reveals_draw_pile_cards_and_can_play_an_implemented_suit_power
+  (let [initial-state (-> (:state (game-state/create-game
+                                   player-specs
+                                   {:deck-order
+                                    (deck-with-cards-at
+                                     {0 "fool"
+                                      (+ (hand-card-count (count player-specs))
+                                         board/board-card-count)
+                                      "cups2"
+                                      (inc (+ (hand-card-count (count player-specs))
+                                              board/board-card-count))
+                                      "wands2"})}))
+                          (game-state/with-board-pieces [rose-cup-minion]))
+        {:keys [ok? state events]} (game-state/apply-fool-move
+                                    initial-state
+                                    {:player-id :rose
+                                     :source {:kind :hand-card
+                                              :card-id "fool"}
+                                     :reveals [{:power :cup
+                                                :play-command
+                                                {:source {:piece-id :rose-cup-minion}
+                                                 :target {:kind :territory
+                                                          :board-index 4}
+                                                 :orientation :east}}
+                                               {}]
+                                     :shuffle-fn identity})
+        created-piece (some #(when (and (= :rose (:player-id %))
+                                        (= :small (:size %))
+                                        (= 4 (:space-index %)))
+                               %)
+                            (get-in state [:pieces :on-board]))]
+    (is ok?)
+    (is (= ["fool" "cups2" "wands2"]
+           (mapv :id (:discard-pile state))))
+    (is (= [:fool/card-revealed
+            :cup/small-piece-created
+            :fool/card-revealed]
+           (mapv :type events)))
+    (is (= [true false]
+           (mapv :played? (filter #(= :fool/card-revealed (:type %)) events))))
+    (is (= :east (:orientation created-piece)))
+    (is (= 3 (get-in state [:players-by-id :rose :stash :small])))
+    (is (= (mapv :id (drop 2 (:draw-pile initial-state)))
+           (mapv :id (:draw-pile state))))
+    (is (not (some #{"fool"} (player-hand-ids state :rose))))
+    (is (= (count cards/deck) (count (all-card-ids state))))
+    (is (= (count cards/deck) (count (set (all-card-ids state)))))
+    (is (game-schema/valid-game? state))))
 
 (deftest orient-move-updates-current-players-piece
   (let [state (state-with-pieces [rose-target-minion])

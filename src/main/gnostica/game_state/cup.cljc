@@ -6,6 +6,12 @@
 
 (def cup-territory-card-sources #{:hand :draw-pile-top})
 
+(defn- discard-pile-card [state card-id]
+  (some (fn [card]
+          (when (= card-id (:id card))
+            card))
+        (:discard-pile state)))
+
 (defn- resolve-cup-variant [card requested-variant source]
   (let [variants (cards/cup-variants card)
         variant-set (set variants)]
@@ -37,8 +43,12 @@
                 :cup-variant requested-variant
                 :available-variants variants}))))
 
-(defn- resolve-cup-source [state player-id source cup-variant]
-  (let [piece (core/piece-by-id state (:piece-id source))]
+(defn- resolve-cup-source
+  ([state player-id source cup-variant]
+   (resolve-cup-source state player-id source cup-variant {}))
+  ([state player-id source cup-variant
+    {:keys [source-card source-card-already-discarded?]}]
+   (let [piece (core/piece-by-id state (:piece-id source))]
     (cond
       (not (map? source))
       (core/failure :invalid-cup-command
@@ -85,13 +95,23 @@
               variant-result))))
 
       (= :hand-card (:kind source))
-      (let [card (core/player-hand-card state player-id (:card-id source))]
+      (let [card (or source-card
+                     (core/player-hand-card state player-id (:card-id source))
+                     (when source-card-already-discarded?
+                       (discard-pile-card state (:card-id source))))]
         (cond
           (nil? card)
           (core/failure :invalid-hand-card
                    "Cup hand-card sources must reference a card in the player's hand."
                    {:card-id (:card-id source)
                     :player-id player-id})
+
+          (and source-card
+               (not= (:card-id source) (:id source-card)))
+          (core/failure :invalid-hand-card
+                   "Cup paid source cards must match the command source card."
+                   {:card-id (:card-id source)
+                    :source-card-id (:id source-card)})
 
           :else
           (let [variant-result (resolve-cup-variant card cup-variant source)]
@@ -100,14 +120,14 @@
                :source source
                :source-card card
                :cup-variant (:cup-variant variant-result)
-               :discard-source-card? true
+               :discard-source-card? (not source-card-already-discarded?)
                :piece piece}
               variant-result))))
 
       :else
       (core/failure :invalid-cup-command
                "Cup move sources must be either :territory or :hand-card."
-               {:source source}))))
+               {:source source})))))
 
 (defn- cup-unbounded? [source]
   (= :cup-unbounded (:cup-variant source)))
@@ -357,7 +377,11 @@
                            (core/append-history event))]
         (core/success next-state [event])))))
 
-(defn apply-cup-move [state command]
+(defn apply-cup-move-with-opts
+  ([state command]
+   (apply-cup-move-with-opts state command {}))
+  ([state command {:keys [source-opts]
+                   :or {source-opts {}}}]
   (let [{:keys [player-id source target orientation one-point-card-id
                 cup-variant territory-card-source]} command]
     (cond
@@ -378,7 +402,11 @@
                 :current-player-id (get-in state [:turn :current-player-id])})
 
       :else
-      (let [source-result (resolve-cup-source state player-id source cup-variant)]
+      (let [source-result (resolve-cup-source state
+                                              player-id
+                                              source
+                                              cup-variant
+                                              source-opts)]
         (if (:ok? source-result)
           (case (:kind target)
             :territory
@@ -398,4 +426,7 @@
             (core/failure :invalid-cup-target
                      "Cup move targets must be :territory, :piece, or :wasteland."
                      {:target target}))
-          source-result)))))
+          source-result))))))
+
+(defn apply-cup-move [state command]
+  (apply-cup-move-with-opts state command {}))

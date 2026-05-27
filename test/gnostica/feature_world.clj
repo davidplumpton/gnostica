@@ -177,6 +177,9 @@
 (defn- with-disc-fixture [world fixture]
   (assoc world :disc-fixture fixture))
 
+(defn- with-draw-major-fixture [world fixture]
+  (assoc world :draw-major-fixture fixture))
+
 (defn create-rod-territory-source-game [world board-index orientation]
   (let [world (create-game-with-options
                world
@@ -401,6 +404,59 @@
                             :piece-id :rose-disc-minion
                             :target-piece-id :rose-disc-minion}))))
 
+(defn create-fool-hand-card-reveal-game [world]
+  (let [draw-start (board-deck-position 2 9)
+        world (create-game-with-options
+               world
+               {:deck-order (deck-with-cards-at
+                             {0 "fool"
+                              draw-start "cups2"
+                              (inc draw-start) "wands2"})})]
+    (-> world
+        (put-pieces [rose-disc-minion])
+        (with-draw-major-fixture {:source-card-id "fool"}))))
+
+(defn create-high-priestess-hand-card-redraw-game [world]
+  (let [draw-start (board-deck-position 2 9)
+        world (create-game-with-options
+               world
+               {:deck-order (deck-with-cards-at
+                             {0 "high-priestess"
+                              1 "cups2"
+                              2 "wands2"
+                              3 "coins2"
+                              4 "swords2"
+                              5 "cups3"
+                              draw-start "cups4"
+                              (inc draw-start) "wands4"})})]
+    (-> world
+        (put-pieces [rose-disc-minion])
+        (with-draw-major-fixture {:source-card-id "high-priestess"
+                                  :first-discard-card-id "cups2"
+                                  :first-drawn-card-id "cups4"}))))
+
+(defn create-judgement-hand-card-limit-game [world]
+  (let [draw-start (board-deck-position 2 9)
+        world (create-game-with-options
+               world
+               {:deck-order (deck-with-cards-at
+                             {0 "judgement"
+                              1 "cups2"
+                              2 "wands2"
+                              3 "coins2"
+                              4 "swords2"
+                              5 "cups3"
+                              draw-start "cups4"})})
+        discard-card (first (get-in world [:state :draw-pile]))]
+    (-> world
+        (update :state assoc
+                :draw-pile (vec (rest (get-in world [:state :draw-pile])))
+                :discard-pile [discard-card])
+        (put-pieces [(assoc rose-disc-minion :size :medium)])
+        (with-draw-major-fixture {:source-card-id "judgement"
+                                  :piece-id :rose-disc-minion
+                                  :discard-card-id (:id discard-card)}))))
+
 (defn create-endgame-winning-challenge-game [world]
   (let [world (create-game-with-options
                world
@@ -569,6 +625,44 @@
                  :disc-actions [{:target target}
                                 {:target target}]}]
     (apply-disc-command world command)))
+
+(defn apply-draw-major-command [world command]
+  (let [transition (case (get-in command [:source :card-id])
+                     "fool" game-state/apply-fool-move
+                     "high-priestess" game-state/apply-high-priestess-move
+                     "judgement" game-state/apply-judgement-move)]
+    (apply-action world :draw-major transition command)))
+
+(defn apply-fool-skip-reveals [world reveal-count]
+  (let [fixture (:draw-major-fixture world)
+        command {:player-id :rose
+                 :source {:kind :hand-card
+                          :card-id (:source-card-id fixture)}
+                 :reveals (vec (repeat reveal-count {}))
+                 :shuffle-fn identity}]
+    (apply-draw-major-command world command)))
+
+(defn apply-high-priestess-redraws [world]
+  (let [fixture (:draw-major-fixture world)
+        command {:player-id :rose
+                 :source {:kind :hand-card
+                          :card-id (:source-card-id fixture)}
+                 :redraws [{:discard-card-ids [(:first-discard-card-id fixture)]
+                            :draw-count 1}
+                           {:discard-card-ids [(:first-drawn-card-id fixture)]
+                            :draw-count 1}]
+                 :shuffle-fn identity}]
+    (apply-draw-major-command world command)))
+
+(defn apply-judgement-over-hand-limit [world]
+  (let [fixture (:draw-major-fixture world)
+        command {:player-id :rose
+                 :source {:kind :hand-card
+                          :card-id (:source-card-id fixture)}
+                 :piece-id (:piece-id fixture)
+                 :card-ids [(:source-card-id fixture)
+                            (:discard-card-id fixture)]}]
+    (apply-draw-major-command world command)))
 
 (defn apply-end-turn
   ([world player-id]
