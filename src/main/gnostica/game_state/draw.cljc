@@ -268,11 +268,11 @@
                                    (core/append-history event))]
                 (core/success next-state [event])))))))))
 
-(defn apply-high-priestess-move [state command]
+(defn apply-high-priestess-move-with-source-card-id [state command source-card-id]
   (let [source-result (resolve-specific-major-source
                        state
                        command
-                       "high-priestess"
+                       source-card-id
                        :high-priestess-actions-unavailable
                        "Only High Priestess can apply redraw passes.")
         redraws-result (normalize-action-list command :redraws "High Priestess" 2)
@@ -312,6 +312,11 @@
                        (rest remaining)
                        (into events (:events pass-result)))))
             (core/success current-state events)))))))
+
+(defn apply-high-priestess-move [state command]
+  (apply-high-priestess-move-with-source-card-id state
+                                                 command
+                                                 "high-priestess"))
 
 (defn- remove-cards-from-discard [state card-ids]
   (let [card-id-set (set card-ids)]
@@ -362,11 +367,11 @@
        :piece piece
        :piece-id piece-id})))
 
-(defn apply-judgement-move [state command]
+(defn apply-judgement-move-with-source-card-id [state command source-card-id]
   (let [source-result (resolve-specific-major-source
                        state
                        command
-                       "judgement"
+                       source-card-id
                        :judgement-actions-unavailable
                        "Only Judgement can draw cards from the discard pile.")
         card-ids (judgement-card-ids command)]
@@ -427,6 +432,9 @@
                                    (core/append-cards-to-hand player-id cards-to-draw)
                                    (core/append-history event))]
                 (core/success next-state [event])))))))))
+
+(defn apply-judgement-move [state command]
+  (apply-judgement-move-with-source-card-id state command "judgement"))
 
 (defn- fool-play-command [player-id card action]
   (let [play-command (or (:play-command action)
@@ -530,11 +538,11 @@
                                   (concat [event]
                                           (:events play-result)))))))))))))
 
-(defn apply-fool-move [state command]
+(defn apply-fool-move-with-source-card-id [state command source-card-id]
   (let [source-result (resolve-specific-major-source
                        state
                        command
-                       "fool"
+                       source-card-id
                        :fool-actions-unavailable
                        "Only Fool can reveal and play draw-pile cards.")
         reveals-result (normalize-action-list command :reveals "Fool" 2)
@@ -573,3 +581,6 @@
                        (rest remaining)
                        (into events (:events reveal-result)))))
             (core/success current-state events)))))))
+
+(defn apply-fool-move [state command]
+  (apply-fool-move-with-source-card-id state command "fool"))

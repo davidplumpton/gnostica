@@ -121,7 +121,8 @@
   ([state player-id source rod-variant]
    (resolve-rod-source state player-id source rod-variant {}))
   ([state player-id source rod-variant
-    {:keys [source-card source-card-already-discarded? allow-major-minion?]}]
+    {:keys [source-card power-card source-card-already-discarded?
+            allow-major-minion?]}]
    (let [piece (core/piece-by-id state (:piece-id source))
          piece-coordinate (when piece
                             (core/piece-coordinate state piece))]
@@ -171,6 +172,14 @@
                     "Rod territory sources must reference an existing board cell."
                     {:board-index (:board-index source)})
 
+           (and source-card
+                (not= (get-in cell [:card :id]) (:id source-card)))
+           (core/failure :invalid-source-territory
+                    "Rod paid source cards must match the command source territory."
+                    {:board-index (:board-index source)
+                     :territory-card-id (get-in cell [:card :id])
+                     :source-card-id (:id source-card)})
+
            (and (not allow-major-minion?)
                 (not= (:board-index source) (:space-index piece)))
            (core/failure :source-piece-mismatch
@@ -180,13 +189,16 @@
                      :source-board-index (:board-index source)})
 
            :else
-           (let [variant-result (resolve-rod-variant (:card cell)
+           (let [paid-card (or source-card (:card cell))
+                 power-card (or power-card paid-card)
+                 variant-result (resolve-rod-variant power-card
                                                      rod-variant
                                                      source)]
              (if (:ok? variant-result)
                {:ok? true
                 :source source
-                :source-card (:card cell)
+                :source-card paid-card
+                :power-card power-card
                 :rod-variant (:rod-variant variant-result)
                 :piece piece
                 :piece-coordinate (coordinate-map piece-coordinate)
@@ -213,11 +225,13 @@
                      :source-card-id (:id source-card)})
 
            :else
-           (let [variant-result (resolve-rod-variant card rod-variant source)]
+           (let [power-card (or power-card card)
+                 variant-result (resolve-rod-variant power-card rod-variant source)]
              (if (:ok? variant-result)
                {:ok? true
                 :source source
                 :source-card card
+                :power-card power-card
                 :rod-variant (:rod-variant variant-result)
                 :discard-source-card? (not source-card-already-discarded?)
                 :piece piece

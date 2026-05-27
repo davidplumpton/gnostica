@@ -144,7 +144,9 @@
 (defn- resolve-disc-source
   ([state player-id source disc-variant]
    (resolve-disc-source state player-id source disc-variant {}))
-  ([state player-id source disc-variant {:keys [source-card-already-discarded? source-card]}]
+  ([state player-id source disc-variant
+    {:keys [source-card-already-discarded? source-card power-card
+            allow-major-minion?]}]
    (let [piece (core/piece-by-id state (:piece-id source))
          piece-coordinate (when piece
                             (core/piece-coordinate state piece))]
@@ -188,7 +190,16 @@
                     "Disc territory sources must reference an existing board cell."
                     {:board-index (:board-index source)})
 
-           (not= (:board-index source) (:space-index piece))
+           (and source-card
+                (not= (get-in cell [:card :id]) (:id source-card)))
+           (core/failure :invalid-source-territory
+                    "Disc paid source cards must match the command source territory."
+                    {:board-index (:board-index source)
+                     :territory-card-id (get-in cell [:card :id])
+                     :source-card-id (:id source-card)})
+
+           (and (not allow-major-minion?)
+                (not= (:board-index source) (:space-index piece)))
            (core/failure :source-piece-mismatch
                     "The acting minion must occupy the source territory."
                     {:piece-id (:piece-id source)
@@ -196,13 +207,16 @@
                      :source-board-index (:board-index source)})
 
            :else
-           (let [variant-result (resolve-disc-variant (:card cell)
+           (let [paid-card (or source-card (:card cell))
+                 power-card (or power-card paid-card)
+                 variant-result (resolve-disc-variant power-card
                                                       disc-variant
                                                       source)]
              (if (:ok? variant-result)
                {:ok? true
                 :source source
-                :source-card (:card cell)
+                :source-card paid-card
+                :power-card power-card
                 :disc-variant (:disc-variant variant-result)
                 :piece piece
                 :piece-coordinate (coordinate-map piece-coordinate)
@@ -221,12 +235,21 @@
                     {:card-id (:card-id source)
                      :player-id player-id})
 
+           (and source-card
+                (not= (:card-id source) (:id source-card)))
+           (core/failure :invalid-hand-card
+                    "Disc paid source cards must match the command source card."
+                    {:card-id (:card-id source)
+                     :source-card-id (:id source-card)})
+
            :else
-           (let [variant-result (resolve-disc-variant card disc-variant source)]
+           (let [power-card (or power-card card)
+                 variant-result (resolve-disc-variant power-card disc-variant source)]
              (if (:ok? variant-result)
                {:ok? true
                 :source source
                 :source-card card
+                :power-card power-card
                 :disc-variant (:disc-variant variant-result)
                 :discard-source-card? (not source-card-already-discarded?)
                 :piece piece
@@ -707,6 +730,20 @@
                            :discard-source-card? (:discard-source-card?
                                                   source-result)}))
 
+(defn- source-power-card [source-result]
+  (or (:power-card source-result)
+      (:source-card source-result)))
+
+(defn- source-power-card-id [source-result]
+  (:id (source-power-card source-result)))
+
+(defn- paid-disc-source-opts [source-result]
+  (cond-> {:source-card (:source-card source-result)
+           :source-card-already-discarded? (:discard-source-card?
+                                            source-result)}
+    (:power-card source-result)
+    (assoc :power-card (:power-card source-result))))
+
 (defn- apply-resolved-disc-action [state player-id result opts]
   (case (get-in result [:command :target :kind])
     :piece
@@ -821,17 +858,20 @@
                      (into events (:events applied)))))))
       (core/success current-state events))))
 
-(defn- apply-strength-disc-move [state command]
-  (let [source-result (resolve-disc-source-command state command)]
+(defn- apply-strength-disc-move
+  ([state command]
+   (apply-strength-disc-move state command {}))
+  ([state command source-opts]
+   (let [source-result (resolve-disc-source-command state command source-opts)]
     (if-not (:ok? source-result)
       source-result
       (let [actions-result (strength-disc-actions command)
             player-id (:player-id command)]
         (cond
-          (not= "strength" (get-in source-result [:source-card :id]))
+          (not= "strength" (source-power-card-id source-result))
           (core/failure :disc-actions-unavailable
                    "Only Strength can apply multiple Disc actions."
-                   {:card-id (get-in source-result [:source-card :id])
+                   {:card-id (source-power-card-id source-result)
                     :source (:source command)})
 
           (not (:ok? actions-result))
@@ -840,8 +880,7 @@
           :else
           (let [cost-state (source-cost-state state player-id source-result)
                 actions (:actions actions-result)
-                source-opts {:source-card (:source-card source-result)
-                             :source-card-already-discarded? true}]
+                source-opts (paid-disc-source-opts source-result)]
             (if (= 2 (count actions))
               (let [left-result (resolve-disc-command* cost-state
                                                        (first actions)
@@ -871,16 +910,19 @@
               (apply-strength-actions-sequential cost-state
                                                  player-id
                                                  actions
-                                                 source-opts))))))))
+                                                 source-opts)))))))))
 
-(defn- apply-star-disc-move [state command]
-  (let [source-result (resolve-disc-source-command state command)]
+(defn- apply-star-disc-move
+  ([state command]
+   (apply-star-disc-move state command {}))
+  ([state command source-opts]
+   (let [source-result (resolve-disc-source-command state command source-opts)]
     (if-not (:ok? source-result)
       source-result
-      (if-not (= "star" (get-in source-result [:source-card :id]))
+      (if-not (= "star" (source-power-card-id source-result))
         (core/failure :disc-orient-unavailable
                  "Only Star Disc can orient a minion before applying Disc."
-                 {:card-id (get-in source-result [:source-card :id])
+                 {:card-id (source-power-card-id source-result)
                   :source (:source command)})
         (let [orientation (:minion-orientation command)
               orient-result (placement/apply-orient-move
@@ -892,12 +934,13 @@
             orient-result
             (let [disc-result (apply-single-disc-move
                                (:state orient-result)
-                               (dissoc command :minion-orientation))]
+                               (dissoc command :minion-orientation)
+                               {:source-opts source-opts})]
               (if-not (:ok? disc-result)
                 disc-result
                 (core/success (:state disc-result)
                               (concat (:events orient-result)
-                                      (:events disc-result)))))))))))
+                                      (:events disc-result))))))))))))
 
 (defn- cup-created-piece-id [cup-result]
   (some (fn [event]
@@ -1114,15 +1157,19 @@
     :else
     nil))
 
-(defn apply-sun-move [state command]
-  (let [source-result (resolve-disc-source-command state command)]
+(defn apply-sun-move-with-opts
+  ([state command]
+   (apply-sun-move-with-opts state command {}))
+  ([state command {:keys [source-opts]
+                   :or {source-opts {}}}]
+   (let [source-result (resolve-disc-source-command state command source-opts)]
     (if-not (:ok? source-result)
       source-result
       (cond
-        (not= "sun" (get-in source-result [:source-card :id]))
+        (not= "sun" (source-power-card-id source-result))
         (core/failure :sun-actions-unavailable
                  "Only Sun can apply Cup followed by Disc."
-                 {:card-id (get-in source-result [:source-card :id])
+                 {:card-id (source-power-card-id source-result)
                   :source (:source command)})
 
         (nil? (:cup command))
@@ -1133,7 +1180,10 @@
         :else
         (if-let [shortcut-result (apply-sun-shortcut state command source-result)]
           shortcut-result
-          (let [cup-result (cup/apply-cup-move state (sun-cup-command command))]
+          (let [cup-result (cup/apply-cup-move-with-opts
+                            state
+                            (sun-cup-command command)
+                            {:source-opts source-opts})]
             (if-not (:ok? cup-result)
               cup-result
               (if-not (:disc command)
@@ -1142,8 +1192,8 @@
                   (let [disc-result (apply-single-disc-move
                                      (:state cup-result)
                                      disc-command
-                                     {:source-opts {:source-card (:source-card source-result)
-                                                    :source-card-already-discarded? true}
+                                     {:source-opts (paid-disc-source-opts
+                                                    source-result)
                                       :charge-source? false})]
                     (if-not (:ok? disc-result)
                       disc-result
@@ -1153,7 +1203,10 @@
                   (core/failure :invalid-sun-disc-target
                            "Sun Disc targets that refer to a newly-created Cup target require that Cup action to create that target."
                            {:disc (:disc command)
-                            :cup-events (:events cup-result)}))))))))))
+                            :cup-events (:events cup-result)})))))))))))
+
+(defn apply-sun-move [state command]
+  (apply-sun-move-with-opts state command {}))
 
 (defn apply-disc-move-with-opts
   ([state command]
@@ -1162,18 +1215,10 @@
                    :or {source-opts {}}}]
   (cond
     (contains? command :disc-actions)
-    (if (seq source-opts)
-      (core/failure :disc-composite-source-opts-unavailable
-               "Strength Disc source overrides are not supported."
-               {:command command})
-      (apply-strength-disc-move state command))
+    (apply-strength-disc-move state command source-opts)
 
     (contains? command :minion-orientation)
-    (if (seq source-opts)
-      (core/failure :disc-composite-source-opts-unavailable
-               "Star Disc source overrides are not supported."
-               {:command command})
-      (apply-star-disc-move state command))
+    (apply-star-disc-move state command source-opts)
 
     :else
     (apply-single-disc-move state command opts))))

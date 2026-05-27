@@ -553,45 +553,93 @@
           :apply-action-fn apply-composite-action}
          opts))
 
+(defn apply-empress-move-with-source-card-id
+  ([state command source-card-id]
+   (apply-empress-move-with-source-card-id state command source-card-id nil))
+  ([state command source-card-id power-card]
+   (major/apply-major-sequence
+    state
+    (command-with-empress-actions command)
+    (composite-spec source-card-id
+                    [:orient-minion :cup]
+                    (cond-> {:cup-variant :cup-unbounded}
+                      power-card (assoc :power-card power-card))))))
+
 (defn apply-empress-move [state command]
-  (major/apply-major-sequence
-   state
-   (command-with-empress-actions command)
-   (composite-spec "empress"
-                   [:orient-minion :cup]
-                   {:cup-variant :cup-unbounded})))
+  (apply-empress-move-with-source-card-id state command "empress"))
+
+(defn apply-emperor-move-with-source-card-id
+  ([state command source-card-id]
+   (apply-emperor-move-with-source-card-id state command source-card-id nil))
+  ([state command source-card-id power-card]
+   (major/apply-major-sequence
+    state
+    (command-with-emperor-actions command)
+    (composite-spec source-card-id
+                    [:orient-minion :rod]
+                    (cond-> {:rod-variant :rod-unbounded}
+                      power-card (assoc :power-card power-card))))))
 
 (defn apply-emperor-move [state command]
-  (major/apply-major-sequence
-   state
-   (command-with-emperor-actions command)
-   (composite-spec "emperor"
-                   [:orient-minion :rod]
-                   {:rod-variant :rod-unbounded})))
+  (apply-emperor-move-with-source-card-id state command "emperor"))
+
+(defn apply-lovers-move-with-source-card-id
+  ([state command source-card-id]
+   (apply-lovers-move-with-source-card-id state command source-card-id nil))
+  ([state command source-card-id power-card]
+   (major/apply-major-sequence
+    state
+    (command-with-lovers-actions command)
+    (composite-spec source-card-id
+                    [:rod :cup]
+                    (cond-> {}
+                      power-card (assoc :power-card power-card))))))
 
 (defn apply-lovers-move [state command]
-  (major/apply-major-sequence
-   state
-   (command-with-lovers-actions command)
-   (composite-spec "lovers" [:rod :cup] {})))
+  (apply-lovers-move-with-source-card-id state command "lovers"))
+
+(defn apply-chariot-move-with-source-card-id
+  ([state command source-card-id]
+   (apply-chariot-move-with-source-card-id state command source-card-id nil))
+  ([state command source-card-id power-card]
+   (major/apply-major-sequence
+    state
+    (command-with-chariot-actions command)
+    (composite-spec source-card-id
+                    [:rod :rod]
+                    (cond-> {:shortcut-key-fn chariot-shortcut-key
+                             :shortcut-fn apply-chariot-rod-shortcut}
+                      power-card (assoc :power-card power-card))))))
 
 (defn apply-chariot-move [state command]
-  (major/apply-major-sequence
-   state
-   (command-with-chariot-actions command)
-   (composite-spec "chariot"
-                   [:rod :rod]
-                   {:shortcut-key-fn chariot-shortcut-key
-                    :shortcut-fn apply-chariot-rod-shortcut})))
+  (apply-chariot-move-with-source-card-id state command "chariot"))
+
+(defn apply-hanged-man-move-with-source-card-id
+  ([state command source-card-id]
+   (apply-hanged-man-move-with-source-card-id state command source-card-id nil))
+  ([state command source-card-id power-card]
+   (major/apply-major-sequence
+    state
+    (command-with-hanged-man-actions command)
+    (composite-spec source-card-id
+                    [:rod :trade-hand]
+                    (cond-> {}
+                      power-card (assoc :power-card power-card))))))
 
 (defn apply-hanged-man-move [state command]
-  (major/apply-major-sequence
-   state
-   (command-with-hanged-man-actions command)
-   (composite-spec "hangedman" [:rod :trade-hand] {})))
+  (apply-hanged-man-move-with-source-card-id state command "hangedman"))
+
+(defn apply-temperance-move-with-source-card-id
+  ([state command source-card-id]
+   (apply-temperance-move-with-source-card-id state command source-card-id nil))
+  ([state command source-card-id power-card]
+   (major/apply-major-sequence
+    state
+    (command-with-temperance-actions command)
+    (composite-spec source-card-id
+                    [:cup :cup]
+                    (cond-> {}
+                      power-card (assoc :power-card power-card))))))
 
 (defn apply-temperance-move [state command]
-  (major/apply-major-sequence
-   state
-   (command-with-temperance-actions command)
-   (composite-spec "temperance" [:cup :cup] {})))
+  (apply-temperance-move-with-source-card-id state command "temperance"))

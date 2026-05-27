@@ -140,7 +140,8 @@
   ([state player-id source sword-variant]
    (resolve-sword-source state player-id source sword-variant {}))
   ([state player-id source sword-variant
-    {:keys [source-card source-card-already-discarded? allow-major-minion?]}]
+    {:keys [source-card power-card source-card-already-discarded?
+            allow-major-minion?]}]
    (let [piece (core/piece-by-id state (:piece-id source))
          piece-coordinate (when piece
                             (core/piece-coordinate state piece))]
@@ -190,6 +191,14 @@
                          "Sword territory sources must reference an existing board cell."
                          {:board-index (:board-index source)})
 
+           (and source-card
+                (not= (get-in cell [:card :id]) (:id source-card)))
+           (core/failure :invalid-source-territory
+                         "Sword paid source cards must match the command source territory."
+                         {:board-index (:board-index source)
+                          :territory-card-id (get-in cell [:card :id])
+                          :source-card-id (:id source-card)})
+
            (and (not allow-major-minion?)
                 (not= (:board-index source) (:space-index piece)))
            (core/failure :source-piece-mismatch
@@ -199,13 +208,16 @@
                           :source-board-index (:board-index source)})
 
            :else
-           (let [variant-result (resolve-sword-variant (:card cell)
+           (let [paid-card (or source-card (:card cell))
+                 power-card (or power-card paid-card)
+                 variant-result (resolve-sword-variant power-card
                                                        sword-variant
                                                        source)]
              (if (:ok? variant-result)
                {:ok? true
                 :source source
-                :source-card (:card cell)
+                :source-card paid-card
+                :power-card power-card
                 :sword-variant (:sword-variant variant-result)
                 :piece piece
                 :piece-coordinate (coordinate-map piece-coordinate)
@@ -232,11 +244,13 @@
                           :source-card-id (:id source-card)})
 
            :else
-           (let [variant-result (resolve-sword-variant card sword-variant source)]
+           (let [power-card (or power-card card)
+                 variant-result (resolve-sword-variant power-card sword-variant source)]
              (if (:ok? variant-result)
                {:ok? true
                 :source source
                 :source-card card
+                :power-card power-card
                 :sword-variant (:sword-variant variant-result)
                 :discard-source-card? (not source-card-already-discarded?)
                 :piece piece
@@ -926,10 +940,22 @@
 (defn- source-card-id [source-result]
   (get-in source-result [:source-card :id]))
 
-(defn- paid-sword-source-opts [source-result]
-  {:source-card (:source-card source-result)
-   :source-card-already-discarded? (:discard-source-card? source-result)
-   :allow-major-minion? true})
+(defn- source-power-card [source-result]
+  (or (:power-card source-result)
+      (:source-card source-result)))
+
+(defn- source-power-card-id [source-result]
+  (:id (source-power-card source-result)))
+
+(defn- paid-sword-source-opts
+  ([source-result]
+   (paid-sword-source-opts source-result (:power-card source-result)))
+  ([source-result power-card]
+   (cond-> {:source-card (:source-card source-result)
+            :source-card-already-discarded? (:discard-source-card? source-result)
+            :allow-major-minion? true}
+     power-card
+     (assoc :power-card power-card))))
 
 (defn- resolve-specific-major-source [state command card-id error-code message]
   (let [source-result (major/resolve-major-source state command)]
@@ -1152,21 +1178,35 @@
                        (into events (:events result)))))))
         (core/success current-state events)))))
 
-(defn- apply-death-sword-move [state command]
-  (let [source-result (resolve-specific-major-source
-                       state
-                       command
-                       "death"
-                       :death-actions-unavailable
-                       "Only Death can apply multiple Sword actions.")]
+(defn- apply-death-sword-move
+  ([state command]
+   (apply-death-sword-move state command {}))
+  ([state command {:keys [required-card-id power-card]
+                   :or {required-card-id "death"}}]
+   (let [source-result (resolve-specific-major-source
+                        state
+                        command
+                        required-card-id
+                        :death-actions-unavailable
+                        "Only Death can apply multiple Sword actions.")
+         effective-card (or power-card (:source-card source-result))]
     (if-not (:ok? source-result)
       source-result
       (let [actions-result (normalize-action-list command :sword-actions "Death" 2)]
-        (if-not (:ok? actions-result)
+        (cond
+          (not= "death" (:id effective-card))
+          (core/failure :death-actions-unavailable
+                        "Only Death can apply multiple Sword actions."
+                        {:card-id (:id effective-card)
+                         :source (core/source-summary (:source source-result))})
+
+          (not (:ok? actions-result))
           actions-result
+
+          :else
           (let [player-id (:player-id command)
                 cost-state (major/charge-source-once state source-result)
-                source-opts (paid-sword-source-opts source-result)
+                source-opts (paid-sword-source-opts source-result power-card)
                 actions (:actions actions-result)]
             (if (= 2 (count actions))
               (let [[left-action right-action] actions
@@ -1234,7 +1274,7 @@
                                               command
                                               source-result
                                               actions
-                                              source-opts))))))))
+                                              source-opts)))))))))
 
 (defn- hand-trade-target-command [command]
   (or (:hand-trade-target command)
@@ -1308,15 +1348,18 @@
         (core/update-player left-player-id assoc :hand (vec right-hand))
         (core/update-player right-player-id assoc :hand (vec left-hand)))))
 
-(defn- apply-justice-sword-move [state command]
-  (let [source-result (resolve-sword-source-command state command)]
+(defn- apply-justice-sword-move
+  ([state command]
+   (apply-justice-sword-move state command {}))
+  ([state command source-opts]
+   (let [source-result (resolve-sword-source-command state command source-opts)]
     (if-not (:ok? source-result)
       source-result
       (cond
-        (not= "justice" (source-card-id source-result))
+        (not= "justice" (source-power-card-id source-result))
         (core/failure :justice-hand-trade-unavailable
                       "Only Justice can trade hands before applying Sword."
-                      {:card-id (source-card-id source-result)
+                      {:card-id (source-power-card-id source-result)
                        :source (core/source-summary (:source source-result))})
 
         :else
@@ -1356,16 +1399,19 @@
               (if-not (:ok? sword-result)
                 sword-result
                 (core/success (:state sword-result)
-                              (concat [event] (:events sword-result)))))))))))
+                              (concat [event] (:events sword-result))))))))))))
 
-(defn- apply-tower-sword-move [state command]
-  (let [source-result (resolve-sword-source-command state command)]
+(defn- apply-tower-sword-move
+  ([state command]
+   (apply-tower-sword-move state command {}))
+  ([state command source-opts]
+   (let [source-result (resolve-sword-source-command state command source-opts)]
     (if-not (:ok? source-result)
       source-result
-      (if-not (= "tower" (source-card-id source-result))
+      (if-not (= "tower" (source-power-card-id source-result))
         (core/failure :sword-orient-unavailable
                       "Only Tower Sword can orient a minion before applying Sword."
-                      {:card-id (source-card-id source-result)
+                      {:card-id (source-power-card-id source-result)
                        :source (core/source-summary (:source source-result))})
         (let [orient-result (placement/apply-orient-move
                              state
@@ -1376,12 +1422,13 @@
             orient-result
             (let [sword-result (apply-single-sword-move
                                 (:state orient-result)
-                                (dissoc command :minion-orientation))]
+                                (dissoc command :minion-orientation)
+                                {:source-opts source-opts})]
               (if-not (:ok? sword-result)
                 sword-result
                 (core/success (:state sword-result)
                               (concat (:events orient-result)
-                                      (:events sword-result)))))))))))
+                                      (:events sword-result))))))))))))
 
 (defn- overfull-rod-destination [state events]
   (some (fn [event]
@@ -1432,126 +1479,134 @@
        {:source-opts source-opts
         :charge-source? false}))))
 
-(defn apply-moon-move [state command]
-  (let [source-result (resolve-specific-major-source
-                       state
-                       command
-                       "moon"
-                       :moon-actions-unavailable
-                       "Only Moon can apply Rod followed by Sword.")]
+(defn apply-moon-move-with-opts
+  ([state command]
+   (apply-moon-move-with-opts state command {}))
+  ([state command {:keys [required-card-id power-card]
+                   :or {required-card-id "moon"}}]
+   (let [source-result (resolve-specific-major-source
+                        state
+                        command
+                        required-card-id
+                        :moon-actions-unavailable
+                        "Only Moon can apply Rod followed by Sword.")
+         effective-card (or power-card (:source-card source-result))]
     (if-not (:ok? source-result)
       source-result
-      (let [rod-action (:rod command)
-            sword-action (:sword command)]
-        (if (and (nil? rod-action)
-                 (nil? sword-action))
-          (core/failure :invalid-moon-command
-                        "Moon moves require a :rod action, a :sword action, or both."
-                        {:command command})
-          (let [player-id (:player-id command)
-                cost-state (major/charge-source-once state source-result)
-                source-opts (paid-sword-source-opts source-result)
-                initial-minion-ids (set (:minion-ids source-result))]
-            (if-not rod-action
-              (apply-moon-sword-action cost-state
-                                       command
-                                       source-result
-                                       initial-minion-ids
-                                       sword-action
-                                       source-opts)
-              (let [rod-result (apply-moon-rod-action cost-state
-                                                      command
-                                                      source-result
-                                                      initial-minion-ids
-                                                      rod-action
-                                                      source-opts
-                                                      (some? sword-action))]
-                (if-not (:ok? rod-result)
-                  rod-result
-                  (let [allowed-minion-ids (add-owned-event-minions
-                                            initial-minion-ids
-                                            player-id
-                                            (:events rod-result))
-                        overfull-destination (overfull-rod-destination
-                                              (:state rod-result)
-                                              (:events rod-result))]
-                    (if sword-action
-                      (let [sword-result (apply-moon-sword-action
-                                          (:state rod-result)
-                                          command
-                                          source-result
-                                          allowed-minion-ids
-                                          sword-action
-                                          source-opts)]
-                        (cond
-                          (not (:ok? sword-result))
-                          sword-result
+      (cond
+        (not= "moon" (:id effective-card))
+        (core/failure :moon-actions-unavailable
+                      "Only Moon can apply Rod followed by Sword."
+                      {:card-id (:id effective-card)
+                       :source (core/source-summary (:source source-result))})
 
-                          (and overfull-destination
-                               (not (overfull-destination-resolved?
-                                     (:state sword-result)
-                                     overfull-destination)))
+        :else
+        (let [rod-action (:rod command)
+              sword-action (:sword command)]
+          (if (and (nil? rod-action)
+                   (nil? sword-action))
+            (core/failure :invalid-moon-command
+                          "Moon moves require a :rod action, a :sword action, or both."
+                          {:command command})
+            (let [player-id (:player-id command)
+                  cost-state (major/charge-source-once state source-result)
+                  source-opts (paid-sword-source-opts source-result power-card)
+                  initial-minion-ids (set (:minion-ids source-result))]
+              (if-not rod-action
+                (apply-moon-sword-action cost-state
+                                         command
+                                         source-result
+                                         initial-minion-ids
+                                         sword-action
+                                         source-opts)
+                (let [rod-result (apply-moon-rod-action cost-state
+                                                        command
+                                                        source-result
+                                                        initial-minion-ids
+                                                        rod-action
+                                                        source-opts
+                                                        (some? sword-action))]
+                  (if-not (:ok? rod-result)
+                    rod-result
+                    (let [allowed-minion-ids (add-owned-event-minions
+                                              initial-minion-ids
+                                              player-id
+                                              (:events rod-result))
+                          overfull-destination (overfull-rod-destination
+                                                (:state rod-result)
+                                                (:events rod-result))]
+                      (if sword-action
+                        (let [sword-result (apply-moon-sword-action
+                                            (:state rod-result)
+                                            command
+                                            source-result
+                                            allowed-minion-ids
+                                            sword-action
+                                            source-opts)]
+                          (cond
+                            (not (:ok? sword-result))
+                            sword-result
+
+                            (and overfull-destination
+                                 (not (overfull-destination-resolved?
+                                       (:state sword-result)
+                                       overfull-destination)))
+                            (core/failure :moon-full-territory-unresolved
+                                          "Moon can enter a full territory only when its Sword action leaves no more than three pieces there."
+                                          {:destination overfull-destination
+                                           :piece-count (count
+                                                         (core/pieces-at-board-index
+                                                          (:state sword-result)
+                                                          (:board-index
+                                                           overfull-destination)))
+                                           :maximum pieces/max-pieces-per-space})
+
+                            :else
+                            (core/success (:state sword-result)
+                                          (concat (:events rod-result)
+                                                  (:events sword-result)))))
+                        (if overfull-destination
                           (core/failure :moon-full-territory-unresolved
-                                        "Moon can enter a full territory only when its Sword action leaves no more than three pieces there."
+                                        "Moon can enter a full territory only when a Sword action leaves no more than three pieces there."
                                         {:destination overfull-destination
                                          :piece-count (count
                                                        (core/pieces-at-board-index
-                                                        (:state sword-result)
+                                                        (:state rod-result)
                                                         (:board-index
                                                          overfull-destination)))
                                          :maximum pieces/max-pieces-per-space})
+                          rod-result))))))))))))))
 
-                          :else
-                          (core/success (:state sword-result)
-                                        (concat (:events rod-result)
-                                                (:events sword-result)))))
-                      (if overfull-destination
-                        (core/failure :moon-full-territory-unresolved
-                                      "Moon can enter a full territory only when a Sword action leaves no more than three pieces there."
-                                      {:destination overfull-destination
-                                       :piece-count (count
-                                                     (core/pieces-at-board-index
-                                                      (:state rod-result)
-                                                      (:board-index
-                                                       overfull-destination)))
-                                       :maximum pieces/max-pieces-per-space})
-                        rod-result))))))))))))
+(defn apply-moon-move [state command]
+  (apply-moon-move-with-opts state command {}))
 
 (defn apply-sword-move-with-opts
   ([state command]
    (apply-sword-move-with-opts state command {}))
-  ([state command {:keys [source-opts] :as opts
+  ([state command {:keys [source-opts required-card-id] :as opts
                    :or {source-opts {}}}]
   (cond
     (contains? command :sword-actions)
-    (if (seq source-opts)
-      (core/failure :sword-composite-source-opts-unavailable
-                    "Death Sword source overrides are not supported."
-                    {:command command})
-      (apply-death-sword-move state command))
+    (apply-death-sword-move
+     state
+     command
+     {:required-card-id (or required-card-id "death")
+      :power-card (:power-card source-opts)})
 
     (or (contains? command :hand-trade-target)
         (contains? command :hand-trade-target-piece-id))
-    (if (seq source-opts)
-      (core/failure :sword-composite-source-opts-unavailable
-                    "Justice Sword source overrides are not supported."
-                    {:command command})
-      (apply-justice-sword-move state command))
+    (apply-justice-sword-move state command source-opts)
 
     (contains? command :minion-orientation)
-    (if (seq source-opts)
-      (core/failure :sword-composite-source-opts-unavailable
-                    "Tower Sword source overrides are not supported."
-                    {:command command})
-      (apply-tower-sword-move state command))
+    (apply-tower-sword-move state command source-opts)
 
     (or (contains? command :rod)
         (contains? command :sword))
-    (if (seq source-opts)
-      (core/failure :sword-composite-source-opts-unavailable
-                    "Moon source overrides are not supported."
-                    {:command command})
-      (apply-moon-move state command))
+    (apply-moon-move-with-opts
+     state
+     command
+     {:required-card-id (or required-card-id "moon")
+      :power-card (:power-card source-opts)})
 
     :else
     (apply-single-sword-move state command opts))))

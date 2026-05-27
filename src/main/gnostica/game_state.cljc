@@ -8,7 +8,8 @@
             [gnostica.game-state.manipulation :as manipulation]
             [gnostica.game-state.placement :as placement]
             [gnostica.game-state.rod :as rod]
-            [gnostica.game-state.sword :as sword]))
+            [gnostica.game-state.sword :as sword]
+            [gnostica.game-state.world :as world]))
 
 (def min-players core/min-players)
 (def max-players core/max-players)
@@ -168,6 +169,12 @@
 
 (defn apply-temperance-move [state command]
   (composite/apply-temperance-move state command))
+
+(defn world-major-territories [state]
+  (world/world-major-territories state))
+
+(defn apply-world-move [state command]
+  (world/apply-world-move state command))
 
 (defn resolve-major-source [state command]
   (major/resolve-major-source state command))

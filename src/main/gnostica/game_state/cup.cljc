@@ -47,7 +47,8 @@
   ([state player-id source cup-variant]
    (resolve-cup-source state player-id source cup-variant {}))
   ([state player-id source cup-variant
-    {:keys [source-card source-card-already-discarded? allow-major-minion?]}]
+    {:keys [source-card power-card source-card-already-discarded?
+            allow-major-minion?]}]
    (let [piece (core/piece-by-id state (:piece-id source))]
     (cond
       (not (map? source))
@@ -75,6 +76,14 @@
                    "Cup territory sources must reference an existing board cell."
                    {:board-index (:board-index source)})
 
+          (and source-card
+               (not= (get-in cell [:card :id]) (:id source-card)))
+          (core/failure :invalid-source-territory
+                   "Cup paid source cards must match the command source territory."
+                   {:board-index (:board-index source)
+                    :territory-card-id (get-in cell [:card :id])
+                    :source-card-id (:id source-card)})
+
           (and (not allow-major-minion?)
                (not= (:board-index source) (:space-index piece)))
           (core/failure :source-piece-mismatch
@@ -84,13 +93,16 @@
                     :source-board-index (:board-index source)})
 
           :else
-          (let [variant-result (resolve-cup-variant (:card cell)
+          (let [paid-card (or source-card (:card cell))
+                power-card (or power-card paid-card)
+                variant-result (resolve-cup-variant power-card
                                                     cup-variant
                                                     source)]
             (if (:ok? variant-result)
               {:ok? true
                :source source
-               :source-card (:card cell)
+               :source-card paid-card
+               :power-card power-card
                :cup-variant (:cup-variant variant-result)
                :piece piece}
               variant-result))))
@@ -115,11 +127,13 @@
                     :source-card-id (:id source-card)})
 
           :else
-          (let [variant-result (resolve-cup-variant card cup-variant source)]
+          (let [power-card (or power-card card)
+                variant-result (resolve-cup-variant power-card cup-variant source)]
             (if (:ok? variant-result)
               {:ok? true
                :source source
                :source-card card
+               :power-card power-card
                :cup-variant (:cup-variant variant-result)
                :discard-source-card? (not source-card-already-discarded?)
                :piece piece}

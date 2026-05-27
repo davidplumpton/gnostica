@@ -121,6 +121,11 @@
   {:source-card (:source-card source-result)
    :source-card-already-discarded? (:discard-source-card? source-result)})
 
+(defn- sequence-source-opts [source-result spec]
+  (cond-> (paid-source-opts source-result)
+    (:power-card spec)
+    (assoc :power-card (:power-card spec))))
+
 (defn action-source [source-result piece-id]
   (assoc (:source source-result) :piece-id piece-id))
 
@@ -375,7 +380,9 @@
               order-result
               (let [cost-state (charge-source-once state source-result)
                     context (-> source-result
-                                (assoc :source-opts (paid-source-opts source-result)
+                                (assoc :source-opts (sequence-source-opts
+                                                     source-result
+                                                     spec)
                                        :source-charged? true
                                        :spec spec)
                                 (update :minion-ids set))]

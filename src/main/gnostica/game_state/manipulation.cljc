@@ -317,14 +317,17 @@
             (assoc (core/success next-state [event])
                    :affected-piece-ids [(:id replacement-piece)])))))))
 
-(defn apply-hierophant-move [state command]
+(defn apply-hierophant-move-with-source-card-id [state command source-card-id]
   (apply-specific-major-sequence
    state
    command
-   {:card-id "hierophant"
+   {:card-id source-card-id
     :power-order [:convert-piece]
     :apply-action-fn apply-hierophant-action}
    :convert-piece))
+
+(defn apply-hierophant-move [state command]
+  (apply-hierophant-move-with-source-card-id state command "hierophant"))
 
 (defn- empty-territory-destination [state destination]
   (let [board-index (:board-index destination)
@@ -566,14 +569,17 @@
                   "Hermit targets must be :piece or :territory."
                   {:target (:target action)})))
 
-(defn apply-hermit-move [state command]
+(defn apply-hermit-move-with-source-card-id [state command source-card-id]
   (apply-specific-major-sequence
    state
    command
-   {:card-id "hermit"
+   {:card-id source-card-id
     :power-order [:relocate]
     :apply-action-fn apply-hermit-action}
    :relocate))
+
+(defn apply-hermit-move [state command]
+  (apply-hermit-move-with-source-card-id state command "hermit"))
 
 (defn- apply-devil-action [state context action]
   (let [target-result (piece-target-result state context action "Devil")
@@ -603,10 +609,13 @@
                                             (:player-id oriented-piece))
                                      [(:id oriented-piece)]))))))
 
-(defn apply-devil-move [state command]
+(defn apply-devil-move-with-source-card-id [state command source-card-id]
   (major/apply-major-sequence
    state
    (command-with-orientation-actions command)
-   {:card-id "devil"
+   {:card-id source-card-id
     :power-order [:orient-target :orient-target :orient-target]
     :apply-action-fn apply-devil-action}))
+
+(defn apply-devil-move [state command]
+  (apply-devil-move-with-source-card-id state command "devil"))
