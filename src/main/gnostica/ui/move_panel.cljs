@@ -311,8 +311,25 @@
        {:type "button"
         :class (when (= selected-count action-count) "is-selected")
         :aria-pressed (= selected-count action-count)
-        :on-click #(rf/dispatch [events/set-move-disc-action-count action-count])}
+       :on-click #(rf/dispatch [events/set-move-disc-action-count action-count])}
        action-count])]])
+
+(defn- sun-disc-mode-choices [options selected-mode]
+  [:div.move-step
+   [:div.move-step__header
+    [:span "Sun Disc"]
+    [:strong
+     (or (:label (some #(when (= selected-mode (:id %)) %) options))
+         "None")]]
+   [:div.move-choice-list
+    (for [{:keys [id label]} options]
+      ^{:key id}
+      [:button.move-chip
+       {:type "button"
+        :class (when (= selected-mode id) "is-selected")
+        :aria-pressed (= selected-mode id)
+        :on-click #(rf/dispatch [events/select-move-sun-disc-mode id])}
+       label])]])
 
 (defn- draw-count-choices [options selected-count]
   [:div.move-step
@@ -406,6 +423,64 @@
 
      nil)])
 
+(defn- sun-move-controls
+  [params board sun-disc-mode-options target-piece-options target-board-options
+   target-wasteland-options one-point-card-options replacement-card-options
+   orientation-options sun-disc-orientation-available?]
+  (let [cup-target-ready? (or (:target-piece-id params)
+                              (:target-wasteland params)
+                              (and (some? (:target-board-index params))
+                                   (:orientation params)))
+        normal-wasteland-cup? (and (:target-wasteland params)
+                                   (:sun-disc-mode params)
+                                   (not= :created-territory
+                                         (:sun-disc-mode params)))]
+    [:<>
+     [target-choice-grid board
+      target-wasteland-options
+      (:target-board-index params)
+      (:target-wasteland params)]
+     (when (and (not (:sun-disc-mode params))
+                (not (:target-board-index params))
+                (not (:target-wasteland params)))
+       [target-piece-choices board target-piece-options (:target-piece-id params)])
+     (when (:target-board-index params)
+       [orientation-choices orientation-options (:orientation params)])
+     (when cup-target-ready?
+       [sun-disc-mode-choices sun-disc-mode-options (:sun-disc-mode params)])
+     (when normal-wasteland-cup?
+       [one-point-card-choices one-point-card-options (:one-point-card-id params)])
+     (case (:sun-disc-mode params)
+       :created-piece
+       nil
+
+       :created-territory
+       [replacement-card-choices replacement-card-options
+       (:sun-disc-replacement-card-id params)]
+
+       :piece
+       [:<>
+        [target-piece-choices board
+         target-piece-options
+         (:sun-disc-target-piece-id params)]
+        (when (and (:sun-disc-target-piece-id params)
+                   sun-disc-orientation-available?)
+          [orientation-choices "Disc orientation"
+           events/set-move-sun-disc-orientation
+           orientation-options
+           (:sun-disc-orientation params)])]
+
+       :territory
+       [:<>
+        [board-choice-grid "Disc target territory"
+         target-board-options
+         (:sun-disc-target-board-index params)]
+        (when (:sun-disc-target-board-index params)
+          [replacement-card-choices replacement-card-options
+           (:sun-disc-replacement-card-id params)])]
+
+       nil)]))
+
 (defn- disc-move-controls
   [params board disc-action-count-options disc-minion-orientation-required?
    disc-target-kind-options target-piece-options target-board-options
@@ -484,13 +559,15 @@
 (defn- move-active-controls [selection controls]
   (let [{:keys [source params]} selection
         {:keys [board power power-options rod-mode-options piece-options
-                disc-action-count-options disc-minion-orientation-required?
+                disc-action-count-options sun-disc-mode-options
+                disc-minion-orientation-required?
                 disc-target-kind-options sword-target-kind-options
                 target-piece-options hand-options discard-card-options source-board-options
                 target-board-options target-wasteland-options
                 territory-card-source-options one-point-card-options
                 replacement-card-options orientation-options orientation-required?
-                disc-orientation-available? sword-orientation-available?
+                disc-orientation-available? sun-disc-orientation-available?
+                sword-orientation-available?
                 distance-options damage-options draw-options]} controls]
     (case source
       :activate-territory
@@ -529,6 +606,16 @@
                    replacement-card-options
                    orientation-options
                    disc-orientation-available?]
+            :sun [sun-move-controls params
+                  board
+                  sun-disc-mode-options
+                  target-piece-options
+                  target-board-options
+                  target-wasteland-options
+                  one-point-card-options
+                  replacement-card-options
+                  orientation-options
+                  sun-disc-orientation-available?]
             :sword [sword-move-controls params
                     board
                     sword-target-kind-options
@@ -577,6 +664,16 @@
                    replacement-card-options
                    orientation-options
                    disc-orientation-available?]
+            :sun [sun-move-controls params
+                  board
+                  sun-disc-mode-options
+                  target-piece-options
+                  target-board-options
+                  target-wasteland-options
+                  one-point-card-options
+                  replacement-card-options
+                  orientation-options
+                  sun-disc-orientation-available?]
             :sword [sword-move-controls params
                     board
                     sword-target-kind-options

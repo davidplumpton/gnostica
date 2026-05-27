@@ -680,6 +680,7 @@
 (def move-power move-selection/move-power)
 (def move-rod-mode-options move-selection/move-rod-mode-options)
 (def move-disc-action-count-options move-selection/move-disc-action-count-options)
+(def move-sun-disc-mode-options move-selection/move-sun-disc-mode-options)
 (def move-disc-minion-orientation-required? move-selection/move-disc-minion-orientation-required?)
 (def move-disc-target-kind-options move-selection/move-disc-target-kind-options)
 (def move-sword-target-kind-options move-selection/move-sword-target-kind-options)
@@ -688,6 +689,7 @@
 (def move-target-piece-options move-selection/move-target-piece-options)
 (def move-rod-orientation-required? move-selection/move-rod-orientation-required?)
 (def move-disc-orientation-available? move-selection/move-disc-orientation-available?)
+(def move-sun-disc-orientation-available? move-selection/move-sun-disc-orientation-available?)
 (def move-sword-orientation-available? move-selection/move-sword-orientation-available?)
 (def move-ready? move-selection/move-ready?)
 (def move-prompt move-selection/move-prompt)
@@ -737,6 +739,8 @@
 (def select-move-sword-target-kind move-selection/select-move-sword-target-kind)
 (def set-move-disc-action-count move-selection/set-move-disc-action-count)
 (def set-move-minion-orientation move-selection/set-move-minion-orientation)
+(def select-move-sun-disc-mode move-selection/select-move-sun-disc-mode)
+(def set-move-sun-disc-orientation move-selection/set-move-sun-disc-orientation)
 (def select-move-target-piece move-selection/select-move-target-piece)
 (def select-move-territory-card-source move-selection/select-move-territory-card-source)
 (def select-move-one-point-card move-selection/select-move-one-point-card)
@@ -760,12 +764,14 @@
 (defn move-panel-view-model
   [{:keys [current-player selection source-options prompt ready?
            board power power-options rod-mode-options disc-action-count-options
+           sun-disc-mode-options
            disc-minion-orientation-required? disc-target-kind-options
            sword-target-kind-options piece-options
            target-piece-options hand-options discard-card-options source-board-options
            target-board-options target-wasteland-options
            territory-card-source-options one-point-card-options replacement-card-options
            orientation-options orientation-required? disc-orientation-available?
+           sun-disc-orientation-available?
            sword-orientation-available? distance-options damage-options draw-options]}]
   {:current-player current-player
    :selection selection
@@ -777,6 +783,7 @@
               :power-options power-options
               :rod-mode-options rod-mode-options
               :disc-action-count-options disc-action-count-options
+              :sun-disc-mode-options sun-disc-mode-options
               :disc-minion-orientation-required? disc-minion-orientation-required?
               :disc-target-kind-options disc-target-kind-options
               :sword-target-kind-options sword-target-kind-options
@@ -793,6 +800,7 @@
               :orientation-options orientation-options
               :orientation-required? orientation-required?
               :disc-orientation-available? disc-orientation-available?
+              :sun-disc-orientation-available? sun-disc-orientation-available?
               :sword-orientation-available? sword-orientation-available?
               :distance-options distance-options
               :damage-options damage-options
@@ -810,6 +818,7 @@
     :power-options (move-power-options db)
     :rod-mode-options (move-rod-mode-options db)
     :disc-action-count-options (move-disc-action-count-options db)
+    :sun-disc-mode-options (move-sun-disc-mode-options db)
     :disc-minion-orientation-required? (move-disc-minion-orientation-required? db)
     :disc-target-kind-options (move-disc-target-kind-options db)
     :sword-target-kind-options (move-sword-target-kind-options db)
@@ -826,6 +835,7 @@
     :orientation-options (move-orientation-options db)
     :orientation-required? (move-rod-orientation-required? db)
     :disc-orientation-available? (move-disc-orientation-available? db)
+    :sun-disc-orientation-available? (move-sun-disc-orientation-available? db)
     :sword-orientation-available? (move-sword-orientation-available? db)
     :distance-options (move-distance-options db)
     :damage-options (move-damage-options db)

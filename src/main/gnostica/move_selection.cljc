@@ -82,6 +82,28 @@
    :territory {:id :territory
                :label "Grow territory"}})
 
+(def sun-disc-mode-order
+  [:skip
+   :created-piece
+   :created-territory
+   :piece
+   :territory])
+
+(def sun-disc-modes
+  (set sun-disc-mode-order))
+
+(def sun-disc-mode-definitions
+  {:skip {:id :skip
+          :label "Cup only"}
+   :created-piece {:id :created-piece
+                   :label "Grow created piece"}
+   :created-territory {:id :created-territory
+                       :label "Grow created territory"}
+   :piece {:id :piece
+           :label "Grow existing piece"}
+   :territory {:id :territory
+               :label "Grow existing territory"}})
+
 (def sword-target-kind-order
   [:piece
    :territory])
@@ -124,6 +146,7 @@
    :rod-mode "Choose a Rod move."
    :disc-action-count "Choose how many Disc actions to apply."
    :minion-orientation "Choose the minion orientation."
+   :sun-disc-mode "Choose whether Sun applies Disc."
    :disc-target-kind "Choose piece or territory growth."
    :sword-target-kind "Choose piece or territory attack."
    :target-piece-id "Choose a target piece."
@@ -264,6 +287,9 @@
 
 (defn- cup-move? [db source-id params]
   (= :cup (selected-power db source-id params)))
+
+(defn- sun-move? [db source-id params]
+  (= :sun (selected-power db source-id params)))
 
 (defn- selected-cup-variant [db source-id params]
   (when (cup-move? db source-id params)
@@ -666,6 +692,123 @@
     :else
     false))
 
+(defn- sun-cup-target-kind [params]
+  (cond
+    (:target-wasteland params) :wasteland
+    (:target-piece-id params) :piece
+    (some? (:target-board-index params)) :territory
+    :else nil))
+
+(defn- sun-cup-target-ready? [db source-id params]
+  (and (sun-move? db source-id params)
+       (target-space-complete? db source-id params)
+       (case (sun-cup-target-kind params)
+         :territory (contains? pieces/legal-orientations (:orientation params))
+         (:piece :wasteland) true
+         false)))
+
+(defn- sun-disc-mode-option-ids [db source-id params]
+  (when (sun-cup-target-ready? db source-id params)
+    (vec
+     (concat [:skip]
+             (case (sun-cup-target-kind params)
+               :territory [:created-piece]
+               :wasteland [:created-territory]
+               [])
+             [:piece :territory]))))
+
+(defn- selected-sun-disc-mode [db source-id params]
+  (let [options (set (sun-disc-mode-option-ids db source-id params))
+        selected (:sun-disc-mode params)]
+    (when (contains? options selected)
+      selected)))
+
+(defn- sun-cup-needs-one-point-card? [db source-id params]
+  (and (sun-move? db source-id params)
+       (= :wasteland (sun-cup-target-kind params))
+       (some? (selected-sun-disc-mode db source-id params))
+       (not= :created-territory
+             (selected-sun-disc-mode db source-id params))))
+
+(defn- sun-disc-base-command [db source-id params]
+  (when (and (sun-move? db source-id params)
+             (current-player-id db)
+             (:piece-id params))
+    {:player-id (current-player-id db)
+     :source (source-command source-id params)
+     :disc-variant :disc}))
+
+(defn- sun-disc-command-resolves? [db command]
+  (let [state (game db)]
+    (boolean
+     (and state
+          command
+          (:ok? (game-state/resolve-disc-command state command))))))
+
+(defn- sun-disc-piece-target? [db source-id params piece]
+  (and piece
+       (= :piece (selected-sun-disc-mode db source-id params))
+       (sun-disc-command-resolves?
+        db
+        (assoc (sun-disc-base-command db source-id params)
+               :target {:kind :piece
+                        :piece-id (:id piece)}))))
+
+(defn- sun-disc-territory-target? [db source-id params cell]
+  (and cell
+       (= :territory (selected-sun-disc-mode db source-id params))
+       (sun-disc-command-resolves?
+        db
+        (assoc (sun-disc-base-command db source-id params)
+               :target {:kind :territory
+                        :board-index (:index cell)}))))
+
+(defn- sun-disc-target-piece [db source-id params]
+  (let [piece (piece-by-id db (:sun-disc-target-piece-id params))]
+    (when (sun-disc-piece-target? db source-id params piece)
+      piece)))
+
+(defn- sun-disc-orientation-available? [db source-id params]
+  (and (= :piece (selected-sun-disc-mode db source-id params))
+       (current-player-piece? db (sun-disc-target-piece db source-id params))))
+
+(defn- sun-disc-target-cell [db params]
+  (get (board db) (:sun-disc-target-board-index params)))
+
+(defn- sun-disc-replacement-source-cards [db source-id params]
+  (let [source-card-id (source-hand-card-id source-id params)
+        spent-card-ids (cond-> #{}
+                         source-card-id (conj source-card-id)
+                         (:one-point-card-id params) (conj (:one-point-card-id params)))]
+    (remove #(contains? spent-card-ids (:id %))
+            (current-player-hand db))))
+
+(defn- sun-disc-replacement-card-options-for [db source-id params]
+  (let [replacement-cards (sun-disc-replacement-source-cards db source-id params)]
+    (case (selected-sun-disc-mode db source-id params)
+      :created-territory
+      (->> replacement-cards
+           (filter #(= 2 (cards/card-point-value %)))
+           vec)
+
+      :territory
+      (let [original-card (:card (sun-disc-target-cell db params))]
+        (if original-card
+          (->> replacement-cards
+               (filter #(card-worth-disc-actions-more? % original-card 1))
+               vec)
+          []))
+
+      [])))
+
+(defn- sun-disc-replacement-card-by-id [db source-id params card-id]
+  (some #(when (= card-id (:id %)) %)
+        (sun-disc-replacement-card-options-for db source-id params)))
+
+(defn- sun-disc-territory-target-stage? [db source-id params]
+  (and (sun-move? db source-id params)
+       (= :territory (selected-sun-disc-mode db source-id params))))
+
 (defn- rod-distance-options-for-piece [piece]
   (vec (range 1 (inc (or (pieces/pips piece) 0)))))
 
@@ -798,6 +941,11 @@
   (let [{:keys [source params]} (move-selection db)]
     (disc-action-count-option-values db source params)))
 
+(defn move-sun-disc-mode-options [db]
+  (let [{:keys [source params]} (move-selection db)]
+    (mapv sun-disc-mode-definitions
+          (sun-disc-mode-option-ids db source params))))
+
 (defn move-disc-minion-orientation-required? [db]
   (let [{:keys [source params]} (move-selection db)]
     (star-disc-source? db source params)))
@@ -813,6 +961,13 @@
     (cond
       (rod-move? db source params)
       (board-pieces db)
+
+      (= :piece (selected-sun-disc-mode db source params))
+      (filterv #(sun-disc-piece-target? db source params %)
+               (board-pieces db))
+
+      (sun-move? db source params)
+      (filterv #(cup-target-piece? db %) (board-pieces db))
 
       (cup-move? db source params)
       (filterv #(cup-target-piece? db %) (board-pieces db))
@@ -844,6 +999,10 @@
     (and (disc-move? db source params)
          (= :piece (:disc-target-kind params))
          (current-player-piece? db (disc-target-piece db params)))))
+
+(defn move-sun-disc-orientation-available? [db]
+  (let [{:keys [source params]} (move-selection db)]
+    (sun-disc-orientation-available? db source params)))
 
 (defn move-sword-orientation-available? [db]
   (let [{:keys [source params]} (move-selection db)]
@@ -890,6 +1049,23 @@
     :minion-orientation
     (contains? pieces/legal-orientations (:minion-orientation params))
 
+    :sun-disc-mode
+    (some? (selected-sun-disc-mode db source-id params))
+
+    :sun-disc-target-piece-id
+    (some? (sun-disc-target-piece db source-id params))
+
+    :sun-disc-target-board-index
+    (some #(= (:sun-disc-target-board-index params) (:index %))
+          (filterv #(sun-disc-territory-target? db source-id params %)
+                   (board db)))
+
+    :sun-disc-replacement-card-id
+    (some? (sun-disc-replacement-card-by-id db
+                                            source-id
+                                            params
+                                            (:sun-disc-replacement-card-id params)))
+
     :disc-target-kind
     (and (disc-move? db source-id params)
          (contains? disc-target-kinds (:disc-target-kind params)))
@@ -903,6 +1079,9 @@
       (rod-move? db source-id params)
       (some? (rod-target-piece db params))
 
+      (sun-move? db source-id params)
+      (some? (sun-disc-target-piece db source-id params))
+
       (disc-move? db source-id params)
       (some? (disc-target-piece db params))
 
@@ -914,6 +1093,11 @@
 
     :target-board-index
     (cond
+      (sun-disc-territory-target-stage? db source-id params)
+      (some #(= (:sun-disc-target-board-index params) (:index %))
+            (filterv #(sun-disc-territory-target? db source-id params %)
+                     (board db)))
+
       (and (disc-move? db source-id params)
            (= :territory (:disc-target-kind params)))
       (some #(= (:target-board-index params) (:index %))
@@ -932,7 +1116,8 @@
     :target-space
     (case source-id
       :place-initial-small (target-space-complete? db source-id params)
-      (and (cup-move? db source-id params)
+      (and (or (cup-move? db source-id params)
+               (sun-move? db source-id params))
            (target-space-complete? db source-id params)))
 
     :target-resolution
@@ -952,6 +1137,12 @@
 
     :replacement-card-id
     (cond
+      (sun-move? db source-id params)
+      (some? (sun-disc-replacement-card-by-id db
+                                              source-id
+                                              params
+                                              (:sun-disc-replacement-card-id params)))
+
       (disc-move? db source-id params)
       (some? (disc-replacement-card-by-id db
                                           source-id
@@ -966,6 +1157,9 @@
 
       :else
       false)
+
+    :one-point-card-id
+    (some? (one-point-card-by-id db source-id params (:one-point-card-id params)))
 
     :orientation
     (contains? pieces/legal-orientations (:orientation params))
@@ -1014,6 +1208,22 @@
                      [:replacement-card-id])
              []))))
 
+(defn- sun-requirements [db source-id params]
+  (let [mode (selected-sun-disc-mode db source-id params)]
+    (vec
+     (concat [:target-space]
+             (when (= :territory (sun-cup-target-kind params))
+               [:orientation])
+             [:sun-disc-mode]
+             (when (sun-cup-needs-one-point-card? db source-id params)
+               [:one-point-card-id])
+             (case mode
+               :piece [:sun-disc-target-piece-id]
+               :territory [:sun-disc-target-board-index
+                           :sun-disc-replacement-card-id]
+               :created-territory [:sun-disc-replacement-card-id]
+               [])))))
+
 (defn- sword-requirements [db source-id params]
   (vec
    (concat [:sword-target-kind]
@@ -1054,6 +1264,7 @@
                :cup [:target-space :target-resolution]
                :rod (rod-requirements db params)
                :disc (disc-requirements db source-id params)
+               :sun (sun-requirements db source-id params)
                :sword (sword-requirements db source-id params)
                [])))))
 
@@ -1082,10 +1293,13 @@
     :rod-mode :rod-mode
     :disc-action-count :disc-action-count
     :minion-orientation :minion-orientation
+    :sun-disc-mode :sun-disc-mode
     :disc-target-kind :disc-target-kind
     :sword-target-kind :sword-target-kind
     :target-piece-id :target-piece
+    :sun-disc-target-piece-id :target-piece
     :target-board-index :target
+    :sun-disc-target-board-index :target
     :target-space :target
     :target-resolution (cond
                          (and (valid-wasteland-target? db (:target-wasteland params))
@@ -1102,6 +1316,7 @@
     :territory-card-source :territory-card-source
     :replacement-card-source :replacement-card-source
     :replacement-card-id :replacement-card
+    :sun-disc-replacement-card-id :replacement-card
     :orientation :orientation
     :distance :distance
     :damage :damage
@@ -1148,6 +1363,14 @@
                           (cup-move? db source (move-params db))
                           (:target-space requirement-prompts)
 
+                          (sun-move? db source (move-params db))
+                          (if (sun-disc-territory-target-stage?
+                               db
+                               source
+                               (move-params db))
+                            (:target-board-index requirement-prompts)
+                            (:target-space requirement-prompts))
+
                           (disc-move? db source (move-params db))
                           (:target-board-index requirement-prompts)
 
@@ -1170,6 +1393,7 @@
                   :rod-mode (:rod-mode requirement-prompts)
                   :disc-action-count (:disc-action-count requirement-prompts)
                   :minion-orientation (:minion-orientation requirement-prompts)
+                  :sun-disc-mode (:sun-disc-mode requirement-prompts)
                   :disc-target-kind (:disc-target-kind requirement-prompts)
                   :sword-target-kind (:sword-target-kind requirement-prompts)
                   :target-piece (:target-piece-id requirement-prompts)
@@ -1212,110 +1436,126 @@
 (defn cancel-move [db]
   (assoc db :move-selection (empty-move-selection)))
 
+(def ^:private sun-disc-param-keys
+  [:sun-disc-mode
+   :sun-disc-target-piece-id
+   :sun-disc-target-board-index
+   :sun-disc-replacement-card-id
+   :sun-disc-orientation])
+
+(defn- clear-sun-disc-params [params]
+  (apply dissoc params sun-disc-param-keys))
+
 (defn- clear-piece-when-source-changes [params board-index]
   (let [next-params (assoc params :source-board-index board-index)]
     (if (= (:source-board-index params) board-index)
       next-params
-      (dissoc next-params
-              :piece-id
-              :power
-              :rod-mode
-              :disc-target-kind
-              :sword-target-kind
-              :disc-action-count
-              :minion-orientation
-              :target-board-index
-              :target-wasteland
-              :target-piece-id
-              :territory-card-source
-              :one-point-card-id
-              :replacement-card-source
-              :replacement-card-id
-              :orientation
-              :distance
-              :damage))))
+      (clear-sun-disc-params
+       (dissoc next-params
+               :piece-id
+               :power
+               :rod-mode
+               :disc-target-kind
+               :sword-target-kind
+               :disc-action-count
+               :minion-orientation
+               :target-board-index
+               :target-wasteland
+               :target-piece-id
+               :territory-card-source
+               :one-point-card-id
+               :replacement-card-source
+               :replacement-card-id
+               :orientation
+               :distance
+               :damage)))))
 
 (defn- set-territory-target [params board-index]
-  (-> params
-      (assoc :target-board-index board-index)
-      (dissoc :target-wasteland
-              :target-piece-id
-              :territory-card-source
-              :one-point-card-id
-              :replacement-card-source
-              :replacement-card-id
-              :damage)))
+  (clear-sun-disc-params
+   (-> params
+       (assoc :target-board-index board-index)
+       (dissoc :target-wasteland
+               :target-piece-id
+               :territory-card-source
+               :one-point-card-id
+               :replacement-card-source
+               :replacement-card-id
+               :damage))))
 
 (defn- set-wasteland-target [params space]
-  (-> params
-      (assoc :target-wasteland (select-keys space [:kind :row :col]))
-      (dissoc :target-board-index
-              :target-piece-id
-              :orientation
-              :territory-card-source
-              :one-point-card-id
-              :replacement-card-source
-              :replacement-card-id
-              :damage)))
+  (clear-sun-disc-params
+   (-> params
+       (assoc :target-wasteland (select-keys space [:kind :row :col]))
+       (dissoc :target-board-index
+               :target-piece-id
+               :orientation
+               :territory-card-source
+               :one-point-card-id
+               :replacement-card-source
+               :replacement-card-id
+               :damage))))
 
 (defn- set-hand-card-source [params card-id]
-  (-> params
-      (assoc :hand-card-id card-id)
-      (dissoc :piece-id
-              :power
-              :rod-mode
-              :disc-target-kind
-              :sword-target-kind
-              :disc-action-count
-              :minion-orientation
-              :target-board-index
-              :target-wasteland
-              :target-piece-id
-              :territory-card-source
-              :one-point-card-id
-              :replacement-card-source
-              :replacement-card-id
-              :orientation
-              :distance
-              :damage)))
+  (clear-sun-disc-params
+   (-> params
+       (assoc :hand-card-id card-id)
+       (dissoc :piece-id
+               :power
+               :rod-mode
+               :disc-target-kind
+               :sword-target-kind
+               :disc-action-count
+               :minion-orientation
+               :target-board-index
+               :target-wasteland
+               :target-piece-id
+               :territory-card-source
+               :one-point-card-id
+               :replacement-card-source
+               :replacement-card-id
+               :orientation
+               :distance
+               :damage))))
 
 (defn- set-acting-piece [params piece-id]
   (let [next-params (assoc params :piece-id piece-id)]
     (if (= (:piece-id params) piece-id)
       next-params
-      (dissoc next-params
-              :minion-orientation
-              :target-board-index
-              :target-wasteland
-              :target-piece-id
-              :territory-card-source
-              :one-point-card-id
-              :replacement-card-source
-              :replacement-card-id
-              :orientation
-              :distance
-              :damage))))
+      (clear-sun-disc-params
+       (dissoc next-params
+               :minion-orientation
+               :target-board-index
+               :target-wasteland
+               :target-piece-id
+               :territory-card-source
+               :one-point-card-id
+               :replacement-card-source
+               :replacement-card-id
+               :orientation
+               :distance
+               :damage)))))
 
 (defn- set-power-param [params power]
   (let [next-params (assoc params :power power)]
     (if (= (:power params) power)
       next-params
-      (dissoc next-params
-              :rod-mode
-              :disc-target-kind
-              :sword-target-kind
-              :disc-action-count
-              :minion-orientation
-              :target-board-index
-              :target-wasteland
-              :target-piece-id
-              :territory-card-source
-              :one-point-card-id
-              :replacement-card-source
-              :replacement-card-id
-              :orientation
-              :distance
-              :damage))))
+      (clear-sun-disc-params
+       (dissoc next-params
+               :rod-mode
+               :disc-target-kind
+               :sword-target-kind
+               :disc-action-count
+               :minion-orientation
+               :target-board-index
+               :target-wasteland
+               :target-piece-id
+               :territory-card-source
+               :one-point-card-id
+               :replacement-card-source
+               :replacement-card-id
+               :orientation
+               :distance
+               :damage)))))
 
 (defn- set-rod-mode-param [params mode]
   (let [next-params (assoc params :rod-mode mode)]
@@ -1393,15 +1633,44 @@
   (let [next-params (assoc params :target-piece-id piece-id)]
     (if (= (:target-piece-id params) piece-id)
       next-params
+      (clear-sun-disc-params
+       (dissoc next-params
+               :target-board-index
+               :target-wasteland
+               :territory-card-source
+               :one-point-card-id
+               :replacement-card-source
+               :replacement-card-id
+               :orientation
+               :damage)))))
+
+(defn- set-sun-disc-mode-param [params mode]
+  (let [next-params (assoc params :sun-disc-mode mode)]
+    (if (= (:sun-disc-mode params) mode)
+      next-params
       (dissoc next-params
-              :target-board-index
-              :target-wasteland
-              :territory-card-source
-              :one-point-card-id
-              :replacement-card-source
-              :replacement-card-id
-              :orientation
-              :damage))))
+              :sun-disc-target-piece-id
+              :sun-disc-target-board-index
+              :sun-disc-replacement-card-id
+              :sun-disc-orientation))))
+
+(defn- set-sun-disc-target-piece [params piece-id]
+  (let [next-params (assoc params :sun-disc-target-piece-id piece-id)]
+    (if (= (:sun-disc-target-piece-id params) piece-id)
+      next-params
+      (dissoc next-params
+              :sun-disc-target-board-index
+              :sun-disc-replacement-card-id
+              :sun-disc-orientation))))
+
+(defn- set-sun-disc-target-territory [params board-index]
+  (let [next-params (assoc params :sun-disc-target-board-index board-index)]
+    (if (= (:sun-disc-target-board-index params) board-index)
+      next-params
+      (dissoc next-params
+              :sun-disc-target-piece-id
+              :sun-disc-replacement-card-id
+              :sun-disc-orientation))))
 
 (defn select-board-for-active-move [db index]
   (if-not (valid-board-index? db index)
@@ -1413,6 +1682,25 @@
               has-piece? (requirement-complete? db source params :piece-id)
               current-pieces (current-player-pieces-on-space db index)]
           (cond
+            (and has-source?
+                 has-piece?
+                 (sun-disc-territory-target-stage? db source params)
+                 (sun-disc-territory-target? db source params (get (board db) index)))
+            (update-move-selection-success db
+                                           update
+                                           :params
+                                           set-sun-disc-target-territory
+                                           index)
+
+            (and has-source?
+                 has-piece?
+                 (sun-disc-territory-target-stage? db source params))
+            (update-move-selection db assoc
+                                   :error
+                                   (move-error :invalid-sun-disc-target
+                                               "Choose a Sun Disc-targetable territory."
+                                               {:board-index index}))
+
             (and has-source?
                  has-piece?
                  (or (and (disc-move? db source params)
@@ -1467,6 +1755,21 @@
 
         :play-hand-card
         (cond
+          (and (sun-disc-territory-target-stage? db source params)
+               (sun-disc-territory-target? db source params (get (board db) index)))
+          (update-move-selection-success db
+                                         update
+                                         :params
+                                         set-sun-disc-target-territory
+                                         index)
+
+          (sun-disc-territory-target-stage? db source params)
+          (update-move-selection db assoc
+                                 :error
+                                 (move-error :invalid-sun-disc-target
+                                             "Choose a Sun Disc-targetable territory."
+                                             {:board-index index}))
+
           (and (disc-move? db source params)
                (not= :territory (:disc-target-kind params)))
           db
@@ -1511,11 +1814,12 @@
         space (wasteland-space-by-coordinate db row col)]
     (cond
       (not (or (cup-move? db source params)
+               (sun-move? db source params)
                (= :place-initial-small source)))
       (update-move-selection db assoc
                              :error
                              (move-error :invalid-wasteland-target
-                                         "Wasteland targets are only available for Cup moves or initial placement."
+                                         "Wasteland targets are only available for Cup, Sun, or initial placement moves."
                                          {:row row
                                           :col col
                                           :source source}))
@@ -1658,6 +1962,41 @@
       :else
       (update-move-selection-success db update :params set-minion-orientation-param orientation))))
 
+(defn select-move-sun-disc-mode [db mode]
+  (let [{:keys [source params]} (move-selection db)
+        options (set (sun-disc-mode-option-ids db source params))]
+    (if (contains? options mode)
+      (update-move-selection-success db update :params set-sun-disc-mode-param mode)
+      (update-move-selection db assoc
+                             :error
+                             (move-error :invalid-sun-disc-mode
+                                         "Choose a supported Sun Disc option."
+                                         {:mode mode
+                                          :options (vec options)})))))
+
+(defn set-move-sun-disc-orientation [db orientation]
+  (let [{:keys [source params]} (move-selection db)]
+    (cond
+      (not (sun-disc-orientation-available? db source params))
+      (update-move-selection db assoc
+                             :error
+                             (move-error :invalid-sun-disc-orientation
+                                         "Sun Disc orientation is only available for current-player piece targets."
+                                         {:orientation orientation
+                                          :source source}))
+
+      (not (contains? pieces/legal-orientations orientation))
+      (update-move-selection db assoc
+                             :error
+                             (move-error :invalid-orientation
+                                         "Choose a legal piece orientation."
+                                         {:orientation orientation}))
+
+      :else
+      (update-move-selection-success db assoc-in
+                                     [:params :sun-disc-orientation]
+                                     orientation))))
+
 (defn select-move-target-piece [db piece-id]
   (let [source (move-source db)
         params (move-params db)
@@ -1674,6 +2013,32 @@
 
       (rod-move? db source params)
       (update-move-selection-success db update :params set-target-piece (:id piece))
+
+      (and (= :piece (selected-sun-disc-mode db source params))
+           selectable-piece?)
+      (update-move-selection-success db
+                                     update
+                                     :params
+                                     set-sun-disc-target-piece
+                                     (:id piece))
+
+      (= :piece (selected-sun-disc-mode db source params))
+      (update-move-selection db assoc
+                             :error
+                             (move-error :invalid-target-piece
+                                         "Choose a Sun Disc-targetable piece."
+                                         {:piece-id piece-id}))
+
+      (and (sun-move? db source params)
+           selectable-piece?)
+      (update-move-selection-success db update :params set-target-piece (:id piece))
+
+      (sun-move? db source params)
+      (update-move-selection db assoc
+                             :error
+                             (move-error :invalid-target-piece
+                                         "Choose an enemy piece on an existing territory."
+                                         {:piece-id piece-id}))
 
       (and (cup-move? db source params)
            selectable-piece?)
@@ -1753,7 +2118,8 @@
 
 (defn select-move-one-point-card [db card-id]
   (let [{:keys [source params]} (move-selection db)]
-    (if (and (cup-move? db source params)
+    (if (and (or (cup-move? db source params)
+                 (sun-cup-needs-one-point-card? db source params))
              (one-point-card-by-id db source params card-id))
       (update-move-selection-success db assoc-in [:params :one-point-card-id] card-id)
       (update-move-selection db assoc
@@ -1765,6 +2131,19 @@
 (defn select-move-replacement-card [db card-id]
   (let [{:keys [source params]} (move-selection db)]
     (cond
+      (and (sun-move? db source params)
+           (sun-disc-replacement-card-by-id db source params card-id))
+      (update-move-selection-success db assoc-in
+                                     [:params :sun-disc-replacement-card-id]
+                                     card-id)
+
+      (sun-move? db source params)
+      (update-move-selection db assoc
+                             :error
+                             (move-error :invalid-sun-disc-replacement-card
+                                         "Choose a replacement card for Sun's Disc action."
+                                         {:card-id card-id}))
+
       (and (disc-move? db source params)
            (disc-replacement-card-by-id db source params card-id))
       (update-move-selection-success db assoc-in [:params :replacement-card-id] card-id)
@@ -1908,6 +2287,10 @@
       (filterv #(empty-board-target? db (:index %))
                (board db))
 
+      (sun-disc-territory-target-stage? db source params)
+      (filterv #(sun-disc-territory-target? db source params %)
+               (board db))
+
       (and (disc-move? db source params)
            (= :territory (:disc-target-kind params)))
       (filterv #(disc-territory-target? db source params %)
@@ -1923,8 +2306,9 @@
 
 (defn move-one-point-card-options [db]
   (let [{:keys [source params]} (move-selection db)]
-    (if (and (cup-move? db source params)
-             (not= :draw-pile-top (:territory-card-source params)))
+    (if (or (and (cup-move? db source params)
+                 (not= :draw-pile-top (:territory-card-source params)))
+            (sun-cup-needs-one-point-card? db source params))
       (one-point-card-options-for db source params)
       [])))
 
@@ -1959,6 +2343,9 @@
 (defn move-replacement-card-options [db]
   (let [{:keys [source params]} (move-selection db)]
     (cond
+      (sun-move? db source params)
+      (sun-disc-replacement-card-options-for db source params)
+
       (disc-move? db source params)
       (disc-replacement-card-options-for db source params)
 
@@ -1995,6 +2382,46 @@
 (defn- cup-command [db source params]
   (assoc (cup-target-command params)
          :cup-variant (selected-cup-variant db source params)))
+
+(defn- sun-cup-command [params]
+  (let [cup-target (cup-target-command params)]
+    (if (= :created-territory (:sun-disc-mode params))
+      (select-keys cup-target [:target])
+      cup-target)))
+
+(defn- sun-disc-command [params]
+  (case (:sun-disc-mode params)
+    :skip nil
+
+    :created-piece
+    (cond-> {:target {:kind :created-piece}}
+      (:orientation params)
+      (assoc :orientation (:orientation params)))
+
+    :created-territory
+    {:target {:kind :created-territory}
+     :replacement-card-source :hand
+     :replacement-card-id (:sun-disc-replacement-card-id params)}
+
+    :piece
+    (cond-> {:target {:kind :piece
+                      :piece-id (:sun-disc-target-piece-id params)}}
+      (:sun-disc-orientation params)
+      (assoc :orientation (:sun-disc-orientation params)))
+
+    :territory
+    {:target {:kind :territory
+              :board-index (:sun-disc-target-board-index params)}
+     :replacement-card-source :hand
+     :replacement-card-id (:sun-disc-replacement-card-id params)}
+
+    nil))
+
+(defn- sun-command [_db _source params]
+  (let [disc-command (sun-disc-command params)]
+    (cond-> {:cup (sun-cup-command params)}
+      disc-command
+      (assoc :disc disc-command))))
 
 (defn- initial-placement-target-command [params]
   (if-let [target-wasteland (:target-wasteland params)]
@@ -2094,6 +2521,7 @@
     :rod (rod-command db source params)
     :disc (disc-command db source params)
     :cup (cup-command db source params)
+    :sun (sun-command db source params)
     :sword (sword-command db source params)
     (unavailable-power-command db source params)))
 
@@ -2165,9 +2593,7 @@
       (game-state/apply-sword-move (game db) command)
 
       (= :sun (move-power db))
-      (game-state/failure :move-transition-unavailable
-                          "Sun's Cup-then-Disc browser move staging is not implemented yet."
-                          {:command command})
+      (game-state/apply-sun-move (game db) command)
 
       :else
       (game-state/failure :move-transition-unavailable

@@ -1342,35 +1342,133 @@
     (is (= stale-game
            (app-state/game confirmed-db)))))
 
-(deftest sun-specific-hand-card-source-reports-unavailable-transition
+(deftest sun-hand-card-can_stage_created_piece_shortcut
   (let [db (app-state/initialize {:player-specs test-player-specs
                                   :game-options {:deck-order (deck-starting-with ["sun"])}
-                                  :demo-board-pieces [rose-source-piece]})
+                                  :demo-board-pieces [rose-hand-piece]})
         power-db (-> db
                      (app-state/select-move-source :play-hand-card)
                      (app-state/select-move-hand-card "sun")
-                     (app-state/select-move-piece :rose-scout))
+                     (app-state/select-move-piece :rose-striker))
         staged-db (app-state/select-move-power power-db :sun)
-        confirmed-db (app-state/confirm-move staged-db)]
+        target-db (app-state/select-board-card staged-db 3)
+        oriented-db (app-state/set-move-orientation target-db :south)
+        disc-db (app-state/select-move-sun-disc-mode oriented-db :created-piece)
+        confirmed-db (app-state/confirm-move disc-db)
+        zones (app-state/card-zones confirmed-db)
+        created-piece (piece-by-id confirmed-db :rose-medium-1)]
     (is (= :power (:stage (app-state/move-selection power-db))))
     (is (= [:cup :disc :sun]
            (mapv :id (app-state/move-power-options power-db))))
     (is (= :sun (app-state/move-power staged-db)))
-    (is (= :confirm (:stage (app-state/move-selection staged-db))))
+    (is (= :orientation (:stage (app-state/move-selection target-db))))
+    (is (= :sun-disc-mode (:stage (app-state/move-selection oriented-db))))
+    (is (= [:skip :created-piece :piece :territory]
+           (mapv :id (app-state/move-sun-disc-mode-options oriented-db))))
+    (is (= :confirm (:stage (app-state/move-selection disc-db))))
     (is (= {:player-id :rose
             :source {:kind :hand-card
                      :card-id "sun"
-                     :piece-id :rose-scout}
-            :power :sun
-            :card-id "sun"}
-           (app-state/move-command staged-db)))
-    (is (= :rejected (:stage (app-state/move-selection confirmed-db))))
-    (is (= :move-transition-unavailable
-           (get-in confirmed-db [:move-selection :error :code])))
-    (is (= (app-state/move-params staged-db)
-           (app-state/move-params confirmed-db)))
-    (is (= (app-state/game staged-db)
-           (app-state/game confirmed-db)))))
+                     :piece-id :rose-striker}
+            :cup {:target {:kind :territory
+                           :board-index 3}
+                  :orientation :south}
+            :disc {:target {:kind :created-piece}
+                   :orientation :south}}
+           (app-state/move-command disc-db)))
+    (is (:ok? (get-in confirmed-db [:move-selection :last-result])))
+    (is (= {:id :rose-medium-1
+            :player-id :rose
+            :space-index 3
+            :size :medium
+            :orientation :south}
+           created-piece))
+    (is (= ["sun"] (mapv :id (:discard-pile zones))))
+    (is (not (some #{"sun"} (map :id (:hand zones)))))
+    (is (game-schema/valid-game? (app-state/game confirmed-db)))))
+
+(deftest sun-hand-card-can_stage_created_territory_shortcut
+  (let [db (app-state/initialize {:player-specs test-player-specs
+                                  :game-options {:deck-order (deck-starting-with
+                                                              ["sun" "cupsking"])}
+                                  :demo-board-pieces [rose-hand-piece]})
+        wasteland-db (-> db
+                         (app-state/select-move-source :play-hand-card)
+                         (app-state/select-move-hand-card "sun")
+                         (app-state/select-move-piece :rose-striker)
+                         (app-state/select-move-power :sun)
+                         (app-state/select-move-wasteland-target 0 3))
+        mode-db (app-state/select-move-sun-disc-mode wasteland-db :created-territory)
+        replacement-db (app-state/select-move-replacement-card mode-db "cupsking")
+        confirmed-db (app-state/confirm-move replacement-db)
+        zones (app-state/card-zones confirmed-db)
+        created-cell (last (app-state/board confirmed-db))]
+    (is (= :sun-disc-mode (:stage (app-state/move-selection wasteland-db))))
+    (is (= [:skip :created-territory :piece :territory]
+           (mapv :id (app-state/move-sun-disc-mode-options wasteland-db))))
+    (is (= ["cupsking"]
+           (mapv :id (app-state/move-replacement-card-options mode-db))))
+    (is (= :confirm (:stage (app-state/move-selection replacement-db))))
+    (is (= {:player-id :rose
+            :source {:kind :hand-card
+                     :card-id "sun"
+                     :piece-id :rose-striker}
+            :cup {:target {:kind :wasteland
+                           :row 0
+                           :col 3}}
+            :disc {:target {:kind :created-territory}
+                   :replacement-card-source :hand
+                   :replacement-card-id "cupsking"}}
+           (app-state/move-command replacement-db)))
+    (is (:ok? (get-in confirmed-db [:move-selection :last-result])))
+    (is (= {:row 0
+            :col 3}
+           (select-keys created-cell [:row :col])))
+    (is (= "cupsking" (get-in created-cell [:card :id])))
+    (is (= ["sun"] (mapv :id (:discard-pile zones))))
+    (is (not (some #{"sun" "cupsking"} (map :id (:hand zones)))))
+    (is (game-schema/valid-game? (app-state/game confirmed-db)))))
+
+(deftest sun-hand-card-can_stage_existing_piece_disc_reorientation
+  (let [db (app-state/initialize {:player-specs test-player-specs
+                                  :game-options {:deck-order (deck-starting-with ["sun"])}
+                                  :demo-board-pieces [rose-hand-piece
+                                                      rose-rod-target
+                                                      indigo-rod-target]})
+        cup-db (-> db
+                   (app-state/select-move-source :play-hand-card)
+                   (app-state/select-move-hand-card "sun")
+                   (app-state/select-move-piece :rose-striker)
+                   (app-state/select-move-power :sun)
+                   (app-state/select-move-target-piece :indigo-rod-target))
+        mode-db (app-state/select-move-sun-disc-mode cup-db :piece)
+        target-db (app-state/select-move-target-piece mode-db :rose-striker)
+        oriented-db (app-state/set-move-sun-disc-orientation target-db :west)
+        confirmed-db (app-state/confirm-move oriented-db)
+        grown-piece (piece-by-id confirmed-db :rose-large-1)]
+    (is (= :sun-disc-mode (:stage (app-state/move-selection cup-db))))
+    (is (= [:skip :piece :territory]
+           (mapv :id (app-state/move-sun-disc-mode-options cup-db))))
+    (is (true? (app-state/move-sun-disc-orientation-available? target-db)))
+    (is (= {:player-id :rose
+            :source {:kind :hand-card
+                     :card-id "sun"
+                     :piece-id :rose-striker}
+            :cup {:target {:kind :piece
+                           :piece-id :indigo-rod-target}}
+            :disc {:target {:kind :piece
+                            :piece-id :rose-striker}
+                   :orientation :west}}
+           (app-state/move-command oriented-db)))
+    (is (:ok? (get-in confirmed-db [:move-selection :last-result])))
+    (is (= {:id :rose-large-1
+            :player-id :rose
+            :space-index 8
+            :size :large
+            :orientation :west}
+           grown-piece))
+    (is (= ["sun"] (mapv :id (get-in confirmed-db [:game :discard-pile]))))
+    (is (game-schema/valid-game? (app-state/game confirmed-db)))))
 
 (deftest sword-hand-card-can_shrink_own_piece_and_reorient_survivor
   (let [target-piece {:id :rose-sword-target
