@@ -78,6 +78,16 @@
 (defn- state-with-pieces [pieces]
   (game-state/with-board-pieces (deterministic-game) pieces))
 
+(defn- state-with-board-cards [board-index->card-id]
+  (:state (game-state/create-game
+           player-specs
+           {:deck-order
+            (deck-with-cards-at
+             (into {}
+                   (map (fn [[board-index card-id]]
+                          [(board-deck-position board-index) card-id]))
+                   board-index->card-id))})))
+
 (defn- state-with-board-card [state board-index card-id]
   (update state :board
           (fn [cells]
@@ -316,6 +326,141 @@
              :player-id :indigo
              :round 1}]
            events))))
+
+(deftest target-score-option-accepts-official-short-and-long-games
+  (let [{:keys [ok? state]} (game-state/create-game player-specs
+                                                     {:shuffle-fn identity
+                                                      :target-score 10})
+        invalid-result (game-state/create-game player-specs
+                                               {:shuffle-fn identity
+                                                :target-score 7})]
+    (is ok?)
+    (is (= 10 (game-state/target-score state)))
+    (is (false? (:ok? invalid-result)))
+    (is (= :invalid-target-score
+           (get-in invalid-result [:error :code])))))
+
+(deftest scores-count-only-territories-controlled-by-one-player
+  (let [state (-> (state-with-board-cards {0 "cups2"
+                                           1 "cupsking"
+                                           2 "sun"})
+                  (game-state/with-board-pieces
+                   [{:id :rose-mixed
+                     :player-id :rose
+                     :space-index 0
+                     :size :small
+                     :orientation :north}
+                    {:id :indigo-mixed
+                     :player-id :indigo
+                     :space-index 0
+                     :size :small
+                     :orientation :north}
+                    {:id :rose-royalty
+                     :player-id :rose
+                     :space-index 1
+                     :size :small
+                     :orientation :north}
+                    {:id :rose-major
+                     :player-id :rose
+                     :space-index 2
+                     :size :small
+                     :orientation :north}])
+                  game-state/with-current-scores)]
+    (is (= {:rose 5
+            :indigo 0}
+           (game-state/scores state)))
+    (is (= 5 (get-in state [:players-by-id :rose :score])))
+    (is (game-schema/valid-game? state))))
+
+(deftest end-turn-can-announce-and-resolve-a-winning-challenge
+  (let [state (-> (state-with-board-cards {0 "cups2"
+                                           1 "cupsking"
+                                           2 "sun"
+                                           3 "magician"})
+                  (game-state/with-board-pieces
+                   [{:id :rose-spot
+                     :player-id :rose
+                     :space-index 0
+                     :size :small
+                     :orientation :north}
+                    {:id :rose-royalty
+                     :player-id :rose
+                     :space-index 1
+                     :size :small
+                     :orientation :north}
+                    {:id :rose-major-a
+                     :player-id :rose
+                     :space-index 2
+                     :size :small
+                     :orientation :north}
+                    {:id :rose-major-b
+                     :player-id :rose
+                     :space-index 3
+                     :size :small
+                     :orientation :north}
+                    {:id :indigo-piece
+                     :player-id :indigo
+                     :space-index 4
+                     :size :small
+                     :orientation :north}]))
+        announced (game-state/end-turn state {:player-id :rose
+                                              :announce-challenge? true})
+        indigo-blocked (game-state/end-turn (:state announced)
+                                            {:player-id :indigo
+                                             :announce-challenge? true})
+        indigo-ended (game-state/end-turn (:state announced) {:player-id :indigo})
+        resolved (game-state/end-turn (:state indigo-ended) {:player-id :rose})]
+    (is (:ok? announced))
+    (is (= [:challenge/announced :turn/advanced]
+           (mapv :type (:events announced))))
+    (is (= :rose (game-state/active-challenge-player-id (:state announced))))
+    (is (= :challenge-unavailable
+           (get-in indigo-blocked [:error :code])))
+    (is (:ok? resolved))
+    (is (= game-state/finished-phase (:phase (:state resolved))))
+    (is (= {:player-id :rose
+            :reason :challenge
+            :score 9
+            :target-score 9}
+           (:winner (:state resolved))))
+    (is (game-schema/valid-game? (:state resolved)))))
+
+(deftest failed-challenge-eliminates-player-and-discards-their-hand
+  (let [state (-> (state-with-board-cards {0 "sun"
+                                           4 "magician"})
+                  (game-state/with-board-pieces
+                   [{:id :rose-major
+                     :player-id :rose
+                     :space-index 0
+                     :size :small
+                     :orientation :north}
+                    {:id :indigo-piece
+                     :player-id :indigo
+                     :space-index 4
+                     :size :small
+                     :orientation :north}]))
+        rose-hand-ids (player-hand-ids state :rose)
+        announced (game-state/end-turn state {:player-id :rose
+                                              :announce-challenge? true})
+        indigo-ended (game-state/end-turn (:state announced) {:player-id :indigo})
+        resolved (game-state/end-turn (:state indigo-ended) {:player-id :rose})
+        resolved-state (:state resolved)]
+    (is (:ok? resolved))
+    (is (= [:challenge/failed :game/won]
+           (mapv :type (:events resolved))))
+    (is (true? (get-in resolved-state [:players-by-id :rose :eliminated?])))
+    (is (empty? (get-in resolved-state [:players-by-id :rose :hand])))
+    (is (empty? (filter #(= :rose (:player-id %))
+                        (get-in resolved-state [:pieces :on-board]))))
+    (is (= rose-hand-ids
+           (mapv :id (take-last (count rose-hand-ids)
+                                (:discard-pile resolved-state)))))
+    (is (= {:player-id :indigo
+            :reason :last-active-player
+            :score 3
+            :target-score 9}
+           (:winner resolved-state)))
+    (is (game-schema/valid-game? resolved-state))))
 
 (deftest focused-transition-namespaces-match-public-facade
   (let [draw-state (deterministic-game)

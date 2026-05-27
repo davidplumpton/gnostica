@@ -359,6 +359,13 @@
    [:starting-player-id [:maybe PlayerId]]
    [:target-score PositiveInt]])
 
+(def Winner
+  [:map
+   [:player-id PlayerId]
+   [:reason [:enum :challenge :last-active-player]]
+   [:score NonNegativeInt]
+   [:target-score PositiveInt]])
+
 (def HistoryEvent
   [:map
    [:type :keyword]])
@@ -377,6 +384,7 @@
     [:draw-pile CardPile]
     [:discard-pile CardPile]
     [:setup Setup]
+    [:winner [:maybe Winner]]
     [:history [:vector HistoryEvent]]]
    [:fn {:error/message "game state must contain two to six players"} participating-player-count?]
    [:fn {:error/message "player ids must be unique"} players-have-unique-ids?]

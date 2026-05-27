@@ -12,7 +12,9 @@
 (def starting-hand-size core/starting-hand-size)
 (def pieces-per-size-in-stash core/pieces-per-size-in-stash)
 (def initial-phase core/initial-phase)
+(def finished-phase core/finished-phase)
 (def default-target-score core/default-target-score)
+(def allowed-target-scores core/allowed-target-scores)
 (def required-player-fields core/required-player-fields)
 (def required-card-fields core/required-card-fields)
 
@@ -31,6 +33,33 @@
 (defn current-player [state]
   (core/current-player state))
 
+(defn player-score [state player-id]
+  (core/player-score state player-id))
+
+(defn scores [state]
+  (core/scores state))
+
+(defn with-current-scores [state]
+  (core/with-current-scores state))
+
+(defn target-score [state]
+  (core/target-score state))
+
+(defn finished? [state]
+  (core/finished? state))
+
+(defn active-challenge-player-id [state]
+  (core/active-challenge-player-id state))
+
+(defn can-announce-challenge? [state player-id]
+  (core/can-announce-challenge? state player-id))
+
+(defn challenge-unavailable-reason [state player-id]
+  (core/challenge-unavailable-reason state player-id))
+
+(defn announce-challenge [state command]
+  (core/announce-challenge state command))
+
 (defn append-history [state event]
   (core/append-history state event))
 
@@ -45,6 +74,9 @@
 
 (defn advance-turn [state]
   (core/advance-turn state))
+
+(defn end-turn [state command]
+  (core/end-turn state command))
 
 (def cup-territory-card-sources cup/cup-territory-card-sources)
 (defn apply-cup-move [state command]

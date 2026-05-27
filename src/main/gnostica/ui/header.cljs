@@ -38,6 +38,46 @@
     {:aria-hidden "true"}
     [icon-view/gnostica-icon :world]]])
 
+(defn- score-pill [{:keys [id score eliminated? challenging?] player-name :name}]
+  [:span.app-score
+   {:class (cond
+             eliminated? "is-eliminated"
+             challenging? "is-challenging")
+    :title (str player-name " score")
+    :data-player-id (name id)}
+   [:span.app-score__name player-name]
+   [:strong score]])
+
+(defn- score-summary [{:keys [players target-score winner finished?]}]
+  (when (seq players)
+    [:div.app-scores
+     (if (and finished? winner)
+       [:span.app-scores__target
+        [:strong (:score winner)]
+        [:span (str "/" (:target-score winner) " won")]]
+       [:span.app-scores__target
+        [:strong target-score]
+        [:span "target"]])
+     (for [player players]
+       ^{:key (:id player)}
+       [score-pill player])]))
+
+(defn- turn-actions [can-end-turn? can-announce-challenge?]
+  (when can-end-turn?
+    [:div.turn-actions
+     [:button.turn-action
+      {:type "button"
+       :disabled (not can-announce-challenge?)
+       :aria-disabled (not can-announce-challenge?)
+       :data-short-label "C"
+       :on-click #(rf/dispatch [events/announce-challenge])}
+      "Challenge"]
+     [:button.turn-action.is-primary
+      {:type "button"
+       :data-short-label "End"
+       :on-click #(rf/dispatch [events/end-turn])}
+      "End turn"]]))
+
 (def panel-toggle-labels
   {:move "Move"
    :territory "Territory"
@@ -57,7 +97,9 @@
      label]))
 
 (defn app-header []
-  (let [{:keys [current-player card-icon-mode open-panels lobby?]} @(rf/subscribe [events/header-view])]
+  (let [{:keys [current-player card-icon-mode open-panels lobby? game-status
+                can-end-turn? can-announce-challenge?]}
+        @(rf/subscribe [events/header-view])]
     [:header.app-header
      [:div.brand
       [:span.brand__mark "G"]
@@ -68,6 +110,9 @@
          [panel-toggle open-panels :move]
          [panel-toggle open-panels :territory]
          [panel-toggle open-panels :cards]])
+      (when-not lobby?
+        [score-summary game-status])
+      [turn-actions can-end-turn? can-announce-challenge?]
       [hotkey-help-toggle]
       [icon-help-toggle]
       [card-icon-mode-toggle card-icon-mode]

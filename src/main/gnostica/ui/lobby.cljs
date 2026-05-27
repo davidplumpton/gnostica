@@ -35,6 +35,20 @@
       {:aria-label "Seat controller"}
       controller-name]]))
 
+(defn- target-score-field [target-score options]
+  [:label.lobby-field.local-lobby__target-score
+   [:span.lobby-field__label "Target"]
+   [:select
+    {:value (str target-score)
+     :aria-label "Target score"
+     :on-change #(rf/dispatch [events/set-lobby-target-score
+                                (event-value %)])}
+    (for [score options]
+      ^{:key score}
+      [:option
+       {:value (str score)}
+       (str score " points")])]])
+
 (defn- player-row [{:keys [slot-id name controller-name] :as player}]
   [:article
    {:class (cond-> "lobby-player"
@@ -60,7 +74,8 @@
     "Remove"]])
 
 (defn local-lobby []
-  (let [{:keys [players player-count min-players max-players can-add? can-start? error]}
+  (let [{:keys [players player-count min-players max-players can-add? can-start? error
+                target-score target-score-options]}
         @(rf/subscribe [events/lobby-view])]
     [:main.app-shell.is-lobby
      [:section.local-lobby
@@ -76,6 +91,7 @@
        (for [player players]
          ^{:key (:slot-id player)}
          [player-row player])]
+      [target-score-field target-score target-score-options]
       (when error
         [:p.local-lobby__error
          {:role "alert"}

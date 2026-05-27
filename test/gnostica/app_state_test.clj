@@ -329,6 +329,37 @@
            (mapv :id (app-state/current-player-hand started-db))))
     (is (game-schema/valid-game? (app-state/game started-db)))))
 
+(deftest lobby-target-score-flows-into-started-game
+  (let [db (app-state/initialize {:start-in-lobby? true
+                                  :player-specs test-player-specs})
+        target-db (app-state/set-lobby-target-score db "10")
+        invalid-db (app-state/set-lobby-target-score db "7")
+        started-db (app-state/start-lobby-game target-db {:shuffle-fn identity})]
+    (is (= 10 (:target-score (app-state/lobby-view target-db))))
+    (is (= :invalid-target-score
+           (get-in invalid-db [:lobby :error :code])))
+    (is (= 10 (get-in started-db [:game :setup :target-score])))
+    (is (game-schema/valid-game? (app-state/game started-db)))))
+
+(deftest header-view-exposes-scoreboard-and-end-turn-controls
+  (let [db (app-state/initialize {:player-specs test-player-specs
+                                  :game-options {:deck-order
+                                                 (deck-with-cards-at
+                                                  {(board-card-position test-player-specs 0) "sun"})}
+                                  :demo-board-pieces [rose-source-piece]})
+        header-view (app-state/header-view db)
+        challenged-db (app-state/end-turn db {:announce-challenge? true})
+        challenged-header (app-state/header-view challenged-db)]
+    (is (true? (:can-end-turn? header-view)))
+    (is (true? (:can-announce-challenge? header-view)))
+    (is (= 9 (get-in header-view [:game-status :target-score])))
+    (is (= 3 (get-in header-view [:game-status :players 0 :score])))
+    (is (:ok? (:turn-result challenged-db)))
+    (is (= :indigo (get-in challenged-db [:game :turn :current-player-id])))
+    (is (= :rose (get-in challenged-header [:game-status :active-challenge-player-id])))
+    (is (false? (:can-announce-challenge? challenged-header)))
+    (is (game-schema/valid-game? (app-state/game challenged-db)))))
+
 (deftest bypass-lobby-initializes-game-for-fixtures
   (let [db (app-state/initialize {:start-in-lobby? true
                                   :bypass-lobby? true

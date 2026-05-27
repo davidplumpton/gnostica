@@ -14,6 +14,7 @@
 (def remove-lobby-player :gnostica.app/remove-lobby-player)
 (def set-lobby-player-name :gnostica.app/set-lobby-player-name)
 (def set-lobby-player-colour :gnostica.app/set-lobby-player-colour)
+(def set-lobby-target-score :gnostica.app/set-lobby-target-score)
 (def start-lobby-game :gnostica.app/start-lobby-game)
 (def select-board-card :gnostica.app/select-board-card)
 (def select-move-source :gnostica.app/select-move-source)
@@ -37,6 +38,8 @@
 (def toggle-move-discard-card :gnostica.app/toggle-move-discard-card)
 (def confirm-move :gnostica.app/confirm-move)
 (def cancel-move :gnostica.app/cancel-move)
+(def end-turn :gnostica.app/end-turn)
+(def announce-challenge :gnostica.app/announce-challenge)
 (def toggle-card-icon-mode :gnostica.app/toggle-card-icon-mode)
 (def toggle-panel :gnostica.app/toggle-panel)
 (def set-panel-open :gnostica.app/set-panel-open)
@@ -57,6 +60,7 @@
 (def pieces :gnostica.app/pieces)
 (def selected-board-index :gnostica.app/selected-board-index)
 (def current-player :gnostica.app/current-player)
+(def game-status :gnostica.app/game-status)
 (def card-zones :gnostica.app/card-zones)
 (def three-texture-errors :gnostica.app/three-texture-errors)
 (def three-runtime-status :gnostica.app/three-runtime-status)
@@ -159,6 +163,11 @@
  set-lobby-player-colour
  (fn [db [_ slot-id player-id]]
    (app-state/set-lobby-player-colour db slot-id player-id)))
+
+(rf/reg-event-db
+ set-lobby-target-score
+ (fn [db [_ target-score]]
+   (app-state/set-lobby-target-score db target-score)))
 
 (rf/reg-event-fx
  start-lobby-game
@@ -280,6 +289,16 @@ select-move-rod-mode
    (app-state/cancel-move db)))
 
 (rf/reg-event-db
+ end-turn
+ (fn [db _]
+   (app-state/end-turn db)))
+
+(rf/reg-event-db
+ announce-challenge
+ (fn [db _]
+   (app-state/end-turn db {:announce-challenge? true})))
+
+(rf/reg-event-db
  toggle-card-icon-mode
  (fn [db _]
    (app-state/toggle-card-icon-mode db)))
@@ -378,6 +397,11 @@ select-move-rod-mode
  :<- [game]
  (fn [state _]
    (some-> state game-state/current-player)))
+
+(rf/reg-sub
+ game-status
+ (fn [db _]
+   (app-state/game-status db)))
 
 (rf/reg-sub
  card-zones
@@ -596,12 +620,18 @@ move-rod-orientation-required?
 (rf/reg-sub
  header-view
  :<- [current-player]
+ :<- [game-status]
  :<- [lobby]
  :<- [card-icon-mode]
  :<- [open-panels]
- (fn [[current-player lobby card-icon-mode open-panels] _]
+ (fn [[current-player game-status lobby card-icon-mode open-panels] _]
    (app-state/header-view-model
     {:current-player current-player
+     :game-status game-status
+     :can-announce-challenge? (and current-player
+                                   game-status
+                                   (nil? (:active-challenge-player-id game-status))
+                                   (not (:finished? game-status)))
      :lobby? (some? lobby)
      :card-icon-mode card-icon-mode
      :open-panels open-panels})))

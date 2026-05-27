@@ -375,6 +375,62 @@
                             :piece-id :rose-disc-minion
                             :target-piece-id :rose-disc-minion}))))
 
+(defn create-endgame-winning-challenge-game [world]
+  (let [world (create-game-with-options
+               world
+               {:deck-order (deck-with-cards-at
+                             {(board-deck-position 2 0) "cups2"
+                              (board-deck-position 2 1) "cupsking"
+                              (board-deck-position 2 2) "sun"
+                              (board-deck-position 2 3) "magician"
+                              (board-deck-position 2 4) "wheeloffortune"})})]
+    (-> world
+        (put-pieces [{:id :rose-spot
+                      :player-id :rose
+                      :space-index 0
+                      :size :small
+                      :orientation :north}
+                     {:id :rose-royalty
+                      :player-id :rose
+                      :space-index 1
+                      :size :small
+                      :orientation :north}
+                     {:id :rose-major-a
+                      :player-id :rose
+                      :space-index 2
+                      :size :small
+                      :orientation :north}
+                     {:id :rose-major-b
+                      :player-id :rose
+                      :space-index 3
+                      :size :small
+                      :orientation :north}
+                     {:id :indigo-piece
+                      :player-id :indigo
+                      :space-index 4
+                      :size :small
+                      :orientation :north}])
+        (update :state game-state/with-current-scores))))
+
+(defn create-endgame-failing-challenge-game [world]
+  (let [world (create-game-with-options
+               world
+               {:deck-order (deck-with-cards-at
+                             {(board-deck-position 2 0) "sun"
+                              (board-deck-position 2 4) "magician"})})]
+    (-> world
+        (put-pieces [{:id :rose-major
+                      :player-id :rose
+                      :space-index 0
+                      :size :small
+                      :orientation :north}
+                     {:id :indigo-piece
+                      :player-id :indigo
+                      :space-index 4
+                      :size :small
+                      :orientation :north}])
+        (update :state game-state/with-current-scores))))
+
 (defn create-rod-enemy-landing-territory-push-game [world]
   (let [world (create-game-with-options
                world
@@ -488,6 +544,16 @@
                                 {:target target}]}]
     (apply-disc-command world command)))
 
+(defn apply-end-turn
+  ([world player-id]
+   (apply-end-turn world player-id false))
+  ([world player-id announce-challenge?]
+   (apply-action world
+                 :end-turn
+                 game-state/end-turn
+                 {:player-id player-id
+                  :announce-challenge? announce-challenge?})))
+
 (defn state-at [world path]
   (get-in (:state world) path))
 
@@ -507,6 +573,22 @@
 
 (defn player-hand-ids [world player-id]
   (mapv :id (get-in (:state world) [:players-by-id player-id :hand])))
+
+(defn player-score [world player-id]
+  (get-in (:state world) [:players-by-id player-id :score]))
+
+(defn player-eliminated? [world player-id]
+  (true? (get-in (:state world) [:players-by-id player-id :eliminated?])))
+
+(defn active-challenge-player-id [world]
+  (game-state/active-challenge-player-id (:state world)))
+
+(defn winner [world]
+  (:winner (:state world)))
+
+(defn player-piece-count [world player-id]
+  (count (filter #(= player-id (:player-id %))
+                 (state-at world [:pieces :on-board]))))
 
 (defn discard-ids [world]
   (mapv :id (state-at world [:discard-pile])))

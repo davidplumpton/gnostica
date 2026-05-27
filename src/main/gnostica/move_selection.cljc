@@ -734,6 +734,9 @@
       (nil? player)
       "No current player is available."
 
+      (game-state/finished? (game db))
+      "The game is finished."
+
       (= :activate-territory source-id)
       (when-not (seq owned-pieces)
         "The current player has no pieces on the board.")

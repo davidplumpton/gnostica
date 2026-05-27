@@ -1,5 +1,6 @@
 (ns gnostica.feature-steps
-  (:require [gnostica.board :as board]
+  (:require [clojure.string :as str]
+            [gnostica.board :as board]
             [gnostica.feature-runner :as feature-runner]
             [gnostica.feature-world :as world]))
 
@@ -8,6 +9,9 @@
 
 (defn- parse-keyword [value]
   (keyword value))
+
+(defn- parse-player-id [value]
+  (keyword (str/lower-case value)))
 
 (defn- parse-quoted-values [value]
   (mapv second (re-seq #"\"([^\"]+)\"" value)))
@@ -163,6 +167,12 @@
             (parse-int board-index)
             (parse-keyword orientation)))}
 
+   {:pattern #"^an endgame challenge game where Rose controls 9 points$"
+    :run world/create-endgame-winning-challenge-game}
+
+   {:pattern #"^an endgame challenge game where Rose controls 3 points$"
+    :run world/create-endgame-failing-challenge-game}
+
    {:pattern #"^Rose moves the Rod minion (\d+) space(?:s)?$"
     :run (fn [world distance]
            (world/apply-rod-minion-move world (parse-int distance) nil))}
@@ -218,6 +228,14 @@
    {:pattern #"^Rose uses Strength to grow the Rose Disc piece twice$"
     :run world/apply-strength-disc-piece-shortcut}
 
+   {:pattern #"^Rose announces a final-turn challenge$"
+    :run (fn [world]
+           (world/apply-end-turn world :rose true))}
+
+   {:pattern #"^([A-Z][a-z]+) ends the turn$"
+    :run (fn [world player-name]
+           (world/apply-end-turn world (parse-player-id player-name)))}
+
    {:pattern #"^the Rod action succeeds$"
     :run (fn [world]
            (let [result (:last-result world)]
@@ -263,8 +281,89 @@
                      :unexpected-disc-rejection
                      "The Disc action rejection did not match the expected error code."
                      {:expected expected-code
-                      :actual actual-code
-                      :result result})))}
+                     :actual actual-code
+                     :result result})))}
+
+   {:pattern #"^the endgame action succeeds$"
+    :run (fn [world]
+           (let [result (:last-result world)]
+             (expect world
+                     (:ok? result)
+                     :endgame-action-failed
+                     "The endgame action was expected to succeed."
+                     {:error (:error result)
+                      :last-action (:last-action world)})))}
+
+   {:pattern #"^([A-Z][a-z]+) has score (\d+)$"
+    :run (fn [world player-name expected-score]
+           (let [player-id (parse-player-id player-name)
+                 expected-score (parse-int expected-score)
+                 actual-score (world/player-score world player-id)]
+             (expect world
+                     (= expected-score actual-score)
+                     :unexpected-player-score
+                     "The player score did not match."
+                     {:player-id player-id
+                      :expected expected-score
+                      :actual actual-score})))}
+
+   {:pattern #"^([A-Z][a-z]+) has an unresolved challenge$"
+    :run (fn [world player-name]
+           (let [player-id (parse-player-id player-name)]
+             (expect world
+                     (= player-id (world/active-challenge-player-id world))
+                     :unexpected-active-challenge
+                     "The active challenge player did not match."
+                     {:expected player-id
+                      :actual (world/active-challenge-player-id world)})))}
+
+   {:pattern #"^([A-Z][a-z]+) is eliminated$"
+    :run (fn [world player-name]
+           (let [player-id (parse-player-id player-name)]
+             (expect world
+                     (world/player-eliminated? world player-id)
+                     :player-not-eliminated
+                     "The player was expected to be eliminated."
+                     {:player-id player-id
+                      :player (get-in (:state world) [:players-by-id player-id])})))}
+
+   {:pattern #"^([A-Z][a-z]+) has no pieces on the board$"
+    :run (fn [world player-name]
+           (let [player-id (parse-player-id player-name)
+                 piece-count (world/player-piece-count world player-id)]
+             (expect world
+                     (zero? piece-count)
+                     :unexpected-player-pieces
+                     "The player still has board pieces."
+                     {:player-id player-id
+                      :piece-count piece-count})))}
+
+   {:pattern #"^([A-Z][a-z]+) has (\d+) cards in hand$"
+    :run (fn [world player-name expected-count]
+           (let [player-id (parse-player-id player-name)
+                 expected-count (parse-int expected-count)
+                 actual-count (count (world/player-hand-ids world player-id))]
+             (expect world
+                     (= expected-count actual-count)
+                     :unexpected-player-hand-count
+                     "The player hand count did not match."
+                     {:player-id player-id
+                      :expected expected-count
+                      :actual actual-count
+                      :hand (world/player-hand-ids world player-id)})))}
+
+   {:pattern #"^the game winner is ([A-Z][a-z]+) by ([a-z-]+)$"
+    :run (fn [world player-name reason]
+           (let [expected {:player-id (parse-player-id player-name)
+                           :reason (parse-keyword reason)}
+                 actual (select-keys (world/winner world) [:player-id :reason])]
+             (expect world
+                     (= expected actual)
+                     :unexpected-game-winner
+                     "The winner did not match."
+                     {:expected expected
+                      :actual actual
+                      :winner (world/winner world)})))}
 
    {:pattern #"^the previous state was not mutated$"
     :run (fn [world]

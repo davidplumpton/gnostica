@@ -196,7 +196,8 @@ img {
 .card-icon-mode-toggle,
 .panel-toggle,
 .hotkey-help-toggle,
-.icon-help-toggle {
+.icon-help-toggle,
+.turn-action {
   display: inline-flex;
   align-items: center;
   gap: 0.38rem;
@@ -216,7 +217,9 @@ img {
 .hotkey-help-toggle:hover,
 .hotkey-help-toggle:focus-visible,
 .icon-help-toggle:hover,
-.icon-help-toggle:focus-visible {
+.icon-help-toggle:focus-visible,
+.turn-action:hover,
+.turn-action:focus-visible {
   border-color: var(--focus);
   outline: 2px solid rgba(159, 247, 231, 0.38);
   outline-offset: 2px;
@@ -226,6 +229,31 @@ img {
 .panel-toggle.is-active {
   border-color: rgba(255, 224, 138, 0.72);
   background: rgba(255, 224, 138, 0.15);
+}
+
+.turn-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.turn-action {
+  min-width: 5rem;
+  justify-content: center;
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0;
+}
+
+.turn-action.is-primary {
+  border-color: rgba(159, 247, 231, 0.55);
+  background: rgba(159, 247, 231, 0.16);
+}
+
+.turn-action:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
 }
 
 .panel-toggle {
@@ -328,6 +356,51 @@ img {
   overflow-wrap: anywhere;
 }
 
+.app-scores {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.app-scores__target,
+.app-score {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.25rem;
+  min-height: 1.9rem;
+  padding: 0.16rem 0.48rem;
+  border: 1px solid rgba(255, 250, 240, 0.24);
+  border-radius: 6px;
+  background: rgba(18, 7, 15, 0.22);
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.app-score strong,
+.app-scores__target strong {
+  color: var(--ink);
+  font-size: 0.88rem;
+}
+
+.app-score.is-challenging {
+  border-color: rgba(255, 224, 138, 0.72);
+  color: var(--accent);
+}
+
+.app-score.is-eliminated {
+  opacity: 0.48;
+  text-decoration: line-through;
+}
+
+.app-score__name {
+  max-width: 5.6rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .app-shell {
   position: relative;
   display: block;
@@ -426,6 +499,10 @@ img {
   display: grid;
   gap: 0.6rem;
   min-width: 0;
+}
+
+.local-lobby__target-score {
+  width: min(14rem, 100%);
 }
 
 .lobby-player {
@@ -1738,6 +1815,27 @@ h1 {
 
   .app-status {
     display: none;
+  }
+
+  .app-scores {
+    display: none;
+  }
+
+  .turn-actions {
+    gap: 0.25rem;
+  }
+
+  .turn-action {
+    min-width: 2.65rem;
+    width: 2.65rem;
+    padding: 0.2rem;
+    font-size: 0;
+  }
+
+  .turn-action::before {
+    content: attr(data-short-label);
+    font-size: 0.78rem;
+    font-weight: 800;
   }
 
   .panel-toggles {

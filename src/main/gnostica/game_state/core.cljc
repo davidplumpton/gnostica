@@ -15,18 +15,24 @@
 
 (def initial-phase :setup)
 
+(def finished-phase :finished)
+
 (def default-target-score 9)
+
+(def allowed-target-scores #{8 9 10})
 
 (def required-player-fields [:id :name :color :css-color])
 
 (def required-card-fields [:id :title :image])
+
+(declare with-current-scores)
 
 (defn success
   ([state]
    (success state []))
   ([state events]
    {:ok? true
-    :state state
+    :state (with-current-scores state)
     :events (vec events)}))
 
 (defn failure [code message data]
@@ -248,6 +254,18 @@
          (failure :duplicate-card-ids
                   "Deck card ids must be unique."
                   {:duplicate-ids duplicate-ids}))))))
+
+(defn- target-score-option [opts]
+  (if (contains? opts :target-score)
+    (:target-score opts)
+    default-target-score))
+
+(defn- validate-target-score [target-score]
+  (when-not (contains? allowed-target-scores target-score)
+    (failure :invalid-target-score
+             "Gnostica target score must be 8, 9, or 10."
+             {:target-score target-score
+              :allowed-target-scores (vec (sort allowed-target-scores))})))
 
 (defn- initial-stashes [players]
   (into {}
@@ -518,15 +536,214 @@
                       cell))
                   cells))))
 
+(defn- scoreable-state? [state]
+  (and (map? state)
+       (sequential? (:players state))
+       (sequential? (:board state))
+       (map? (:pieces state))))
+
+(defn- controlled-territory-player-id [pieces]
+  (let [player-ids (set (map :player-id pieces))]
+    (when (and (seq pieces)
+               (= 1 (count player-ids)))
+      (first player-ids))))
+
+(defn player-score [state player-id]
+  (reduce
+   (fn [score cell]
+     (let [pieces (pieces-at-board-index state (:index cell))]
+       (if (= player-id (controlled-territory-player-id pieces))
+         (+ score (or (cards/card-point-value (:card cell)) 0))
+         score)))
+   0
+   (:board state)))
+
+(defn scores [state]
+  (into {}
+        (map (fn [{:keys [id eliminated?]}]
+               [id (if eliminated?
+                     0
+                     (player-score state id))]))
+        (:players state)))
+
+(defn with-current-scores [state]
+  (if-not (scoreable-state? state)
+    state
+    (let [scores-by-player-id (scores state)
+          players (mapv (fn [player]
+                          (assoc player
+                                 :score (get scores-by-player-id
+                                             (:id player)
+                                             0)))
+                        (:players state))]
+      (assoc state
+             :players players
+             :players-by-id (rebuild-players-by-id players)))))
+
+(defn target-score [state]
+  (get-in state [:setup :target-score] default-target-score))
+
+(defn finished? [state]
+  (= finished-phase (:phase state)))
+
+(defn player-eliminated? [state player-id]
+  (true? (get-in state [:players-by-id player-id :eliminated?])))
+
+(defn- unresolved-challenge? [challenge]
+  (= :announced (:status challenge)))
+
+(defn active-challenge-player-id [state]
+  (some (fn [{:keys [id challenge eliminated?]}]
+          (when (and (not eliminated?)
+                     (unresolved-challenge? challenge))
+            id))
+        (:players state)))
+
+(defn can-announce-challenge? [state player-id]
+  (and (some? (get-in state [:players-by-id player-id]))
+       (current-player-id? state player-id)
+       (not (finished? state))
+       (not (player-eliminated? state player-id))
+       (nil? (active-challenge-player-id state))))
+
+(defn challenge-unavailable-reason [state player-id]
+  (let [active-challenger-id (active-challenge-player-id state)]
+    (cond
+      (nil? (get-in state [:players-by-id player-id]))
+      "Unknown player."
+
+      (not (current-player-id? state player-id))
+      "Only the current player can announce a challenge."
+
+      (finished? state)
+      "The game is already finished."
+
+      (player-eliminated? state player-id)
+      "Eliminated players cannot announce a challenge."
+
+      (= active-challenger-id player-id)
+      "This player already has an unresolved challenge."
+
+      active-challenger-id
+      "Another player has an unresolved challenge.")))
+
+(defn announce-challenge [state {:keys [player-id]}]
+  (let [state (with-current-scores state)]
+    (if-let [reason (challenge-unavailable-reason state player-id)]
+      (failure :challenge-unavailable
+               reason
+               {:player-id player-id
+                :active-challenge-player-id (active-challenge-player-id state)})
+      (let [challenge {:status :announced
+                       :target-score (target-score state)
+                       :score-at-announcement (get-in state [:players-by-id player-id :score])
+                       :announced-round (get-in state [:turn :round])
+                       :announced-turn-index (get-in state [:turn :current-player-index])}
+            event {:type :challenge/announced
+                   :player-id player-id
+                   :score (:score-at-announcement challenge)
+                   :target-score (:target-score challenge)
+                   :round (:announced-round challenge)}
+            next-state (-> state
+                           (update-player player-id assoc :challenge challenge)
+                           (append-history event))]
+        (success next-state [event])))))
+
+(defn- active-players [state]
+  (filterv (comp not :eliminated?) (:players state)))
+
+(defn- single-active-player-id [state]
+  (let [active (active-players state)]
+    (when (= 1 (count active))
+      (:id (first active)))))
+
+(defn- current-player-index-for [state player-id]
+  (let [order (get-in state [:turn :order])]
+    (first
+     (keep-indexed (fn [index id]
+                     (when (= player-id id)
+                       index))
+                   order))))
+
+(defn- set-current-player [state player-id]
+  (if-let [index (current-player-index-for state player-id)]
+    (assoc-in (assoc-in state [:turn :current-player-index] index)
+              [:turn :current-player-id]
+              player-id)
+    state))
+
+(defn- finish-game [state winner-id reason score target-score]
+  (let [event {:type :game/won
+               :player-id winner-id
+               :reason reason
+               :score score
+               :target-score target-score}
+        next-state (-> state
+                       (set-current-player winner-id)
+                       (assoc :phase finished-phase
+                              :winner {:player-id winner-id
+                                       :reason reason
+                                       :score score
+                                       :target-score target-score})
+                       (append-history event))]
+    {:state next-state
+     :event event}))
+
+(defn- return-pieces-to-stash [state pieces]
+  (reduce (fn [next-state {:keys [player-id size]}]
+            (increment-stash next-state player-id size))
+          state
+          pieces))
+
+(defn- remove-player-pieces [state player-id]
+  (update-in state [:pieces :on-board]
+             (fn [board-pieces]
+               (vec (remove #(= player-id (:player-id %)) board-pieces)))))
+
+(defn- eliminate-player [state player-id score target-score]
+  (let [removed-pieces (player-pieces state player-id)
+        discarded-hand (vec (get-in state [:players-by-id player-id :hand]))
+        event {:type :challenge/failed
+               :player-id player-id
+               :score score
+               :target-score target-score
+               :discarded-card-ids (mapv :id discarded-hand)
+               :removed-piece-ids (mapv :id removed-pieces)}
+        next-state (-> state
+                       (return-pieces-to-stash removed-pieces)
+                       (remove-player-pieces player-id)
+                       (update-player player-id assoc
+                                      :hand []
+                                      :score 0
+                                      :challenge nil
+                                      :eliminated? true)
+                       (discard-cards discarded-hand)
+                       (with-current-scores)
+                       (append-history event))]
+    {:state next-state
+     :event event}))
+
+(defn- next-active-index [state order current-player-index]
+  (let [player-active? (fn [player-id]
+                         (not (player-eliminated? state player-id)))
+        player-count (count order)]
+    (some (fn [offset]
+            (let [index (mod (+ current-player-index offset) player-count)]
+              (when (player-active? (get order index))
+                index)))
+          (range 1 (inc player-count)))))
+
 (defn create-game
   ([player-specs]
    (create-game player-specs {}))
   ([player-specs opts]
    (if-let [error (validate-player-specs player-specs)]
      error
-     (let [minimum-card-count (required-starting-card-count (count player-specs))
+     (let [target-score (target-score-option opts)
+           minimum-card-count (required-starting-card-count (count player-specs))
            source-deck (deck-source opts)]
-       (if-let [error (validate-deck source-deck minimum-card-count)]
+       (if-let [error (or (validate-target-score target-score)
+                          (validate-deck source-deck minimum-card-count))]
          error
          (let [deck (ordered-deck opts)]
            (if-let [error (validate-deck deck minimum-card-count)]
@@ -551,26 +768,132 @@
                           :setup {:bids {}
                                   :bid-history []
                                   :starting-player-id nil
-                                  :target-score default-target-score}
+                                  :target-score target-score}
+                          :winner nil
                           :history [event]}]
                (success state [event])))))))))
 
 (defn advance-turn [state]
-  (let [{:keys [order current-player-index round]} (:turn state)]
-    (if (seq order)
-      (let [next-index (mod (inc current-player-index) (count order))
-            next-round (if (zero? next-index) (inc round) round)
-            next-player-id (get order next-index)
-            event {:type :turn/advanced
-                   :player-id next-player-id
-                   :round next-round}
-            next-state (-> state
-                           (assoc :turn {:order order
-                                         :current-player-index next-index
-                                         :current-player-id next-player-id
-                                         :round next-round})
-                           (append-history event))]
-        (success next-state [event]))
+  (let [state (with-current-scores state)
+        {:keys [order current-player-index round]} (:turn state)]
+    (cond
+      (finished? state)
+      (failure :game-finished
+               "Cannot advance turn after the game is finished."
+               {:winner (:winner state)})
+
+      (not (seq order))
       (failure :missing-turn-order
                "Cannot advance turn without a player order."
-               {:turn (:turn state)}))))
+               {:turn (:turn state)})
+
+      :else
+      (if-let [next-index (next-active-index state order current-player-index)]
+        (let [next-round (if (<= next-index current-player-index)
+                           (inc round)
+                           round)
+              next-player-id (get order next-index)
+              event {:type :turn/advanced
+                     :player-id next-player-id
+                     :round next-round}
+              next-state (-> state
+                             (assoc :turn {:order order
+                                           :current-player-index next-index
+                                           :current-player-id next-player-id
+                                           :round next-round})
+                             (append-history event))]
+          (success next-state [event]))
+        (failure :no-active-players
+                 "Cannot advance turn without an active player."
+                 {:turn (:turn state)})))))
+
+(defn- resolve-challenge [state player-id]
+  (let [state (with-current-scores state)
+        score (get-in state [:players-by-id player-id :score] 0)
+        target-score (target-score state)]
+    (if (<= target-score score)
+      (let [challenge-event {:type :challenge/won
+                             :player-id player-id
+                             :score score
+                             :target-score target-score}
+            winner-result (finish-game
+                           (-> state
+                               (update-player player-id assoc-in
+                                              [:challenge :status]
+                                              :won)
+                               (append-history challenge-event))
+                           player-id
+                           :challenge
+                           score
+                           target-score)]
+        (success (:state winner-result)
+                 [challenge-event (:event winner-result)]))
+      (let [{eliminated-state :state
+             eliminated-event :event} (eliminate-player state
+                                                        player-id
+                                                        score
+                                                        target-score)]
+        (if-let [winner-id (single-active-player-id eliminated-state)]
+          (let [winner-score (get-in eliminated-state [:players-by-id winner-id :score] 0)
+                winner-result (finish-game eliminated-state
+                                           winner-id
+                                           :last-active-player
+                                           winner-score
+                                           target-score)]
+            (success (:state winner-result)
+                     [eliminated-event (:event winner-result)]))
+          (let [{:keys [ok? state events error]} (advance-turn eliminated-state)]
+            (if ok?
+              (success state (into [eliminated-event] events))
+              (failure (:code error)
+                       (:message error)
+                       (:data error)))))))))
+
+(defn end-turn [state {:keys [player-id announce-challenge? challenge?]}]
+  (let [announce-challenge? (or announce-challenge? challenge?)
+        state (with-current-scores state)
+        player (get-in state [:players-by-id player-id])]
+    (cond
+      (nil? player)
+      (failure :unknown-player
+               "Cannot end a turn for an unknown player."
+               {:player-id player-id})
+
+      (not (current-player-id? state player-id))
+      (failure :not-current-player
+               "Only the current player can end their turn."
+               {:player-id player-id
+                :current-player-id (get-in state [:turn :current-player-id])})
+
+      (finished? state)
+      (failure :game-finished
+               "The game is already finished."
+               {:winner (:winner state)})
+
+      (player-eliminated? state player-id)
+      (failure :player-eliminated
+               "Eliminated players cannot take turns."
+               {:player-id player-id})
+
+      (unresolved-challenge? (:challenge player))
+      (resolve-challenge state player-id)
+
+      announce-challenge?
+      (let [{:keys [ok? state events error]} (announce-challenge state
+                                                                  {:player-id player-id})]
+        (if ok?
+          (let [{advanced-ok? :ok?
+                 advanced-state :state
+                 advanced-events :events
+                 advanced-error :error} (advance-turn state)]
+            (if advanced-ok?
+              (success advanced-state (into events advanced-events))
+              (failure (:code advanced-error)
+                       (:message advanced-error)
+                       (:data advanced-error))))
+          (failure (:code error)
+                   (:message error)
+                   (:data error))))
+
+      :else
+      (advance-turn state))))

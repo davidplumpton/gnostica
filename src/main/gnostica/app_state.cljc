@@ -19,6 +19,9 @@
 
 (def default-icon-help-open? false)
 
+(def target-score-options
+  (vec (sort game-state/allowed-target-scores)))
+
 (def panel-ids
   #{:cards :move :territory})
 
@@ -62,6 +65,17 @@
              (if (str/blank? controller-name)
                "Local browser"
                controller-name))}))
+
+(defn- normalize-target-score [target-score]
+  (let [score (cond
+                (int? target-score)
+                target-score
+
+                (string? target-score)
+                (some #(when (= target-score (str %)) %)
+                      target-score-options))]
+    (when (contains? game-state/allowed-target-scores score)
+      score)))
 
 (defn- lobby-error [code message data]
   {:code code
@@ -368,6 +382,23 @@
                                players)))
             refresh-lobby-error)))))
 
+(defn set-lobby-target-score [db target-score]
+  (cond
+    (not (lobby-active? db))
+    db
+
+    :else
+    (if-let [target-score (normalize-target-score target-score)]
+      (-> db
+          (assoc-in [:lobby :start-options :game-options :target-score]
+                    target-score)
+          refresh-lobby-error)
+      (assoc-in db [:lobby :error]
+                (lobby-error :invalid-target-score
+                             "Choose an 8, 9, or 10 point game."
+                             {:target-score target-score
+                              :allowed-target-scores target-score-options})))))
+
 (defn- game-options-with-transition-shuffle [game-options transition-options]
   (let [game-options (or game-options {})
         shuffle-fn (:shuffle-fn transition-options)]
@@ -408,6 +439,8 @@
 (defn lobby-view-model [{:keys [lobby]}]
   (let [players (:players lobby)
         local-controller (:local-controller lobby)
+        target-score (or (get-in lobby [:start-options :game-options :target-score])
+                         game-state/default-target-score)
         used-player-ids (set (map :id players))
         validation-error (when lobby
                            (lobby-validation-error lobby))
@@ -426,6 +459,8 @@
                     players)
      :local-controller local-controller
      :local-control? (some? local-controller)
+     :target-score target-score
+     :target-score-options target-score-options
      :available-colours (mapv #(assoc (select-keys % [:id :name :css-color])
                                       :available?
                                       (not (contains? used-player-ids (:id %))))
@@ -525,6 +560,32 @@
 
 (defn current-player [db]
   (some-> (game db) game-state/current-player))
+
+(defn current-player-id [db]
+  (get-in db [:game :turn :current-player-id]))
+
+(defn game-status [db]
+  (when-let [state (game db)]
+    (let [scores (game-state/scores state)
+          active-challenge-player-id (game-state/active-challenge-player-id state)]
+      {:phase (:phase state)
+       :finished? (game-state/finished? state)
+       :winner (:winner state)
+       :target-score (game-state/target-score state)
+       :active-challenge-player-id active-challenge-player-id
+       :players (mapv (fn [{:keys [id name eliminated? challenge]}]
+                         {:id id
+                          :name name
+                          :score (get scores id 0)
+                          :eliminated? (true? eliminated?)
+                          :challenging? (= id active-challenge-player-id)
+                          :challenge challenge})
+                       (:players state))})))
+
+(defn can-announce-challenge? [db]
+  (if-let [player-id (current-player-id db)]
+    (game-state/can-announce-challenge? (game db) player-id)
+    false))
 
 (defn current-player-hand [db]
   (vec (:hand (current-player db))))
@@ -643,6 +704,30 @@
      index)
     db))
 
+(defn- apply-end-turn-result [db result]
+  (if (:ok? result)
+    (assoc db
+           :game (:state result)
+           :turn-result result
+           :move-selection (assoc (empty-move-selection)
+                                  :last-result result))
+    (assoc db :turn-result result)))
+
+(defn end-turn
+  ([db]
+   (end-turn db {}))
+  ([db command]
+   (let [player-id (or (:player-id command)
+                       (current-player-id db))
+         result (if-let [state (game db)]
+                  (game-state/end-turn
+                   state
+                   (assoc command :player-id player-id))
+                  (game-state/failure :missing-game
+                                      "Cannot end a turn before a game has started."
+                                      {}))]
+     (apply-end-turn-result db result))))
+
 (def select-move-wasteland-target move-selection/select-move-wasteland-target)
 (def select-move-piece move-selection/select-move-piece)
 (def select-move-hand-card move-selection/select-move-hand-card)
@@ -746,18 +831,27 @@
     :damage-options (move-damage-options db)
     :draw-options (draw-count-options db)}))
 
-(defn header-view-model [{:keys [current-player card-icon-mode open-panels lobby?]}]
+(defn header-view-model
+  [{:keys [current-player card-icon-mode open-panels lobby?
+           game-status can-announce-challenge?]}]
   {:current-player current-player
    :card-icon-mode card-icon-mode
    :open-panels (normalize-open-panels open-panels)
-   :lobby? (true? lobby?)})
+   :lobby? (true? lobby?)
+   :game-status game-status
+   :can-end-turn? (boolean (and current-player
+                                (not lobby?)
+                                (not (:finished? game-status))))
+   :can-announce-challenge? (boolean can-announce-challenge?)})
 
 (defn header-view [db]
   (header-view-model
    {:current-player (current-player db)
     :card-icon-mode (card-icon-mode db)
     :open-panels (open-panels db)
-    :lobby? (lobby-active? db)}))
+    :lobby? (lobby-active? db)
+    :game-status (game-status db)
+    :can-announce-challenge? (can-announce-challenge? db)}))
 
 (defn lobby-view [db]
   (lobby-view-model {:lobby (lobby db)}))
