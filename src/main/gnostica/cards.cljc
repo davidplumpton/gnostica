@@ -116,6 +116,21 @@
 
 (def one-point-rank-keys #{"ace" "2" "3" "4" "5" "6" "7" "8" "9" "10"})
 
+(def minor-bid-rank-order
+  ["ace" "2" "3" "4" "5" "6" "7" "8" "9" "10" "page" "knight" "queen" "king"])
+
+(def minor-bid-ranks
+  (into {}
+        (map-indexed (fn [index rank-key]
+                       [rank-key (inc index)]))
+        minor-bid-rank-order))
+
+(def major-bid-ranks
+  (into {}
+        (map-indexed (fn [index card-id]
+                       [card-id index]))
+        icons/major-arcana-card-ids))
+
 (def cup-icon-variants
   {:cup :cup
    :cup-unbounded :cup-unbounded
@@ -293,6 +308,34 @@
 
 (defn sword-card? [card]
   (boolean (seq (sword-variants card))))
+
+(defn major-bid-rank [card]
+  (let [card (known-card card)]
+    (when (= :major (:arcana card))
+      (get major-bid-ranks (:id card)))))
+
+(defn minor-bid-rank [card]
+  (let [card (known-card card)
+        [suit-key rank-key] (minor-parts card)]
+    (when (and (= :minor (:arcana card))
+               (contains? (set suit-prefixes) suit-key))
+      (get minor-bid-ranks rank-key))))
+
+(defn bid-rank [card]
+  (let [card (known-card card)]
+    (cond
+      (some? (major-bid-rank card))
+      {:arcana :major
+       :rank (major-bid-rank card)
+       :card-id (:id card)}
+
+      (some? (minor-bid-rank card))
+      (let [[suit-key rank-key] (minor-parts card)]
+        {:arcana :minor
+         :rank (minor-bid-rank card)
+         :suit-key suit-key
+         :rank-key rank-key
+         :card-id (:id card)}))))
 
 (defn one-point-card? [card]
   (let [card (known-card card)

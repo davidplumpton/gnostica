@@ -140,6 +140,28 @@
   (is (not (cards/sword-card? (cards/card-by-id "cups2"))))
   (is (not (cards/sword-card? (cards/card-by-id "strength")))))
 
+(deftest bid-ranks-follow-official-starting-order
+  (is (= 0 (cards/major-bid-rank (cards/card-by-id "fool"))))
+  (is (= 21 (cards/major-bid-rank (cards/card-by-id "world"))))
+  (is (= 8 (cards/major-bid-rank (cards/card-by-id "justice"))))
+  (is (= 11 (cards/major-bid-rank (cards/card-by-id "strength"))))
+  (is (= 1 (cards/minor-bid-rank (cards/card-by-id "cupsace"))))
+  (is (= 10 (cards/minor-bid-rank (cards/card-by-id "swords10"))))
+  (is (= 14 (cards/minor-bid-rank (cards/card-by-id "wandsking"))))
+  (is (= {:arcana :major
+          :rank 21
+          :card-id "world"}
+         (cards/bid-rank (cards/card-by-id "world"))))
+  (is (= {:arcana :minor
+          :rank 14
+          :suit-key "cups"
+          :rank-key "king"
+          :card-id "cupsking"}
+         (cards/bid-rank (cards/card-by-id "cupsking"))))
+  (is (nil? (cards/bid-rank {:id "unknown"
+                             :title "Unknown"
+                             :image "/images/unknown.png"}))))
+
 (deftest card-point-values-support-territory-growth_steps
   (is (= 1 (cards/card-point-value (cards/card-by-id "coins2"))))
   (is (= 2 (cards/card-point-value (cards/card-by-id "cupsking"))))

@@ -18,6 +18,14 @@
    {:id :indigo
     :name "Indigo"}])
 
+(def three-player-specs
+  [{:id :rose
+    :name "Rose"}
+   {:id :indigo
+    :name "Indigo"}
+   {:id :gold
+    :name "Gold"}])
+
 (defn- card-ids [cards]
   (mapv :id cards))
 
@@ -339,6 +347,137 @@
     (is (false? (:ok? invalid-result)))
     (is (= :invalid-target-score
            (get-in invalid-result [:error :code])))))
+
+(deftest official-starting-bid-can-make_a_major_bidder_start
+  (let [deck-order (deck-with-cards-at {0 "cupsking"
+                                        game-state/starting-hand-size "fool"})
+        {:keys [ok? state events]} (game-state/create-game
+                                    player-specs
+                                    {:deck-order deck-order
+                                     :starting-bids
+                                     {:rounds [{:rose "cupsking"
+                                                :indigo "fool"}]
+                                      :redraws {:rose ["fool"]
+                                                :indigo ["cupsking"]}}})]
+    (is ok?)
+    (is (= [:game/created :setup/starting-player-determined]
+           (mapv :type events)))
+    (is (= :indigo (get-in state [:setup :starting-player-id])))
+    (is (= [:indigo :rose] (get-in state [:turn :order])))
+    (is (= :indigo (get-in state [:turn :current-player-id])))
+    (is (= [:indigo :rose] (mapv :id (:players state))))
+    (is (= ["fool"]
+           (take-last 1 (player-hand-ids state :rose))))
+    (is (= ["cupsking"]
+           (take-last 1 (player-hand-ids state :indigo))))
+    (is (= [{:round 1
+             :bids {:rose "cupsking"
+                    :indigo "fool"}
+             :considered-arcana :major
+             :winning-rank 0
+             :tied-player-ids [:indigo]
+             :tied-card-ids ["fool"]
+             :winner-id :indigo
+             :winning-card-id "fool"}]
+           (get-in state [:setup :bid-history])))
+    (is (= [:rose :indigo]
+           (get-in state [:setup :bid-redraw-order])))
+    (is (= [{:player-id :rose
+             :card-ids ["fool"]}
+            {:player-id :indigo
+             :card-ids ["cupsking"]}]
+           (get-in state [:setup :bid-redraws])))
+    (is (= (count cards/deck) (count (all-card-ids state))))
+    (is (= (count cards/deck) (count (set (all-card-ids state)))))
+    (is (game-schema/valid-game? state))))
+
+(deftest official-starting-bid-rebids_after_tied_minors_and_redraws_counterclockwise
+  (let [deck-order (deck-with-cards-at {0 "cupsking"
+                                        1 "coins2"
+                                        6 "swordsking"
+                                        7 "cups3"
+                                        12 "wandsqueen"
+                                        13 "world"})
+        {:keys [ok? state events]} (game-state/create-game
+                                    three-player-specs
+                                    {:deck-order deck-order
+                                     :starting-bids
+                                     {:rounds [{:rose "cupsking"
+                                                :indigo "swordsking"
+                                                :gold "wandsqueen"}
+                                               {:rose "coins2"
+                                                :indigo "cups3"
+                                                :gold "world"}]
+                                      :redraws {:indigo ["world" "cupsking"]
+                                                :rose ["swordsking" "wandsqueen"]
+                                                :gold ["coins2" "cups3"]}}})]
+    (is ok?)
+    (is (= [:game/created :setup/starting-player-determined]
+           (mapv :type events)))
+    (is (= :gold (get-in state [:setup :starting-player-id])))
+    (is (= [:gold :rose :indigo] (get-in state [:turn :order])))
+    (is (= :gold (get-in state [:turn :current-player-id])))
+    (is (= [:gold :rose :indigo] (mapv :id (:players state))))
+    (is (= [:indigo :rose :gold]
+           (get-in state [:setup :bid-redraw-order])))
+    (is (= [{:round 1
+             :bids {:rose "cupsking"
+                    :indigo "swordsking"
+                    :gold "wandsqueen"}
+             :considered-arcana :minor
+             :winning-rank 14
+             :tied-player-ids [:rose :indigo]
+             :tied-card-ids ["cupsking" "swordsking"]}
+            {:round 2
+             :bids {:rose "coins2"
+                    :indigo "cups3"
+                    :gold "world"}
+             :considered-arcana :major
+             :winning-rank 21
+             :tied-player-ids [:gold]
+             :tied-card-ids ["world"]
+             :winner-id :gold
+             :winning-card-id "world"}]
+           (get-in state [:setup :bid-history])))
+    (is (= [{:player-id :indigo
+             :card-ids ["world" "cupsking"]}
+            {:player-id :rose
+             :card-ids ["swordsking" "wandsqueen"]}
+            {:player-id :gold
+             :card-ids ["coins2" "cups3"]}]
+           (get-in state [:setup :bid-redraws])))
+    (is (every? #(= game-state/starting-hand-size (count (:hand %)))
+                (:players state)))
+    (is (= (count cards/deck) (count (all-card-ids state))))
+    (is (= (count cards/deck) (count (set (all-card-ids state)))))
+    (is (game-schema/valid-game? state))))
+
+(deftest official-starting-bid-rejects_unresolved_ties_and_invalid_redraws
+  (let [tie-deck (deck-with-cards-at {0 "cupsking"
+                                      6 "swordsking"})
+        tied-result (game-state/create-game
+                     player-specs
+                     {:deck-order tie-deck
+                      :starting-bids
+                      {:rounds [{:rose "cupsking"
+                                 :indigo "swordsking"}]
+                       :redraws {:rose ["swordsking"]
+                                 :indigo ["cupsking"]}}})
+        redraw-result (game-state/create-game
+                       player-specs
+                       {:deck-order (deck-with-cards-at {0 "cupsking"
+                                                         6 "fool"})
+                        :starting-bids
+                        {:rounds [{:rose "cupsking"
+                                   :indigo "fool"}]
+                         :redraws {:rose ["coins2"]
+                                   :indigo ["cupsking"]}}})]
+    (is (false? (:ok? tied-result)))
+    (is (= :unresolved-bid-tie
+           (get-in tied-result [:error :code])))
+    (is (false? (:ok? redraw-result)))
+    (is (= :invalid-bid-redraw-card
+           (get-in redraw-result [:error :code])))))
 
 (deftest scores-count-only-territories-controlled-by-one-player
   (let [state (-> (state-with-board-cards {0 "cups2"

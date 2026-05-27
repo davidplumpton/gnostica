@@ -72,6 +72,9 @@
   ([player-specs opts]
    (core/create-game player-specs opts)))
 
+(defn apply-starting-bids [state command]
+  (core/apply-starting-bids state command))
+
 (defn advance-turn [state]
   (core/advance-turn state))
 

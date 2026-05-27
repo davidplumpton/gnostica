@@ -45,6 +45,32 @@
                  (rest filler-cards)
                  (conj deck (first filler-cards))))))))
 
+(defn create-official-starting-bid-game [world]
+  (let [specs (player-specs 3)
+        result (game-state/create-game
+                specs
+                {:deck-order (deck-with-cards-at
+                              {0 "cupsking"
+                               1 "coins2"
+                               6 "swordsking"
+                               7 "cups3"
+                               12 "wandsqueen"
+                               13 "world"})
+                 :starting-bids
+                 {:rounds [{:rose "cupsking"
+                            :indigo "swordsking"
+                            :gold "wandsqueen"}
+                           {:rose "coins2"
+                            :indigo "cups3"
+                            :gold "world"}]
+                  :redraws {:indigo ["world" "cupsking"]
+                            :rose ["swordsking" "wandsqueen"]
+                            :gold ["coins2" "cups3"]}}})]
+    (cond-> (assoc world
+                   :player-specs specs
+                   :last-result result)
+      (:ok? result) (assoc :state (:state result)))))
+
 (defn deck-with-board-card [player-count board-index card-id]
   (let [card (cards/card-by-id card-id)
         other-cards (vec (remove #(= card-id (:id %)) cards/deck))
@@ -582,6 +608,15 @@
 
 (defn active-challenge-player-id [world]
   (game-state/active-challenge-player-id (:state world)))
+
+(defn starting-player-id [world]
+  (state-at world [:setup :starting-player-id]))
+
+(defn bid-history [world]
+  (state-at world [:setup :bid-history]))
+
+(defn bid-redraw-order [world]
+  (state-at world [:setup :bid-redraw-order]))
 
 (defn winner [world]
   (:winner (:state world)))

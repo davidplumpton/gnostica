@@ -280,6 +280,10 @@
      :current-player-id (first order)
      :round 1}))
 
+(defn- rotate-vector-from-index [values index]
+  (vec (concat (drop index values)
+               (take index values))))
+
 (defn- deal-starting-hands [players deck]
   (let [hand-card-count (* starting-hand-size (count players))
         hand-cards (take hand-card-count deck)
@@ -398,6 +402,313 @@
   (update-player state player-id update :hand
                  (fn [hand]
                    (vec (concat hand cards)))))
+
+(defn- state-player-ids [state]
+  (mapv :id (:players state)))
+
+(defn- bid-round-bids [round]
+  (if (and (map? round)
+           (contains? round :bids))
+    (:bids round)
+    round))
+
+(defn- bid-round-shape-error [round-number round]
+  (when-not (map? (bid-round-bids round))
+    (failure :invalid-bid-round
+             "Each bid round must provide a map from player id to bid card id."
+             {:round round-number
+              :bid-round round})))
+
+(defn- bid-round-player-error [state round-number bids]
+  (let [expected-player-ids (set (state-player-ids state))
+        actual-player-ids (set (keys bids))
+        missing-player-ids (vec (sort-by str (remove actual-player-ids expected-player-ids)))
+        unknown-player-ids (vec (sort-by str (remove expected-player-ids actual-player-ids)))]
+    (cond
+      (seq missing-player-ids)
+      (failure :incomplete-bid-round
+               "Every player must bid one card in each starting bid round."
+               {:round round-number
+                :missing-player-ids missing-player-ids})
+
+      (seq unknown-player-ids)
+      (failure :unknown-bid-players
+               "Bid rounds can only include players in the game."
+               {:round round-number
+                :unknown-player-ids unknown-player-ids
+                :player-ids (state-player-ids state)}))))
+
+(defn- ranked-bid [state round-number player-id card-id]
+  (let [card (player-hand-card state player-id card-id)]
+    (cond
+      (nil? card)
+      (failure :invalid-bid-card
+               "Players can only bid cards from their current hand."
+               {:round round-number
+                :player-id player-id
+                :card-id card-id
+                :hand-card-ids (mapv :id (get-in state [:players-by-id player-id :hand]))})
+
+      (nil? (cards/bid-rank card))
+      (failure :unranked-bid-card
+               "Bid cards must be rankable tarot cards."
+               {:round round-number
+                :player-id player-id
+                :card-id card-id})
+
+      :else
+      {:ok? true
+       :player-id player-id
+       :card-id card-id
+       :card card
+       :rank (cards/bid-rank card)})))
+
+(defn- bid-round-ranks [state round-number bids]
+  (reduce (fn [result player-id]
+            (if (false? (:ok? result))
+              result
+              (let [ranked (ranked-bid state round-number player-id (get bids player-id))]
+                (if (:ok? ranked)
+                  (update result :ranked-bids conj ranked)
+                  ranked))))
+          {:ok? true
+           :ranked-bids []}
+          (state-player-ids state)))
+
+(defn- best-bid-group [ranked-bids]
+  (let [major-bids (filterv #(= :major (get-in % [:rank :arcana])) ranked-bids)
+        candidates (if (seq major-bids)
+                     major-bids
+                     ranked-bids)
+        best-rank (apply max (map #(get-in % [:rank :rank]) candidates))]
+    {:arcana (get-in (first candidates) [:rank :arcana])
+     :rank best-rank
+     :bids (filterv #(= best-rank (get-in % [:rank :rank])) candidates)}))
+
+(defn- bid-round-result [round-number ranked-bids]
+  (let [{:keys [arcana rank bids]} (best-bid-group ranked-bids)
+        winner (when (= 1 (count bids))
+                 (first bids))]
+    (cond-> {:round round-number
+             :bids (into {}
+                         (map (fn [{:keys [player-id card-id]}]
+                                [player-id card-id]))
+                         ranked-bids)
+             :considered-arcana arcana
+             :winning-rank rank
+             :tied-player-ids (mapv :player-id bids)
+             :tied-card-ids (mapv :card-id bids)}
+      winner
+      (assoc :winner-id (:player-id winner)
+             :winning-card-id (:card-id winner)))))
+
+(defn- remove-bid-cards [state ranked-bids]
+  (reduce (fn [next-state {:keys [player-id card-id]}]
+            (remove-card-from-hand next-state player-id card-id))
+          state
+          ranked-bids))
+
+(defn- resolve-bid-round [state round-number round]
+  (if-let [error (bid-round-shape-error round-number round)]
+    error
+    (let [bids (bid-round-bids round)]
+      (if-let [error (bid-round-player-error state round-number bids)]
+        error
+        (let [{:keys [ok? ranked-bids] :as ranks-result}
+              (bid-round-ranks state round-number bids)]
+          (if-not ok?
+            ranks-result
+            {:ok? true
+             :state (remove-bid-cards state ranked-bids)
+             :bid-cards (mapv :card ranked-bids)
+             :round-result (bid-round-result round-number ranked-bids)}))))))
+
+(defn- resolve-bid-rounds [state bid-rounds]
+  (cond
+    (not (sequential? bid-rounds))
+    (failure :invalid-bid-rounds
+             "Starting bids require a sequential collection of bid rounds."
+             {:bid-rounds bid-rounds})
+
+    (empty? bid-rounds)
+    (failure :missing-bid-rounds
+             "Starting bids require at least one bid round."
+             {})
+
+    :else
+    (loop [next-state state
+           rounds (seq bid-rounds)
+           round-number 1
+           bid-history []
+           bid-cards []]
+      (let [{:keys [ok? state round-result] round-bid-cards :bid-cards
+             :as round-resolution}
+            (resolve-bid-round next-state round-number (first rounds))]
+        (if-not ok?
+          round-resolution
+          (let [bid-history (conj bid-history round-result)
+                bid-cards (into bid-cards round-bid-cards)]
+            (if-let [winner-id (:winner-id round-result)]
+              {:ok? true
+               :state state
+               :winner-id winner-id
+               :bid-history bid-history
+               :bid-cards bid-cards}
+              (if-let [remaining-rounds (next rounds)]
+                (recur state
+                       remaining-rounds
+                       (inc round-number)
+                       bid-history
+                       bid-cards)
+                (failure :unresolved-bid-tie
+                         "Starting bids ended in a tie and require another bid round."
+                         {:bid-history bid-history})))))))))
+
+(defn- player-index-in [players player-id]
+  (first
+   (keep-indexed (fn [index player]
+                   (when (= player-id (:id player))
+                     index))
+                 players)))
+
+(defn- counterclockwise-redraw-order [players winner-id]
+  (let [player-ids (mapv :id players)
+        winner-index (player-index-in players winner-id)
+        player-count (count player-ids)]
+    (mapv (fn [offset]
+            (get player-ids (mod (- winner-index offset) player-count)))
+          (range 1 (inc player-count)))))
+
+(defn- redraw-card-ids-for [redraws player-id]
+  (vec (get redraws player-id [])))
+
+(defn- redraw-shape-error [state redraws]
+  (let [player-id-set (set (state-player-ids state))]
+    (cond
+      (not (map? redraws))
+      (failure :invalid-bid-redraws
+               "Bid redraws must provide a map from player id to selected bid card ids."
+               {:redraws redraws})
+
+      (seq (remove player-id-set (keys redraws)))
+      (failure :unknown-bid-redraw-players
+               "Bid redraws can only include players in the game."
+               {:unknown-player-ids (vec (sort-by str (remove player-id-set (keys redraws))))
+                :player-ids (state-player-ids state)}))))
+
+(defn- apply-redraw-card [state available-cards player-id card-id]
+  (if-let [card (get available-cards card-id)]
+    {:ok? true
+     :state (append-cards-to-hand state player-id [card])
+     :available-cards (dissoc available-cards card-id)
+     :card card}
+    (failure :invalid-bid-redraw-card
+             "Players can only redraw from bid cards that are still available."
+             {:player-id player-id
+              :card-id card-id
+              :available-card-ids (vec (sort (keys available-cards)))})))
+
+(defn- apply-player-redraws [state available-cards player-id card-ids]
+  (loop [next-state state
+         next-available-cards available-cards
+         remaining-card-ids (seq card-ids)
+         selected-cards []]
+    (if-let [card-id (first remaining-card-ids)]
+      (let [{:keys [ok? state available-cards] :as result}
+            (apply-redraw-card next-state next-available-cards player-id card-id)]
+        (if ok?
+          (recur state
+                 available-cards
+                 (next remaining-card-ids)
+                 (conj selected-cards (:card result)))
+          result))
+      {:ok? true
+       :state next-state
+       :available-cards next-available-cards
+       :selected-card-ids (mapv :id selected-cards)})))
+
+(defn- apply-bid-redraws [state bid-cards redraw-order redraws]
+  (if-let [error (redraw-shape-error state redraws)]
+    error
+    (loop [next-state state
+           available-cards (into {} (map (juxt :id identity)) bid-cards)
+           remaining-player-ids (seq redraw-order)
+           redraw-history []]
+      (if-let [player-id (first remaining-player-ids)]
+        (let [needed-count (- starting-hand-size
+                              (count (get-in next-state [:players-by-id player-id :hand])))
+              selected-card-ids (redraw-card-ids-for redraws player-id)]
+          (if (not= needed-count (count selected-card-ids))
+            (failure :invalid-bid-redraw-count
+                     "Each player must redraw until their hand has six cards again."
+                     {:player-id player-id
+                      :expected-count needed-count
+                      :actual-count (count selected-card-ids)
+                      :selected-card-ids selected-card-ids})
+            (let [{:keys [ok? state available-cards selected-card-ids] :as redraw-result}
+                  (apply-player-redraws next-state
+                                        available-cards
+                                        player-id
+                                        selected-card-ids)]
+              (if ok?
+                (recur state
+                       available-cards
+                       (next remaining-player-ids)
+                       (conj redraw-history
+                             {:player-id player-id
+                              :card-ids selected-card-ids}))
+                redraw-result))))
+        (if (seq available-cards)
+          (failure :unused-bid-redraw-cards
+                   "All bid cards must be redrawn before the game starts."
+                   {:remaining-card-ids (vec (sort (keys available-cards)))})
+          {:ok? true
+           :state next-state
+           :redraw-history redraw-history})))))
+
+(defn- rotate-players-to-starting-player [state winner-id]
+  (let [players (:players state)
+        winner-index (player-index-in players winner-id)
+        rotated-players (rotate-vector-from-index players winner-index)]
+    (assoc state
+           :players rotated-players
+           :players-by-id (rebuild-players-by-id rotated-players)
+           :turn (initial-turn rotated-players))))
+
+(defn apply-starting-bids
+  [state {:keys [rounds bid-rounds redraws] :as _command}]
+  (let [rounds (or rounds bid-rounds)
+        original-players (:players state)]
+    (cond
+      (some? (get-in state [:setup :starting-player-id]))
+      (failure :starting-bids-already-resolved
+               "The starting bid has already been resolved."
+               {:starting-player-id (get-in state [:setup :starting-player-id])})
+
+      :else
+      (let [{:keys [ok? state winner-id bid-history bid-cards] :as bid-result}
+            (resolve-bid-rounds state rounds)]
+        (if-not ok?
+          bid-result
+          (let [redraw-order (counterclockwise-redraw-order original-players winner-id)
+                {:keys [ok? state redraw-history] :as redraw-result}
+                (apply-bid-redraws state bid-cards redraw-order redraws)]
+            (if-not ok?
+              redraw-result
+              (let [event {:type :setup/starting-player-determined
+                           :player-id winner-id
+                           :bid-round-count (count bid-history)
+                           :bid-card-ids (mapv :id bid-cards)
+                           :redraw-order redraw-order}
+                    next-state (-> state
+                                   (assoc-in [:setup :bids] {})
+                                   (assoc-in [:setup :bid-history] bid-history)
+                                   (assoc-in [:setup :bid-redraw-order] redraw-order)
+                                   (assoc-in [:setup :bid-redraws] redraw-history)
+                                   (assoc-in [:setup :starting-player-id] winner-id)
+                                   (rotate-players-to-starting-player winner-id)
+                                   (append-history event))]
+                (success next-state [event])))))))))
 
 (defn duplicate-values [values]
   (->> values
@@ -771,7 +1082,14 @@
                                   :target-score target-score}
                           :winner nil
                           :history [event]}]
-               (success state [event])))))))))
+               (if-let [starting-bids (:starting-bids opts)]
+                 (let [{:keys [ok? state events error]} (apply-starting-bids state starting-bids)]
+                   (if ok?
+                     (success state (into [event] events))
+                     (failure (:code error)
+                              (:message error)
+                              (:data error))))
+                 (success state [event]))))))))))
 
 (defn advance-turn [state]
   (let [state (with-current-scores state)

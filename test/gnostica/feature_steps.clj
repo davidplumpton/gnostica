@@ -36,6 +36,16 @@
                      {:player-count player-count
                       :error (:error result)})))}
 
+   {:pattern #"^an official starting-bid game with a tied minor bid and Gold winning the rebid$"
+    :run (fn [world]
+           (let [world (world/create-official-starting-bid-game world)
+                 result (:last-result world)]
+             (expect world
+                     (:ok? result)
+                     :game-creation-failed
+                     "The official starting-bid game could not be created."
+                     {:error (:error result)})))}
+
    {:pattern #"^the game state is schema valid$"
     :run (fn [world]
            (if-let [explanation (world/schema-explanation world)]
@@ -88,6 +98,43 @@
                    :incomplete-deck-accounting
                    "The game state does not account for every tarot card exactly once."
                    (world/deck-accounting world)))}
+
+   {:pattern #"^([A-Z][a-z]+) is the starting player$"
+    :run (fn [world player-name]
+           (let [player-id (parse-player-id player-name)
+                 actual-starting-player-id (world/starting-player-id world)
+                 actual-current-player-id (world/state-at world [:turn :current-player-id])]
+             (expect world
+                     (and (= player-id actual-starting-player-id)
+                          (= player-id actual-current-player-id))
+                     :unexpected-starting-player
+                     "The starting player did not match."
+                     {:expected player-id
+                      :actual-starting-player-id actual-starting-player-id
+                      :actual-current-player-id actual-current-player-id})))}
+
+   {:pattern #"^the starting bid history has (\d+) rounds$"
+    :run (fn [world expected-count]
+           (let [expected-count (parse-int expected-count)
+                 actual-count (count (world/bid-history world))]
+             (expect world
+                     (= expected-count actual-count)
+                     :unexpected-bid-round-count
+                     "The starting bid history has a different round count than expected."
+                     {:expected expected-count
+                      :actual actual-count
+                      :bid-history (world/bid-history world)})))}
+
+   {:pattern #"^the bid redraw order is (.+)$"
+    :run (fn [world player-names]
+           (let [expected-order (mapv parse-player-id (parse-quoted-values player-names))
+                 actual-order (world/bid-redraw-order world)]
+             (expect world
+                     (= expected-order actual-order)
+                     :unexpected-bid-redraw-order
+                     "The bid redraw order did not match."
+                     {:expected expected-order
+                      :actual actual-order})))}
 
    {:pattern #"^a Rod territory-source game with Rose's medium minion at board index (\d+) facing ([a-z]+)$"
     :run (fn [world board-index orientation]

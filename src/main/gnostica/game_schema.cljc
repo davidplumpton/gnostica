@@ -356,6 +356,8 @@
   [:map
    [:bids [:map-of PlayerId :any]]
    [:bid-history [:vector :any]]
+   [:bid-redraw-order {:optional true} [:vector PlayerId]]
+   [:bid-redraws {:optional true} [:vector :any]]
    [:starting-player-id [:maybe PlayerId]]
    [:target-score PositiveInt]])
 

@@ -17,3 +17,12 @@ Feature: Initial game setup
       | 4            |
       | 5            |
       | 6            |
+
+  Scenario: Resolve the official starting bid after a tied minor round
+    Given an official starting-bid game with a tied minor bid and Gold winning the rebid
+    Then the game state is schema valid
+    And Gold is the starting player
+    And the starting bid history has 2 rounds
+    And the bid redraw order is "Indigo", "Rose", "Gold"
+    And each player has 6 cards in hand
+    And every tarot card is accounted for exactly once
