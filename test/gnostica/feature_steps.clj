@@ -223,6 +223,18 @@
    {:pattern #"^a Judgement hand-card limit game$"
     :run world/create-judgement-hand-card-limit-game}
 
+   {:pattern #"^a Hierophant hand-card replacement game$"
+    :run world/create-hierophant-hand-card-game}
+
+   {:pattern #"^a Hermit hand-card piece-relocation game$"
+    :run world/create-hermit-hand-card-piece-game}
+
+   {:pattern #"^a Hermit hand-card territory-relocation game$"
+    :run world/create-hermit-hand-card-territory-game}
+
+   {:pattern #"^a Devil territory-source retargeting game$"
+    :run world/create-devil-territory-source-retargeting-game}
+
    {:pattern #"^an endgame challenge game where Rose controls 9 points$"
     :run world/create-endgame-winning-challenge-game}
 
@@ -293,6 +305,25 @@
 
    {:pattern #"^Rose tries to draw too many cards with Judgement$"
     :run world/apply-judgement-over-hand-limit}
+
+   {:pattern #"^Rose replaces the targeted piece with Hierophant facing ([a-z]+)$"
+    :run (fn [world orientation]
+           (world/apply-hierophant-replacement world
+                                                (parse-keyword orientation)))}
+
+   {:pattern #"^Rose moves the Hermit target piece to board index (\d+)$"
+    :run (fn [world board-index]
+           (world/apply-hermit-piece-relocation world
+                                                (parse-int board-index)))}
+
+   {:pattern #"^Rose moves the Hermit target territory to wasteland row (-?\d+) col (-?\d+)$"
+    :run (fn [world row col]
+           (world/apply-hermit-territory-relocation world
+                                                    (parse-int row)
+                                                    (parse-int col)))}
+
+   {:pattern #"^Rose uses Devil to orient the minion and then the enemy target$"
+    :run world/apply-devil-retargeting}
 
    {:pattern #"^Rose announces a final-turn challenge$"
     :run (fn [world]
@@ -373,6 +404,16 @@
                      {:expected expected-code
                       :actual actual-code
                       :result result})))}
+
+   {:pattern #"^the manipulation-major action succeeds$"
+    :run (fn [world]
+           (let [result (:last-result world)]
+             (expect world
+                     (:ok? result)
+                     :manipulation-major-action-failed
+                     "The manipulation-major action was expected to succeed."
+                     {:error (:error result)
+                      :last-action (:last-action world)})))}
 
    {:pattern #"^the endgame action succeeds$"
     :run (fn [world]

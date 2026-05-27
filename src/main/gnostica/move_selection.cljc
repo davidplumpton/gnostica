@@ -39,7 +39,7 @@
     :requirements [:target-space :orientation]}})
 
 (def move-power-order
-  [:cup :rod :disc :sun :sword])
+  [:cup :rod :disc :sun :sword :hierophant :hermit :devil])
 
 (def move-power-definitions
   {:cup {:id :cup
@@ -51,7 +51,13 @@
    :sun {:id :sun
          :label "Sun"}
    :sword {:id :sword
-           :label "Sword"}})
+           :label "Sword"}
+   :hierophant {:id :hierophant
+                :label "Hierophant"}
+   :hermit {:id :hermit
+            :label "Hermit"}
+   :devil {:id :devil
+           :label "Devil"}})
 
 (def rod-mode-order
   [:move-minion
@@ -152,6 +158,8 @@
    :target-piece-id "Choose a target piece."
    :target-board-index "Choose a target territory."
    :target-space "Choose a target territory, enemy piece, or wasteland."
+   :hermit-target-space "Choose a targeted piece or territory."
+   :hermit-destination-space "Choose a destination territory or wasteland."
    :initial-target-space "Choose an empty territory or wasteland."
    :territory-card-source "Choose where the new territory card comes from."
    :one-point-card-id "Choose a one-point card from the current player's hand."
@@ -209,6 +217,31 @@
   (filterv #(= [row col] (piece-coordinate db %))
            (board-pieces db)))
 
+(defn- same-coordinate? [left right]
+  (= left right))
+
+(defn- minion-target-coordinate [db piece]
+  (when-let [coordinate (piece-coordinate db piece)]
+    (when-let [{:keys [row col]} (game-state/target-coordinate coordinate
+                                                               (:orientation piece))]
+      [row col])))
+
+(defn- targetable-piece? [db minion piece]
+  (let [minion-coordinate (piece-coordinate db minion)
+        target-coordinate (piece-coordinate db piece)]
+    (and minion
+         piece
+         target-coordinate
+         (or (= (:id minion) (:id piece))
+             (same-coordinate? target-coordinate
+                               (minion-target-coordinate db minion))))))
+
+(defn- targetable-territory? [db minion cell]
+  (and minion
+       cell
+       (same-coordinate? [(:row cell) (:col cell)]
+                         (minion-target-coordinate db minion))))
+
 (defn current-player-piece? [db piece]
   (= (current-player-id db) (:player-id piece)))
 
@@ -265,7 +298,10 @@
       (cards/rod-card? card) (conj :rod)
       (cards/disc-card? card) (conj :disc)
       (= "sun" (:id card)) (conj :sun)
-      (cards/sword-card? card) (conj :sword))))
+      (cards/sword-card? card) (conj :sword)
+      (= "hierophant" (:id card)) (conj :hierophant)
+      (= "hermit" (:id card)) (conj :hermit)
+      (= "devil" (:id card)) (conj :devil))))
 
 (defn- selected-power [db source-id params]
   (when (gameplay-move-source? source-id)
@@ -345,6 +381,19 @@
 
 (defn- sword-move? [db source-id params]
   (= :sword (selected-power db source-id params)))
+
+(defn- hierophant-move? [db source-id params]
+  (= :hierophant (selected-power db source-id params)))
+
+(defn- hermit-move? [db source-id params]
+  (= :hermit (selected-power db source-id params)))
+
+(defn- devil-move? [db source-id params]
+  (= :devil (selected-power db source-id params)))
+
+(defn- manipulation-piece-power? [db source-id params]
+  (or (hierophant-move? db source-id params)
+      (devil-move? db source-id params)))
 
 (defn- selected-sword-variant [db source-id params]
   (when (sword-move? db source-id params)
@@ -634,10 +683,97 @@
 (defn- empty-wasteland-target? [db {:keys [row col]}]
   (empty? (pieces-at-coordinate db row col)))
 
+(declare valid-wasteland-target?)
+
+(defn- enemy-pieces-at-coordinate [db row col]
+  (let [player-id (current-player-id db)]
+    (filterv #(and (not= player-id (:player-id %))
+                   (= [row col] (piece-coordinate db %)))
+             (board-pieces db))))
+
+(defn- current-player-stash-count [db size]
+  (or (get-in (current-player db) [:stash size])
+      (get-in db [:game :pieces :stashes (current-player-id db) size])
+      0))
+
+(defn- major-target-piece? [db params piece]
+  (let [minion (piece-by-id db (:piece-id params))]
+    (and piece
+         (targetable-piece? db minion piece))))
+
+(defn- hierophant-target-piece? [db params piece]
+  (and (major-target-piece? db params piece)
+       (pos? (current-player-stash-count db (:size piece)))))
+
+(defn- hermit-target-piece? [db params piece]
+  (and (nil? (:target-board-index params))
+       (major-target-piece? db params piece)))
+
+(defn- hermit-target-territory? [db params cell]
+  (let [minion (piece-by-id db (:piece-id params))]
+    (and (nil? (:target-piece-id params))
+         (targetable-territory? db minion cell)
+         (empty? (enemy-pieces-at-coordinate db (:row cell) (:col cell))))))
+
+(defn- hermit-target-selected? [params]
+  (or (:target-piece-id params)
+      (some? (:target-board-index params))))
+
+(defn- hermit-piece-target-selected? [params]
+  (some? (:target-piece-id params)))
+
+(defn- hermit-territory-target-selected? [params]
+  (some? (:target-board-index params)))
+
+(defn- hermit-empty-board-destination? [db index]
+  (and (some? index)
+       (empty-board-target? db index)))
+
+(defn- hermit-empty-wasteland-destination? [db target]
+  (and (valid-wasteland-target? db target)
+       (empty-wasteland-target? db target)))
+
+(defn- hermit-territory-wasteland-destination? [db target]
+  (and (valid-wasteland-target? db target)
+       (empty? (enemy-pieces-at-coordinate db (:row target) (:col target)))))
+
+(defn- hermit-destination-complete? [db params]
+  (cond
+    (hermit-piece-target-selected? params)
+    (or (hermit-empty-board-destination? db (:hermit-destination-board-index params))
+        (hermit-empty-wasteland-destination? db (:hermit-destination-wasteland params)))
+
+    (hermit-territory-target-selected? params)
+    (hermit-territory-wasteland-destination? db (:hermit-destination-wasteland params))
+
+    :else
+    false))
+
+(defn- hermit-orientation-required? [db params]
+  (when-let [piece (piece-by-id db (:target-piece-id params))]
+    (current-player-piece? db piece)))
+
 (defn move-target-wasteland-options [db]
-  (let [spaces (layout/wasteland-spaces (board db))]
-    (if (= :place-initial-small (get-in db [:move-selection :source]))
+  (let [source (get-in db [:move-selection :source])
+        params (get-in db [:move-selection :params])
+        spaces (layout/wasteland-spaces (board db))]
+    (cond
+      (= :place-initial-small source)
       (filterv #(empty-wasteland-target? db %) spaces)
+
+      (hermit-move? db source params)
+      (cond
+        (hermit-piece-target-selected? params)
+        (filterv #(empty-wasteland-target? db %) spaces)
+
+        (hermit-territory-target-selected? params)
+        (filterv #(empty? (enemy-pieces-at-coordinate db (:row %) (:col %)))
+                 spaces)
+
+        :else
+        [])
+
+      :else
       spaces)))
 
 (defn- wasteland-space-by-coordinate [db row col]
@@ -980,6 +1116,20 @@
       (filterv #(sword-piece-target? db source params %)
                (board-pieces db))
 
+      (hierophant-move? db source params)
+      (filterv #(hierophant-target-piece? db params %)
+               (board-pieces db))
+
+      (hermit-move? db source params)
+      (if (hermit-target-selected? params)
+        []
+        (filterv #(hermit-target-piece? db params %)
+                 (board-pieces db)))
+
+      (devil-move? db source params)
+      (filterv #(major-target-piece? db params %)
+               (board-pieces db))
+
       :else
       [])))
 
@@ -1007,6 +1157,12 @@
 (defn move-sword-orientation-available? [db]
   (let [{:keys [source params]} (move-selection db)]
     (sword-orientation-available? db source params)))
+
+(defn move-hermit-orientation-required? [db]
+  (let [{:keys [source params]} (move-selection db)]
+    (and (hermit-move? db source params)
+         (hermit-destination-complete? db params)
+         (hermit-orientation-required? db params))))
 
 (defn- move-error [code message data]
   {:code code
@@ -1088,6 +1244,13 @@
       (sword-move? db source-id params)
       (some? (sword-target-piece db source-id params))
 
+      (manipulation-piece-power? db source-id params)
+      (some? (some #(when (= (:target-piece-id params) (:id %)) %)
+                   (filterv #(if (hierophant-move? db source-id params)
+                               (hierophant-target-piece? db params %)
+                               (major-target-piece? db params %))
+                            (board-pieces db))))
+
       :else
       false)
 
@@ -1123,6 +1286,17 @@
     :target-resolution
     (and (cup-move? db source-id params)
          (target-resolution-complete? db source-id params))
+
+    :hermit-target-space
+    (or (some? (some #(when (= (:target-piece-id params) (:id %)) %)
+                     (filterv #(hermit-target-piece? db params %)
+                              (board-pieces db))))
+        (some? (some #(when (= (:target-board-index params) (:index %)) %)
+                     (filterv #(hermit-target-territory? db params %)
+                              (board db)))))
+
+    :hermit-destination-space
+    (hermit-destination-complete? db params)
 
     :replacement-card-source
     (cond
@@ -1250,6 +1424,21 @@
 
              []))))
 
+(defn- hierophant-requirements [_db _source-id _params]
+  [:target-piece-id :orientation])
+
+(defn- hermit-requirements [db _source-id params]
+  (vec
+   (concat [:hermit-target-space]
+           (when (hermit-target-selected? params)
+             [:hermit-destination-space])
+           (when (and (hermit-destination-complete? db params)
+                      (hermit-orientation-required? db params))
+             [:orientation]))))
+
+(defn- devil-requirements [_db _source-id _params]
+  [:target-piece-id :orientation])
+
 (defn- gameplay-source-requirements [db source-id params]
   (let [base (case source-id
                :activate-territory [:source-board-index :piece-id]
@@ -1266,6 +1455,9 @@
                :disc (disc-requirements db source-id params)
                :sun (sun-requirements db source-id params)
                :sword (sword-requirements db source-id params)
+               :hierophant (hierophant-requirements db source-id params)
+               :hermit (hermit-requirements db source-id params)
+               :devil (devil-requirements db source-id params)
                [])))))
 
 (defn- move-requirements [db source-id params]
@@ -1301,6 +1493,8 @@
     :target-board-index :target
     :sun-disc-target-board-index :target
     :target-space :target
+    :hermit-target-space :target
+    :hermit-destination-space :hermit-destination
     :target-resolution (cond
                          (and (valid-wasteland-target? db (:target-wasteland params))
                               (= :wheel-cup (selected-cup-variant db source-id params))
@@ -1377,11 +1571,15 @@
                           (sword-move? db source (move-params db))
                           (:target-board-index requirement-prompts)
 
+                          (hermit-move? db source (move-params db))
+                          (:hermit-target-space requirement-prompts)
+
                           (= :place-initial-small source)
                           (:initial-target-space requirement-prompts)
 
                           :else
                           (:target-board-index requirement-prompts))
+      (= :hermit-destination stage) (:hermit-destination-space requirement-prompts)
       (= :territory-card-source stage) (:territory-card-source requirement-prompts)
       (= :one-point-card stage) (:one-point-card-id requirement-prompts)
       (= :replacement-card-source stage) (:replacement-card-source requirement-prompts)
@@ -1443,119 +1641,103 @@
    :sun-disc-replacement-card-id
    :sun-disc-orientation])
 
+(def ^:private hermit-destination-param-keys
+  [:hermit-destination-board-index
+   :hermit-destination-wasteland])
+
 (defn- clear-sun-disc-params [params]
   (apply dissoc params sun-disc-param-keys))
+
+(defn- clear-hermit-destination-params [params]
+  (apply dissoc params hermit-destination-param-keys))
+
+(defn- clear-power-target-params [params]
+  (clear-hermit-destination-params
+   (clear-sun-disc-params
+    (dissoc params
+            :target-board-index
+            :target-wasteland
+            :target-piece-id
+            :territory-card-source
+            :one-point-card-id
+            :replacement-card-source
+            :replacement-card-id
+            :orientation
+            :distance
+            :damage))))
 
 (defn- clear-piece-when-source-changes [params board-index]
   (let [next-params (assoc params :source-board-index board-index)]
     (if (= (:source-board-index params) board-index)
       next-params
-      (clear-sun-disc-params
-       (dissoc next-params
-               :piece-id
-               :power
-               :rod-mode
-               :disc-target-kind
-               :sword-target-kind
-               :disc-action-count
-               :minion-orientation
-               :target-board-index
-               :target-wasteland
-               :target-piece-id
-               :territory-card-source
-               :one-point-card-id
-               :replacement-card-source
-               :replacement-card-id
-               :orientation
-               :distance
-               :damage)))))
+      (-> next-params
+          clear-power-target-params
+          (dissoc :piece-id
+                  :power
+                  :rod-mode
+                  :disc-target-kind
+                  :sword-target-kind
+                  :disc-action-count
+                  :minion-orientation)))))
 
 (defn- set-territory-target [params board-index]
-  (clear-sun-disc-params
-   (-> params
-       (assoc :target-board-index board-index)
-       (dissoc :target-wasteland
-               :target-piece-id
-               :territory-card-source
-               :one-point-card-id
-               :replacement-card-source
-               :replacement-card-id
-               :damage))))
+  (-> params
+      (assoc :target-board-index board-index)
+      (dissoc :target-wasteland
+              :target-piece-id
+              :territory-card-source
+              :one-point-card-id
+              :replacement-card-source
+              :replacement-card-id
+              :damage)
+      clear-sun-disc-params
+      clear-hermit-destination-params))
 
 (defn- set-wasteland-target [params space]
-  (clear-sun-disc-params
-   (-> params
-       (assoc :target-wasteland (select-keys space [:kind :row :col]))
-       (dissoc :target-board-index
-               :target-piece-id
-               :orientation
-               :territory-card-source
-               :one-point-card-id
-               :replacement-card-source
-               :replacement-card-id
-               :damage))))
+  (-> params
+      (assoc :target-wasteland (select-keys space [:kind :row :col]))
+      (dissoc :target-board-index
+              :target-piece-id
+              :orientation
+              :territory-card-source
+              :one-point-card-id
+              :replacement-card-source
+              :replacement-card-id
+              :damage)
+      clear-sun-disc-params
+      clear-hermit-destination-params))
 
 (defn- set-hand-card-source [params card-id]
-  (clear-sun-disc-params
-   (-> params
-       (assoc :hand-card-id card-id)
-       (dissoc :piece-id
-               :power
-               :rod-mode
-               :disc-target-kind
-               :sword-target-kind
-               :disc-action-count
-               :minion-orientation
-               :target-board-index
-               :target-wasteland
-               :target-piece-id
-               :territory-card-source
-               :one-point-card-id
-               :replacement-card-source
-               :replacement-card-id
-               :orientation
-               :distance
-               :damage))))
+  (-> params
+      (assoc :hand-card-id card-id)
+      clear-power-target-params
+      (dissoc :piece-id
+              :power
+              :rod-mode
+              :disc-target-kind
+              :sword-target-kind
+              :disc-action-count
+              :minion-orientation)))
 
 (defn- set-acting-piece [params piece-id]
   (let [next-params (assoc params :piece-id piece-id)]
     (if (= (:piece-id params) piece-id)
       next-params
-      (clear-sun-disc-params
-       (dissoc next-params
-               :minion-orientation
-               :target-board-index
-               :target-wasteland
-               :target-piece-id
-               :territory-card-source
-               :one-point-card-id
-               :replacement-card-source
-               :replacement-card-id
-               :orientation
-               :distance
-               :damage)))))
+      (-> next-params
+          clear-power-target-params
+          (dissoc :minion-orientation)))))
 
 (defn- set-power-param [params power]
   (let [next-params (assoc params :power power)]
     (if (= (:power params) power)
       next-params
-      (clear-sun-disc-params
-       (dissoc next-params
-               :rod-mode
-               :disc-target-kind
-               :sword-target-kind
-               :disc-action-count
-               :minion-orientation
-               :target-board-index
-               :target-wasteland
-               :target-piece-id
-               :territory-card-source
-               :one-point-card-id
-               :replacement-card-source
-               :replacement-card-id
-               :orientation
-               :distance
-               :damage)))))
+      (-> next-params
+          clear-power-target-params
+          (dissoc :rod-mode
+                  :disc-target-kind
+                  :sword-target-kind
+                  :disc-action-count
+                  :minion-orientation)))))
 
 (defn- set-rod-mode-param [params mode]
   (let [next-params (assoc params :rod-mode mode)]
@@ -1633,16 +1815,29 @@
   (let [next-params (assoc params :target-piece-id piece-id)]
     (if (= (:target-piece-id params) piece-id)
       next-params
-      (clear-sun-disc-params
-       (dissoc next-params
-               :target-board-index
-               :target-wasteland
-               :territory-card-source
-               :one-point-card-id
-               :replacement-card-source
-               :replacement-card-id
-               :orientation
-               :damage)))))
+      (-> next-params
+          (dissoc :target-board-index
+                  :target-wasteland
+                  :territory-card-source
+                  :one-point-card-id
+                  :replacement-card-source
+                  :replacement-card-id
+                  :orientation
+                  :damage)
+          clear-sun-disc-params
+          clear-hermit-destination-params))))
+
+(defn- set-hermit-destination-territory [params board-index]
+  (-> params
+      (assoc :hermit-destination-board-index board-index)
+      (dissoc :hermit-destination-wasteland
+              :orientation)))
+
+(defn- set-hermit-destination-wasteland [params space]
+  (-> params
+      (assoc :hermit-destination-wasteland (select-keys space [:kind :row :col]))
+      (dissoc :hermit-destination-board-index
+              :orientation)))
 
 (defn- set-sun-disc-mode-param [params mode]
   (let [next-params (assoc params :sun-disc-mode mode)]
@@ -1672,6 +1867,39 @@
               :sun-disc-replacement-card-id
               :sun-disc-orientation))))
 
+(defn- select-hermit-board-target [db params index]
+  (let [cell (get (board db) index)]
+    (cond
+      (hermit-piece-target-selected? params)
+      (if (empty-board-target? db index)
+        (update-move-selection-success db
+                                       update
+                                       :params
+                                       set-hermit-destination-territory
+                                       index)
+        (update-move-selection db assoc
+                               :error
+                               (move-error :hermit-destination-occupied
+                                           "Choose an empty destination territory."
+                                           {:board-index index})))
+
+      (hermit-territory-target-selected? params)
+      (update-move-selection db assoc
+                             :error
+                             (move-error :invalid-hermit-destination
+                                         "Hermit territory moves must choose a wasteland destination."
+                                         {:board-index index}))
+
+      (hermit-target-territory? db params cell)
+      (update-move-selection-success db update :params set-territory-target index)
+
+      :else
+      (update-move-selection db assoc
+                             :error
+                             (move-error :invalid-hermit-target
+                                         "Choose a Hermit-targetable territory."
+                                         {:board-index index})))))
+
 (defn select-board-for-active-move [db index]
   (if-not (valid-board-index? db index)
     db
@@ -1700,6 +1928,11 @@
                                    (move-error :invalid-sun-disc-target
                                                "Choose a Sun Disc-targetable territory."
                                                {:board-index index}))
+
+            (and has-source?
+                 has-piece?
+                 (hermit-move? db source params))
+            (select-hermit-board-target db params index)
 
             (and has-source?
                  has-piece?
@@ -1770,6 +2003,9 @@
                                              "Choose a Sun Disc-targetable territory."
                                              {:board-index index}))
 
+          (hermit-move? db source params)
+          (select-hermit-board-target db params index)
+
           (and (disc-move? db source params)
                (not= :territory (:disc-target-kind params)))
           db
@@ -1815,11 +2051,12 @@
     (cond
       (not (or (cup-move? db source params)
                (sun-move? db source params)
+               (hermit-move? db source params)
                (= :place-initial-small source)))
       (update-move-selection db assoc
                              :error
                              (move-error :invalid-wasteland-target
-                                         "Wasteland targets are only available for Cup, Sun, or initial placement moves."
+                                         "Wasteland targets are only available for Cup, Sun, Hermit, or initial placement moves."
                                          {:row row
                                           :col col
                                           :source source}))
@@ -1831,6 +2068,20 @@
                                          "Choose an available wasteland space."
                                          {:row row
                                           :col col}))
+
+      (hermit-move? db source params)
+      (if (hermit-target-selected? params)
+        (update-move-selection-success db
+                                       update
+                                       :params
+                                       set-hermit-destination-wasteland
+                                       space)
+        (update-move-selection db assoc
+                               :error
+                               (move-error :invalid-hermit-destination
+                                           "Choose a Hermit target before choosing a destination."
+                                           {:row row
+                                            :col col})))
 
       :else
       (update-move-selection-success db update :params set-wasteland-target space))))
@@ -2051,6 +2302,39 @@
                                          "Choose an enemy piece on an existing territory."
                                          {:piece-id piece-id}))
 
+      (and (hierophant-move? db source params)
+           selectable-piece?)
+      (update-move-selection-success db update :params set-target-piece (:id piece))
+
+      (hierophant-move? db source params)
+      (update-move-selection db assoc
+                             :error
+                             (move-error :invalid-target-piece
+                                         "Choose a Hierophant-targetable piece with a same-size stash piece available."
+                                         {:piece-id piece-id}))
+
+      (and (hermit-move? db source params)
+           selectable-piece?)
+      (update-move-selection-success db update :params set-target-piece (:id piece))
+
+      (hermit-move? db source params)
+      (update-move-selection db assoc
+                             :error
+                             (move-error :invalid-target-piece
+                                         "Choose a Hermit-targetable piece."
+                                         {:piece-id piece-id}))
+
+      (and (devil-move? db source params)
+           selectable-piece?)
+      (update-move-selection-success db update :params set-target-piece (:id piece))
+
+      (devil-move? db source params)
+      (update-move-selection db assoc
+                             :error
+                             (move-error :invalid-target-piece
+                                         "Choose a Devil-targetable piece."
+                                         {:piece-id piece-id}))
+
       (and (disc-move? db source params)
            selectable-piece?)
       (update-move-selection-success db update :params set-target-piece (:id piece))
@@ -2077,7 +2361,7 @@
       (update-move-selection db assoc
                              :error
                              (move-error :invalid-target-piece
-                                         "Target pieces are only available for Cup, Rod, Disc, or Sword moves."
+                                         "Target pieces are only available for Cup, Rod, Disc, Sword, Hierophant, Hermit, or Devil moves."
                                          {:piece-id piece-id})))))
 
 (defn- set-territory-card-source [params territory-card-source]
@@ -2301,6 +2585,19 @@
       (filterv #(sword-territory-target? db source params %)
                (board db))
 
+      (hermit-move? db source params)
+      (cond
+        (hermit-piece-target-selected? params)
+        (filterv #(empty-board-target? db (:index %))
+                 (board db))
+
+        (hermit-territory-target-selected? params)
+        []
+
+        :else
+        (filterv #(hermit-target-territory? db params %)
+                 (board db)))
+
       :else
       (board db))))
 
@@ -2423,6 +2720,27 @@
       disc-command
       (assoc :disc disc-command))))
 
+(defn- piece-orientation-command [params]
+  {:target {:kind :piece
+            :piece-id (:target-piece-id params)}
+   :orientation (:orientation params)})
+
+(defn- hermit-destination-command [params]
+  (if-let [destination-wasteland (:hermit-destination-wasteland params)]
+    (select-keys destination-wasteland [:kind :row :col])
+    {:kind :territory
+     :board-index (:hermit-destination-board-index params)}))
+
+(defn- hermit-command [_db _source params]
+  (cond-> {:target (if (:target-piece-id params)
+                     {:kind :piece
+                      :piece-id (:target-piece-id params)}
+                     {:kind :territory
+                      :board-index (:target-board-index params)})
+           :destination (hermit-destination-command params)}
+    (:orientation params)
+    (assoc :orientation (:orientation params))))
+
 (defn- initial-placement-target-command [params]
   (if-let [target-wasteland (:target-wasteland params)]
     (select-keys target-wasteland [:kind :row :col])
@@ -2523,6 +2841,9 @@
     :cup (cup-command db source params)
     :sun (sun-command db source params)
     :sword (sword-command db source params)
+    :hierophant (piece-orientation-command params)
+    :hermit (hermit-command db source params)
+    :devil (piece-orientation-command params)
     (unavailable-power-command db source params)))
 
 (defn move-command [db]
@@ -2594,6 +2915,15 @@
 
       (= :sun (move-power db))
       (game-state/apply-sun-move (game db) command)
+
+      (= :hierophant (move-power db))
+      (game-state/apply-hierophant-move (game db) command)
+
+      (= :hermit (move-power db))
+      (game-state/apply-hermit-move (game db) command)
+
+      (= :devil (move-power db))
+      (game-state/apply-devil-move (game db) command)
 
       :else
       (game-state/failure :move-transition-unavailable

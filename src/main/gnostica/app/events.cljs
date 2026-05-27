@@ -570,7 +570,8 @@ move-target-piece-options
 (rf/reg-sub
 move-rod-orientation-required?
 (fn [db _]
-  (app-state/move-rod-orientation-required? db)))
+  (or (app-state/move-rod-orientation-required? db)
+      (app-state/move-hermit-orientation-required? db))))
 
 (rf/reg-sub
  move-disc-orientation-available?

@@ -7,6 +7,7 @@
             [gnostica.game-state.cup :as game-state-cup]
             [gnostica.game-state.disc :as game-state-disc]
             [gnostica.game-state.draw :as game-state-draw]
+            [gnostica.game-state.manipulation :as game-state-manipulation]
             [gnostica.game-state.placement :as game-state-placement]
             [gnostica.game-state.rod :as game-state-rod]
             [gnostica.game-state.sword :as game-state-sword]
@@ -667,7 +668,37 @@
                            :source {:kind :hand-card
                                     :card-id "judgement"}
                            :piece-id :rose-target-minion
-                           :card-ids []}]
+                           :card-ids []}
+        manipulation-state (-> (:state (game-state/create-game
+                                         player-specs
+                                         {:deck-order
+                                          (deck-starting-with
+                                           ["hierophant" "hermit" "devil"])}))
+                               (game-state/with-board-pieces
+                                [rose-target-minion
+                                 indigo-cup-target]))
+        hierophant-command {:player-id :rose
+                            :source {:kind :hand-card
+                                     :card-id "hierophant"
+                                     :piece-id :rose-target-minion}
+                            :target {:kind :piece
+                                     :piece-id :indigo-cup-target}
+                            :orientation :south}
+        hermit-command {:player-id :rose
+                        :source {:kind :hand-card
+                                 :card-id "hermit"
+                                 :piece-id :rose-target-minion}
+                        :target {:kind :piece
+                                 :piece-id :indigo-cup-target}
+                        :destination {:kind :territory
+                                      :board-index 0}}
+        devil-command {:player-id :rose
+                       :source {:kind :hand-card
+                                :card-id "devil"
+                                :piece-id :rose-target-minion}
+                       :target {:kind :piece
+                                :piece-id :indigo-cup-target}
+                       :orientation :south}]
     (is (= (game-state/apply-draw-move draw-state draw-command)
            (game-state-draw/apply-draw-move draw-state draw-command)))
     (is (= (game-state/apply-fool-move draw-major-state fool-command)
@@ -693,7 +724,16 @@
     (is (= (game-state/resolve-sword-command sword-state sword-command)
            (game-state-sword/resolve-sword-command sword-state sword-command)))
     (is (= (game-state/apply-sword-move sword-state sword-command)
-           (game-state-sword/apply-sword-move sword-state sword-command)))))
+           (game-state-sword/apply-sword-move sword-state sword-command)))
+    (is (= (game-state/apply-hierophant-move manipulation-state hierophant-command)
+           (game-state-manipulation/apply-hierophant-move manipulation-state
+                                                            hierophant-command)))
+    (is (= (game-state/apply-hermit-move manipulation-state hermit-command)
+           (game-state-manipulation/apply-hermit-move manipulation-state
+                                                       hermit-command)))
+    (is (= (game-state/apply-devil-move manipulation-state devil-command)
+           (game-state-manipulation/apply-devil-move manipulation-state
+                                                      devil-command)))))
 
 (deftest draw-move-discards-selected-cards-and-draws-to-hand
   (let [initial-state (deterministic-game)
@@ -962,6 +1002,192 @@
     (is (not (some #{"fool"} (player-hand-ids state :rose))))
     (is (= (count cards/deck) (count (all-card-ids state))))
     (is (= (count cards/deck) (count (set (all-card-ids state)))))
+    (is (game-schema/valid-game? state))))
+
+(deftest hierophant-replaces_target_piece_with_current_players_same_size_piece
+  (let [state (-> (:state (game-state/create-game
+                           player-specs
+                           {:deck-order (deck-starting-with ["hierophant"])}))
+                  (game-state/with-board-pieces [rose-target-minion
+                                                 indigo-cup-target]))
+        {:keys [ok? state events]} (game-state/apply-hierophant-move
+                                    state
+                                    {:player-id :rose
+                                     :source {:kind :hand-card
+                                              :card-id "hierophant"
+                                              :piece-id :rose-target-minion}
+                                     :target {:kind :piece
+                                              :piece-id :indigo-cup-target}
+                                     :orientation :south})
+        replacement (piece-by-id state :rose-medium-1)]
+    (is ok?)
+    (is (= {:id :rose-medium-1
+            :player-id :rose
+            :space-index 4
+            :size :medium
+            :orientation :south}
+           replacement))
+    (is (nil? (piece-by-id state :indigo-cup-target)))
+    (is (= 3 (get-in state [:players-by-id :rose :stash :medium])))
+    (is (= 5 (get-in state [:players-by-id :indigo :stash :medium])))
+    (is (= ["hierophant"] (mapv :id (:discard-pile state))))
+    (is (= :hierophant/piece-replaced (get-in events [0 :type])))
+    (is (game-schema/valid-game? state))))
+
+(deftest hierophant-rejects_missing_same_size_stash_piece
+  (let [rose-mediums [{:id :rose-medium-a
+                       :player-id :rose
+                       :space-index 0
+                       :size :medium
+                       :orientation :east}
+                      {:id :rose-medium-b
+                       :player-id :rose
+                       :space-index 1
+                       :size :medium
+                       :orientation :east}
+                      {:id :rose-medium-c
+                       :player-id :rose
+                       :space-index 2
+                       :size :medium
+                       :orientation :east}
+                      {:id :rose-medium-d
+                       :player-id :rose
+                       :space-index 3
+                       :size :medium
+                       :orientation :east}
+                      {:id :rose-medium-e
+                       :player-id :rose
+                       :space-index 4
+                       :size :medium
+                       :orientation :east}]
+        target {:id :indigo-medium-target
+                :player-id :indigo
+                :space-index 5
+                :size :medium
+                :orientation :north}
+        state (-> (:state (game-state/create-game
+                           player-specs
+                           {:deck-order (deck-starting-with ["hierophant"])}))
+                  (game-state/with-board-pieces (conj rose-mediums target)))
+        result (game-state/apply-hierophant-move
+                state
+                {:player-id :rose
+                 :source {:kind :hand-card
+                          :card-id "hierophant"
+                          :piece-id :rose-medium-e}
+                 :target {:kind :piece
+                          :piece-id :indigo-medium-target}
+                 :orientation :south})]
+    (is (= :no-same-size-piece-available
+           (get-in result [:error :code])))
+    (is (false? (:ok? result)))
+    (is (not (contains? result :state)))))
+
+(deftest hermit-moves_target_piece_to_empty_board_space
+  (let [state (-> (:state (game-state/create-game
+                           player-specs
+                           {:deck-order (deck-starting-with ["hermit"])}))
+                  (game-state/with-board-pieces [rose-target-minion
+                                                 indigo-cup-target]))
+        {:keys [ok? state events]} (game-state/apply-hermit-move
+                                    state
+                                    {:player-id :rose
+                                     :source {:kind :hand-card
+                                              :card-id "hermit"
+                                              :piece-id :rose-target-minion}
+                                     :target {:kind :piece
+                                              :piece-id :indigo-cup-target}
+                                     :destination {:kind :territory
+                                                   :board-index 0}})
+        moved-piece (piece-by-id state :indigo-cup-target)]
+    (is ok?)
+    (is (= :west (:orientation moved-piece)))
+    (is (= 0 (:space-index moved-piece)))
+    (is (= ["hermit"] (mapv :id (:discard-pile state))))
+    (is (= :hermit/piece-moved (get-in events [0 :type])))
+    (is (game-schema/valid-game? state))))
+
+(deftest hermit-moves_target_territory_to_eligible_wasteland
+  (let [initial-state (:state (game-state/create-game
+                               player-specs
+                               {:deck-order (deck-starting-with ["hermit"])}))
+        target-card (get-in initial-state [:board 4 :card])
+        passenger {:id :rose-passenger
+                   :player-id :rose
+                   :space-index 4
+                   :size :small
+                   :orientation :north}
+        state (-> initial-state
+                  (game-state/with-board-pieces [(assoc rose-target-minion
+                                                        :space-index 3
+                                                        :orientation :east)
+                                                 passenger]))
+        {:keys [ok? state events]} (game-state/apply-hermit-move
+                                    state
+                                    {:player-id :rose
+                                     :source {:kind :hand-card
+                                              :card-id "hermit"
+                                              :piece-id :rose-target-minion}
+                                     :target {:kind :territory
+                                              :board-index 4}
+                                     :destination {:kind :wasteland
+                                                   :row 1
+                                                   :col 3}})
+        moved-cell (board-cell-by-index state 4)
+        passenger-after (piece-by-id state :rose-passenger)]
+    (is ok?)
+    (is (= {:index 4
+            :row 1
+            :col 3
+            :orientation :portrait
+            :face :up
+            :card target-card}
+           moved-cell))
+    (is (= {:kind :wasteland
+            :row 1
+            :col 1}
+           (:space passenger-after)))
+    (is (= :hermit/territory-moved (get-in events [0 :type])))
+    (is (game-schema/valid-game? state))))
+
+(deftest devil-can-retarget_after_orienting_the_acting_minion
+  (let [devil-minion {:id :rose-devil-minion
+                      :player-id :rose
+                      :space-index 4
+                      :size :medium
+                      :orientation :up}
+        enemy-target {:id :indigo-devil-target
+                      :player-id :indigo
+                      :space-index 5
+                      :size :small
+                      :orientation :north}
+        state (-> (:state (game-state/create-game
+                           player-specs
+                           {:deck-order (deck-with-board-card 4 "devil")}))
+                  (game-state/with-board-pieces [devil-minion enemy-target]))
+        {:keys [ok? state events]} (game-state/apply-devil-move
+                                    state
+                                    {:player-id :rose
+                                     :source {:kind :territory
+                                              :board-index 4}
+                                     :actions [{:power :orient-target
+                                                :piece-id :rose-devil-minion
+                                                :target {:kind :piece
+                                                         :piece-id :rose-devil-minion}
+                                                :orientation :east}
+                                               {:power :orient-target
+                                                :piece-id :rose-devil-minion
+                                                :target {:kind :piece
+                                                         :piece-id :indigo-devil-target}
+                                                :orientation :south}]})
+        minion-after (piece-by-id state :rose-devil-minion)
+        target-after (piece-by-id state :indigo-devil-target)]
+    (is ok?)
+    (is (= :east (:orientation minion-after)))
+    (is (= :south (:orientation target-after)))
+    (is (= [:devil/piece-oriented :devil/piece-oriented]
+           (mapv :type events)))
+    (is (empty? (:discard-pile state)))
     (is (game-schema/valid-game? state))))
 
 (deftest orient-move-updates-current-players-piece

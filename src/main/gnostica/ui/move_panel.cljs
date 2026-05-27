@@ -556,6 +556,45 @@
 
      nil)])
 
+(defn- piece-orientation-major-controls
+  [label params board target-piece-options orientation-options]
+  [:<>
+   [target-piece-choices board target-piece-options (:target-piece-id params)]
+   (when (:target-piece-id params)
+     [orientation-choices label orientation-options (:orientation params)])])
+
+(defn- hermit-move-controls
+  [params board target-piece-options target-board-options target-wasteland-options
+   orientation-options orientation-required?]
+  (let [target-selected? (or (:target-piece-id params)
+                             (some? (:target-board-index params)))]
+    [:<>
+     (if target-selected?
+       [:div.move-step
+        [:div.move-step__header
+         [:span "Hermit target"]
+         [:strong
+          (if-let [piece (some #(when (= (:target-piece-id params) (:id %)) %)
+                               (concat target-piece-options []))]
+            (piece-choice-label board piece)
+            (if-let [cell (some #(when (= (:target-board-index params) (:index %)) %)
+                                board)]
+              (:title (:card cell))
+              "Selected"))]]]
+       [:<>
+        [target-choice-grid "Hermit target" target-board-options [] (:target-board-index params) nil]
+        [target-piece-choices board target-piece-options (:target-piece-id params)]])
+     (when target-selected?
+       [target-choice-grid "Destination"
+        target-board-options
+        target-wasteland-options
+        (:hermit-destination-board-index params)
+        (:hermit-destination-wasteland params)])
+     (when (and orientation-required?
+                (or (:hermit-destination-board-index params)
+                    (:hermit-destination-wasteland params)))
+       [orientation-choices orientation-options (:orientation params)])]))
+
 (defn- move-active-controls [selection controls]
   (let [{:keys [source params]} selection
         {:keys [board power power-options rod-mode-options piece-options
@@ -626,6 +665,25 @@
                     orientation-options
                     sword-orientation-available?
                     damage-options]
+            :hierophant [piece-orientation-major-controls
+                         "Replacement orientation"
+                         params
+                         board
+                         target-piece-options
+                         orientation-options]
+            :hermit [hermit-move-controls params
+                     board
+                     target-piece-options
+                     target-board-options
+                     target-wasteland-options
+                     orientation-options
+                     orientation-required?]
+            :devil [piece-orientation-major-controls
+                    "Target orientation"
+                    params
+                    board
+                    target-piece-options
+                    orientation-options]
             nil)])]
 
       :play-hand-card
@@ -684,6 +742,25 @@
                     orientation-options
                     sword-orientation-available?
                     damage-options]
+            :hierophant [piece-orientation-major-controls
+                         "Replacement orientation"
+                         params
+                         board
+                         target-piece-options
+                         orientation-options]
+            :hermit [hermit-move-controls params
+                     board
+                     target-piece-options
+                     target-board-options
+                     target-wasteland-options
+                     orientation-options
+                     orientation-required?]
+            :devil [piece-orientation-major-controls
+                    "Target orientation"
+                    params
+                    board
+                    target-piece-options
+                    orientation-options]
             nil)])]
 
       :draw-cards

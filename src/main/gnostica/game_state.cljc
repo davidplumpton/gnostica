@@ -4,6 +4,7 @@
             [gnostica.game-state.disc :as disc]
             [gnostica.game-state.draw :as draw]
             [gnostica.game-state.major :as major]
+            [gnostica.game-state.manipulation :as manipulation]
             [gnostica.game-state.placement :as placement]
             [gnostica.game-state.rod :as rod]
             [gnostica.game-state.sword :as sword]))
@@ -136,6 +137,18 @@
 
 (defn apply-judgement-move [state command]
   (draw/apply-judgement-move state command))
+
+(defn target-coordinate [coordinate orientation]
+  (manipulation/target-coordinate coordinate orientation))
+
+(defn apply-hierophant-move [state command]
+  (manipulation/apply-hierophant-move state command))
+
+(defn apply-hermit-move [state command]
+  (manipulation/apply-hermit-move state command))
+
+(defn apply-devil-move [state command]
+  (manipulation/apply-devil-move state command))
 
 (defn resolve-major-source [state command]
   (major/resolve-major-source state command))

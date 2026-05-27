@@ -971,6 +971,56 @@
     (is (= 3 (get-in confirmed-db [:game :players-by-id :indigo :stash :small])))
     (is (game-schema/valid-game? (app-state/game confirmed-db)))))
 
+(deftest hierophant-hand-card-can_replace_a_target_piece_from_move_panel
+  (let [rose-major-minion {:id :rose-major-minion
+                           :player-id :rose
+                           :space-index 4
+                           :size :medium
+                           :orientation :up}
+        indigo-target {:id :indigo-major-target
+                       :player-id :indigo
+                       :space-index 4
+                       :size :medium
+                       :orientation :north}
+        db (app-state/initialize {:player-specs test-player-specs
+                                  :game-options {:deck-order
+                                                 (deck-starting-with ["hierophant"])}
+                                  :demo-board-pieces [rose-major-minion
+                                                      indigo-target]})
+        piece-db (-> db
+                     (app-state/select-move-source :play-hand-card)
+                     (app-state/select-move-hand-card "hierophant")
+                     (app-state/select-move-piece :rose-major-minion))
+        target-db (app-state/select-move-target-piece piece-db :indigo-major-target)
+        oriented-db (app-state/set-move-orientation target-db :west)
+        confirmed-db (app-state/confirm-move oriented-db)
+        replacement (piece-by-id confirmed-db :rose-medium-1)
+        zones (app-state/card-zones confirmed-db)]
+    (is (= :hierophant (app-state/move-power piece-db)))
+    (is (= :target-piece (:stage (app-state/move-selection piece-db))))
+    (is (= [:indigo-major-target :rose-major-minion]
+           (sort (mapv :id (app-state/move-target-piece-options piece-db)))))
+    (is (= :orientation (:stage (app-state/move-selection target-db))))
+    (is (= :confirm (:stage (app-state/move-selection oriented-db))))
+    (is (= {:player-id :rose
+            :source {:kind :hand-card
+                     :card-id "hierophant"
+                     :piece-id :rose-major-minion}
+            :target {:kind :piece
+                     :piece-id :indigo-major-target}
+            :orientation :west}
+           (app-state/move-command oriented-db)))
+    (is (:ok? (get-in confirmed-db [:move-selection :last-result])))
+    (is (= {:id :rose-medium-1
+            :player-id :rose
+            :space-index 4
+            :size :medium
+            :orientation :west}
+           replacement))
+    (is (nil? (piece-by-id confirmed-db :indigo-major-target)))
+    (is (= ["hierophant"] (mapv :id (:discard-pile zones))))
+    (is (game-schema/valid-game? (app-state/game confirmed-db)))))
+
 (deftest playing-a-cup-hand-card-can-create-a_wasteland_territory
   (let [db (app-state/initialize {:player-specs test-player-specs
                                   :game-options {:deck-order (deck-starting-with ["cups2" "coins2"])}

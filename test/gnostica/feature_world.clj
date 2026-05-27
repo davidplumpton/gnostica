@@ -133,6 +133,41 @@
    :size :small
    :orientation :north})
 
+(def rose-manipulation-minion
+  {:id :rose-manipulation-minion
+   :player-id :rose
+   :space-index 3
+   :size :medium
+   :orientation :east})
+
+(def indigo-manipulation-target
+  {:id :indigo-manipulation-target
+   :player-id :indigo
+   :space-index 4
+   :size :small
+   :orientation :north})
+
+(def rose-hermit-passenger
+  {:id :rose-hermit-passenger
+   :player-id :rose
+   :space-index 4
+   :size :small
+   :orientation :north})
+
+(def rose-devil-minion
+  {:id :rose-devil-minion
+   :player-id :rose
+   :space-index 4
+   :size :medium
+   :orientation :up})
+
+(def indigo-devil-target
+  {:id :indigo-devil-target
+   :player-id :indigo
+   :space-index 5
+   :size :small
+   :orientation :north})
+
 (def rose-medium-pieces
   [{:id :rose-medium-a
     :player-id :rose
@@ -179,6 +214,9 @@
 
 (defn- with-draw-major-fixture [world fixture]
   (assoc world :draw-major-fixture fixture))
+
+(defn- with-manipulation-fixture [world fixture]
+  (assoc world :manipulation-fixture fixture))
 
 (defn create-rod-territory-source-game [world board-index orientation]
   (let [world (create-game-with-options
@@ -457,6 +495,54 @@
                                   :piece-id :rose-disc-minion
                                   :discard-card-id (:id discard-card)}))))
 
+(defn create-hierophant-hand-card-game [world]
+  (let [world (create-game-with-options
+               world
+               {:deck-order (deck-starting-with ["hierophant"])})]
+    (-> world
+        (put-pieces [rose-manipulation-minion
+                     indigo-manipulation-target])
+        (with-manipulation-fixture {:source-kind :hand-card
+                                    :source-card-id "hierophant"
+                                    :piece-id :rose-manipulation-minion
+                                    :target-piece-id :indigo-manipulation-target}))))
+
+(defn create-hermit-hand-card-piece-game [world]
+  (let [world (create-game-with-options
+               world
+               {:deck-order (deck-starting-with ["hermit"])})]
+    (-> world
+        (put-pieces [rose-manipulation-minion
+                     indigo-manipulation-target])
+        (with-manipulation-fixture {:source-kind :hand-card
+                                    :source-card-id "hermit"
+                                    :piece-id :rose-manipulation-minion
+                                    :target-piece-id :indigo-manipulation-target}))))
+
+(defn create-hermit-hand-card-territory-game [world]
+  (let [world (create-game-with-options
+               world
+               {:deck-order (deck-starting-with ["hermit"])})]
+    (-> world
+        (put-pieces [rose-manipulation-minion
+                     rose-hermit-passenger])
+        (with-manipulation-fixture {:source-kind :hand-card
+                                    :source-card-id "hermit"
+                                    :piece-id :rose-manipulation-minion
+                                    :target-board-index 4}))))
+
+(defn create-devil-territory-source-retargeting-game [world]
+  (let [world (create-game-with-options
+               world
+               {:deck-order (deck-with-board-card 2 4 "devil")})]
+    (-> world
+        (put-pieces [rose-devil-minion
+                     indigo-devil-target])
+        (with-manipulation-fixture {:source-kind :territory
+                                    :source-board-index 4
+                                    :piece-id :rose-devil-minion
+                                    :target-piece-id :indigo-devil-target}))))
+
 (defn create-endgame-winning-challenge-game [world]
   (let [world (create-game-with-options
                world
@@ -550,6 +636,15 @@
                 :card-id source-card-id
                 :piece-id piece-id}))
 
+(defn manipulation-source [{:keys [source-kind source-board-index source-card-id piece-id]}]
+  (case source-kind
+    :territory {:kind :territory
+                :board-index source-board-index
+                :piece-id piece-id}
+    :hand-card {:kind :hand-card
+                :card-id source-card-id
+                :piece-id piece-id}))
+
 (defn apply-action [world action f & args]
   (let [previous-state (:state world)
         result (apply f (:state world) args)]
@@ -632,6 +727,64 @@
                      "high-priestess" game-state/apply-high-priestess-move
                      "judgement" game-state/apply-judgement-move)]
     (apply-action world :draw-major transition command)))
+
+(defn apply-hierophant-replacement [world orientation]
+  (let [fixture (:manipulation-fixture world)
+        command {:player-id :rose
+                 :source (manipulation-source fixture)
+                 :target {:kind :piece
+                          :piece-id (:target-piece-id fixture)}
+                 :orientation orientation}]
+    (apply-action world
+                  :manipulation-major
+                  game-state/apply-hierophant-move
+                  command)))
+
+(defn apply-hermit-piece-relocation [world destination-board-index]
+  (let [fixture (:manipulation-fixture world)
+        command {:player-id :rose
+                 :source (manipulation-source fixture)
+                 :target {:kind :piece
+                          :piece-id (:target-piece-id fixture)}
+                 :destination {:kind :territory
+                               :board-index destination-board-index}}]
+    (apply-action world
+                  :manipulation-major
+                  game-state/apply-hermit-move
+                  command)))
+
+(defn apply-hermit-territory-relocation [world row col]
+  (let [fixture (:manipulation-fixture world)
+        command {:player-id :rose
+                 :source (manipulation-source fixture)
+                 :target {:kind :territory
+                          :board-index (:target-board-index fixture)}
+                 :destination {:kind :wasteland
+                               :row row
+                               :col col}}]
+    (apply-action world
+                  :manipulation-major
+                  game-state/apply-hermit-move
+                  command)))
+
+(defn apply-devil-retargeting [world]
+  (let [fixture (:manipulation-fixture world)
+        command {:player-id :rose
+                 :source (manipulation-source fixture)
+                 :actions [{:power :orient-target
+                            :piece-id (:piece-id fixture)
+                            :target {:kind :piece
+                                     :piece-id (:piece-id fixture)}
+                            :orientation :east}
+                           {:power :orient-target
+                            :piece-id (:piece-id fixture)
+                            :target {:kind :piece
+                                     :piece-id (:target-piece-id fixture)}
+                            :orientation :south}]}]
+    (apply-action world
+                  :manipulation-major
+                  game-state/apply-devil-move
+                  command)))
 
 (defn apply-fool-skip-reveals [world reveal-count]
   (let [fixture (:draw-major-fixture world)
