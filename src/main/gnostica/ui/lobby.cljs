@@ -20,12 +20,12 @@
       :on-change #(rf/dispatch [events/set-lobby-player-colour
                                  slot-id
                                  (event-value %)])}
-     (for [{:keys [id name disabled?]} (:colour-options player)]
+     (for [{:keys [id disabled?] option-name :name} (:colour-options player)]
        ^{:key id}
        [:option
         {:value (name id)
          :disabled disabled?}
-        name])]]])
+        option-name])]]])
 
 (defn- player-row [{:keys [slot-id name] :as player}]
   [:article.lobby-player
