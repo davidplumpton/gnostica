@@ -10,6 +10,7 @@
             [gnostica.game-state-test]
             [gnostica.icon-layout-test]
             [gnostica.keyboard-shortcuts-test]
+            [gnostica.major-sequence-test]
             [gnostica.pieces-test]))
 
 (defn -main [& _]
@@ -23,5 +24,6 @@
                                         'gnostica.game-state-test
                                         'gnostica.icon-layout-test
                                         'gnostica.keyboard-shortcuts-test
+                                        'gnostica.major-sequence-test
                                         'gnostica.gameplay-feature-test)]
     (System/exit (if (zero? (+ fail error)) 0 1))))

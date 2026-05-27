@@ -3,6 +3,7 @@
             [gnostica.game-state.cup :as cup]
             [gnostica.game-state.disc :as disc]
             [gnostica.game-state.draw :as draw]
+            [gnostica.game-state.major :as major]
             [gnostica.game-state.placement :as placement]
             [gnostica.game-state.rod :as rod]
             [gnostica.game-state.sword :as sword]))
@@ -123,6 +124,21 @@
 
 (defn apply-draw-move [state command]
   (draw/apply-draw-move state command))
+
+(defn resolve-major-source [state command]
+  (major/resolve-major-source state command))
+
+(defn charge-major-source-once [state source-result]
+  (major/charge-source-once state source-result))
+
+(defn major-paid-source-opts [source-result]
+  (major/paid-source-opts source-result))
+
+(defn major-action-source [source-result piece-id]
+  (major/action-source source-result piece-id))
+
+(defn apply-major-sequence [state command spec]
+  (major/apply-major-sequence state command spec))
 
 (defn apply-orient-move [state command]
   (placement/apply-orient-move state command))
