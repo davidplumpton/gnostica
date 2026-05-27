@@ -48,6 +48,21 @@
 (defn- trim-name [name]
   (str/trim (str name)))
 
+(defn- normalize-controller-id [controller-id]
+  (let [controller-id (trim-name (if (keyword? controller-id)
+                                   (name controller-id)
+                                   controller-id))]
+    (when-not (str/blank? controller-id)
+      controller-id)))
+
+(defn- normalize-local-controller [controller]
+  (when-let [controller-id (normalize-controller-id (:id controller))]
+    {:id controller-id
+     :name (let [controller-name (trim-name (:name controller))]
+             (if (str/blank? controller-name)
+               "Local browser"
+               controller-name))}))
+
 (defn- lobby-error [code message data]
   {:code code
    :message message
@@ -68,20 +83,33 @@
              (:id %))
           pieces/players)))
 
-(defn- normalize-lobby-player [slot-id player-spec]
+(defn- normalize-player-controller [player-spec local-controller]
+  (or local-controller
+      (normalize-local-controller {:id (:controller-id player-spec)
+                                   :name (:controller-name player-spec)})))
+
+(defn- with-player-controller [player controller]
+  (cond-> player
+    controller
+    (assoc :controller-id (:id controller)
+           :controller-name (:name controller))))
+
+(defn- normalize-lobby-player [local-controller slot-id player-spec]
   (let [requested-id (:id player-spec)
         player-id (if (known-player-id? requested-id)
                     requested-id
                     (:id (first pieces/players)))
         colour (player-colour player-id)
         name (trim-name (or (:name player-spec)
-                            (:name colour)))]
-    {:slot-id slot-id
-     :id player-id
-     :name name}))
+                            (:name colour)))
+        controller (normalize-player-controller player-spec local-controller)]
+    (with-player-controller {:slot-id slot-id
+                             :id player-id
+                             :name name}
+                            controller)))
 
-(defn- normalize-lobby-players [player-specs]
-  (mapv normalize-lobby-player
+(defn- normalize-lobby-players [player-specs local-controller]
+  (mapv (partial normalize-lobby-player local-controller)
         (range 1 (inc (count player-specs)))
         player-specs))
 
@@ -144,16 +172,22 @@
 (defn lobby-valid? [lobby]
   (nil? (lobby-validation-error lobby)))
 
-(defn- create-lobby [{:keys [player-specs lobby-player-specs game-options demo-board-pieces]
+(defn- create-lobby [{:keys [player-specs lobby-player-specs game-options demo-board-pieces
+                             local-controller]
                       :as opts
                       :or {player-specs default-lobby-player-specs
                            game-options {}}}]
-  (let [players (normalize-lobby-players (or lobby-player-specs player-specs))]
+  (let [local-controller (normalize-local-controller local-controller)
+        players (normalize-lobby-players (or lobby-player-specs player-specs)
+                                         local-controller)]
     (cond-> {:players players
              :next-slot-id (next-lobby-slot-id players)
              :start-options (cond-> {:game-options (or game-options {})}
                               (contains? opts :demo-board-pieces)
                               (assoc :demo-board-pieces demo-board-pieces))}
+      local-controller
+      (assoc :local-controller local-controller)
+
       (lobby-validation-error {:players players})
       (assoc :error (lobby-validation-error {:players players})))))
 
@@ -252,9 +286,10 @@
       (if-let [player-id (first-available-player-id players)]
         (let [slot-id (get-in db [:lobby :next-slot-id] (next-lobby-slot-id players))
               colour (player-colour player-id)
-              player {:slot-id slot-id
-                      :id player-id
-                      :name (:name colour)}]
+              player (with-player-controller {:slot-id slot-id
+                                              :id player-id
+                                              :name (:name colour)}
+                       (get-in db [:lobby :local-controller]))]
           (-> db
               (update-in [:lobby :players] conj player)
               (assoc-in [:lobby :next-slot-id] (inc slot-id))
@@ -372,6 +407,7 @@
 
 (defn lobby-view-model [{:keys [lobby]}]
   (let [players (:players lobby)
+        local-controller (:local-controller lobby)
         used-player-ids (set (map :id players))
         validation-error (when lobby
                            (lobby-validation-error lobby))
@@ -384,10 +420,12 @@
                                :colour (select-keys colour [:id :name :css-color])
                                :colour-options (mapv #(lobby-colour-option
                                                        used-player-ids
-                                                       (:id player)
-                                                       %)
+                                                      (:id player)
+                                                      %)
                                                      pieces/players))))
                     players)
+     :local-controller local-controller
+     :local-control? (some? local-controller)
      :available-colours (mapv #(assoc (select-keys % [:id :name :css-color])
                                       :available?
                                       (not (contains? used-player-ids (:id %))))

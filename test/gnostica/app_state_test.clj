@@ -288,6 +288,29 @@
     (is (= "Gold" (:name gold-player)))
     (is (nil? (get-in recoloured-db [:lobby :error])))))
 
+(deftest local-controller-lobby-metadata-can-cover-multiple-seats
+  (let [controller {:id "local-dev"
+                    :name "Local dev"}
+        db (app-state/initialize {:start-in-lobby? true
+                                  :player-specs test-player-specs
+                                  :local-controller controller})
+        added-db (app-state/add-lobby-player db)
+        lobby-view (app-state/lobby-view added-db)
+        started-db (app-state/start-lobby-game db {:shuffle-fn identity})]
+    (is (= controller (:local-controller (app-state/lobby db))))
+    (is (= controller (:local-controller lobby-view)))
+    (is (true? (:local-control? lobby-view)))
+    (is (= ["local-dev" "local-dev" "local-dev"]
+           (mapv :controller-id (:players lobby-view))))
+    (is (= ["Local dev" "Local dev" "Local dev"]
+           (mapv :controller-name (:players lobby-view))))
+    (is (nil? (app-state/lobby started-db)))
+    (is (= [:rose :indigo]
+           (mapv :id (get-in started-db [:game :players]))))
+    (is (every? nil?
+                (map :controller-id (get-in started-db [:game :players]))))
+    (is (game-schema/valid-game? (app-state/game started-db)))))
+
 (deftest starting-lobby-game-uses-selected-players-and-injected-shuffle
   (let [db (app-state/initialize {:start-in-lobby? true
                                   :player-specs [{:id :rose

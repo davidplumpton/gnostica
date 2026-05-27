@@ -1,10 +1,17 @@
 (ns gnostica.fixtures
-  (:require [gnostica.cards :as cards]
+  (:require [clojure.string :as str]
+            [gnostica.cards :as cards]
             [gnostica.pieces :as pieces]))
 
 (def smoke-query-param "gnostica-smoke")
 
 (def smoke-major-icons-mode "major-icons")
+
+(def dev-shared-control-query-param "gnostica-dev-shared-control")
+
+(def shared-local-controller
+  {:id "local-dev"
+   :name "Local dev"})
 
 (def demo-board-pieces
   [{:id :rose-scout
@@ -50,6 +57,12 @@
 (defn lobby-init-options []
   {:start-in-lobby? true
    :player-specs default-browser-lobby-player-specs})
+
+(defn shared-local-control-init-options [enabled?]
+  (when enabled?
+    {:start-in-lobby? true
+     :player-specs default-browser-lobby-player-specs
+     :local-controller shared-local-controller}))
 
 (defn major-icon-smoke-deck-order []
   (let [major-hand-card (cards/card-by-id "magician")
@@ -98,8 +111,21 @@
        (.get params smoke-query-param))))
 
 #?(:cljs
+   (defn- truthy-query-param? [params param-name]
+     (contains? #{"1" "true" "yes" "on"}
+                (some-> (.get params param-name)
+                        str/lower-case))))
+
+#?(:cljs
+   (defn- shared-local-control-from-search [search]
+     (let [params (js/URLSearchParams. (or search ""))]
+       (truthy-query-param? params dev-shared-control-query-param))))
+
+#?(:cljs
    (defn browser-init-options
      ([] (browser-init-options (.. js/window -location -search)))
      ([search]
       (merge-init-options (lobby-init-options)
+                          (shared-local-control-init-options
+                           (shared-local-control-from-search search))
                           (smoke-init-options (smoke-mode-from-search search))))))

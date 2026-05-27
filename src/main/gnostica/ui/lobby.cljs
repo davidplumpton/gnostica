@@ -27,8 +27,19 @@
          :disabled disabled?}
         option-name])]]])
 
-(defn- player-row [{:keys [slot-id name] :as player}]
-  [:article.lobby-player
+(defn- control-field [{:keys [controller-name]}]
+  (when controller-name
+    [:div.lobby-field
+     [:span.lobby-field__label "Control"]
+     [:output.lobby-control
+      {:aria-label "Seat controller"}
+      controller-name]]))
+
+(defn- player-row [{:keys [slot-id name controller-name] :as player}]
+  [:article
+   {:class (cond-> "lobby-player"
+             controller-name
+             (str " has-control"))}
    [:div.lobby-player__badge
     [colour-swatch (:colour player)]]
    [:label.lobby-field
@@ -41,6 +52,7 @@
                                  slot-id
                                  (event-value %)])}]]
    [colour-select slot-id player]
+   [control-field player]
    [:button.lobby-remove
     {:type "button"
      :aria-label (str "Remove " (or name "player"))

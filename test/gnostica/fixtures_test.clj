@@ -56,3 +56,13 @@
                          {:id :indigo
                           :name "Indigo"}]}
          (fixtures/lobby-init-options))))
+
+(deftest shared-local-control-init-options-are-dev-scoped
+  (is (nil? (fixtures/shared-local-control-init-options false)))
+  (is (= {:start-in-lobby? true
+          :player-specs [{:id :rose
+                          :name "Rose"}
+                         {:id :indigo
+                          :name "Indigo"}]
+          :local-controller fixtures/shared-local-controller}
+         (fixtures/shared-local-control-init-options true))))
