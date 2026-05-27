@@ -122,6 +122,9 @@
 (defn apply-sword-move [state command]
   (sword/apply-sword-move state command))
 
+(defn apply-moon-move [state command]
+  (sword/apply-moon-move state command))
+
 (defn apply-draw-move [state command]
   (draw/apply-draw-move state command))
 
