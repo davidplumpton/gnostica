@@ -110,6 +110,12 @@ clojure -M:smoke     # run the headless Chrome 3D board smoke check
 
 Run `clojure -M:release` before `clojure -M:server` or the default `clojure -M:smoke` path so `src/main/resources/js/main.js` is current. `SMOKE_URL` can point smoke at an already-running dev or release server instead.
 
+## Issue Tracking
+
+This repo tracks work with `br` from beads_rust. Start from `br ready` and `br show <id>` when picking up tickets; see `AGENTS.md` for the detailed workflow and command reference.
+
+After updating issues, run `br sync --flush-only` and include the resulting `.beads/` changes in the current Jujutsu change or commit. `br` does not run git or Jujutsu commands for you.
+
 ## Version Control
 
 This project is initialized for Jujutsu:
