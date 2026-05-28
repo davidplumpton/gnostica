@@ -636,11 +636,14 @@
                (replace-game-player-hand :rose (vec (butlast original-hand)))
                (update-in [:game :discard-pile] conj discarded-card))
         draw-option (source-option db :draw-cards)
+        initial-option (source-option db :place-initial-small)
         source-db (app-state/select-move-source db :draw-cards)]
     (is (not (:enabled? draw-option)))
     (is (= "The current player has no pieces on the board."
            (:reason draw-option)))
-    (is (:enabled? (source-option db :place-initial-small)))
+    (is (:enabled? initial-option))
+    (is (= "No-piece placement" (:label initial-option)))
+    (is (re-find #"Special rule" (:summary initial-option)))
     (is (= :move-source-unavailable
            (get-in source-db [:move-selection :error :code])))
     (is (= :draw-cards

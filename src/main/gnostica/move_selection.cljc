@@ -34,8 +34,8 @@
     :requirements [:piece-id :orientation]}
    :place-initial-small
    {:id :place-initial-small
-    :label "Place initial small"
-    :summary "Put your first small piece on an empty territory or wasteland."
+    :label "No-piece placement"
+    :summary "Special rule: with no pieces, put your first small piece on an empty territory or wasteland."
     :requirements [:target-space :orientation]}})
 
 (def move-power-order
