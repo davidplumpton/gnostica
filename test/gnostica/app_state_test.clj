@@ -642,7 +642,7 @@
     (is (= "The current player has no pieces on the board."
            (:reason draw-option)))
     (is (:enabled? initial-option))
-    (is (= "No-piece placement" (:label initial-option)))
+    (is (= "Place first piece" (:label initial-option)))
     (is (re-find #"Special rule" (:summary initial-option)))
     (is (= :move-source-unavailable
            (get-in source-db [:move-selection :error :code])))

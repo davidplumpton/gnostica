@@ -34,7 +34,7 @@
     :requirements [:piece-id :orientation]}
    :place-initial-small
    {:id :place-initial-small
-    :label "No-piece placement"
+    :label "Place first piece"
     :summary "Special rule: with no pieces, put your first small piece on an empty territory or wasteland."
     :requirements [:target-space :orientation]}})
 
