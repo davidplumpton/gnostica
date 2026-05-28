@@ -42,6 +42,26 @@
         :on-click #(rf/dispatch [events/select-board-card (:index cell)])}
        (board-cell-label cell)])]])
 
+(defn- world-copy-choices [cells selected-index]
+  [:div.move-step
+   [:div.move-step__header
+    [:span "World copy"]
+    [:strong
+     (if-let [selected-cell (some #(when (= selected-index (:index %)) %) cells)]
+       (:title (:card selected-cell))
+       "None")]]
+   (if (seq cells)
+     [:div.move-board-choice-grid
+      (for [cell cells]
+        ^{:key (:index cell)}
+        [:button.move-chip
+         {:type "button"
+          :class (when (= selected-index (:index cell)) "is-selected")
+          :aria-pressed (= selected-index (:index cell))
+          :on-click #(rf/dispatch [events/select-move-world-copy (:index cell)])}
+         (board-cell-label cell)])]
+     [:p.move-step__empty "No major territories available."])])
+
 (defn- same-wasteland? [selected-space space]
   (and selected-space
        (= (:row selected-space) (:row space))
@@ -799,9 +819,140 @@
 
        nil))])
 
+(defn- world-move-controls
+  [params board world-copy-options copied-power-options copied-power
+   rod-mode-options disc-action-count-options sword-action-count-options
+   sun-disc-mode-options fool-reveal-count-options
+   high-priestess-redraw-count-options high-priestess-redraw-options
+   judgement-card-options judgement-card-maximum
+   disc-minion-orientation-required?
+   disc-target-kind-options sword-target-kind-options target-piece-options
+   target-board-options target-wasteland-options territory-card-source-options
+   one-point-card-options replacement-card-options orientation-options
+   orientation-required? disc-orientation-available? sun-disc-orientation-available?
+   sword-orientation-available? distance-options damage-options]
+  [:<>
+   [world-copy-choices world-copy-options (:copied-board-index params)]
+   (when (:copied-board-index params)
+     [power-choices copied-power-options copied-power])
+   (when copied-power
+     (case copied-power
+       :rod [rod-move-controls params
+             board
+             rod-mode-options
+             target-piece-options
+             target-board-options
+             distance-options
+             orientation-options
+             orientation-required?]
+       :cup [cup-move-controls params
+             board
+             target-piece-options
+             target-board-options
+             target-wasteland-options
+             territory-card-source-options
+             one-point-card-options
+             orientation-options]
+       :disc [disc-move-controls params
+              board
+              disc-action-count-options
+              disc-minion-orientation-required?
+              disc-target-kind-options
+              target-piece-options
+              target-board-options
+              territory-card-source-options
+              replacement-card-options
+              orientation-options
+              disc-orientation-available?]
+       :sun [sun-move-controls params
+             board
+             sun-disc-mode-options
+             target-piece-options
+             target-board-options
+             target-wasteland-options
+             one-point-card-options
+             replacement-card-options
+             orientation-options
+             sun-disc-orientation-available?]
+       :sword [sword-move-controls params
+               board
+               sword-target-kind-options
+               target-piece-options
+               target-board-options
+               territory-card-source-options
+               replacement-card-options
+               orientation-options
+               sword-orientation-available?
+               damage-options]
+       :fool [fool-reveal-count-choices
+              fool-reveal-count-options
+              (:fool-reveal-count params)]
+       :high-priestess [:<>
+                        [high-priestess-redraw-count-choices
+                         high-priestess-redraw-count-options
+                         (:high-priestess-redraw-count params)]
+                        [high-priestess-redraw-controls
+                         high-priestess-redraw-options]]
+       :judgement [judgement-card-choices
+                   judgement-card-options
+                   (:judgement-card-ids params)
+                   judgement-card-maximum]
+       :hierophant [piece-orientation-major-controls
+                    "Replacement orientation"
+                    params
+                    board
+                    target-piece-options
+                    orientation-options]
+       :hermit [hermit-move-controls params
+                board
+                target-piece-options
+                target-board-options
+                target-wasteland-options
+                orientation-options
+                orientation-required?]
+       :devil [piece-orientation-major-controls
+               "Target orientation"
+               params
+               board
+               target-piece-options
+               orientation-options]
+       (:empress :emperor :lovers :chariot :hanged-man :temperance)
+       [composite-major-controls
+        copied-power
+        params
+        board
+        rod-mode-options
+        target-piece-options
+        target-board-options
+        target-wasteland-options
+        distance-options
+        territory-card-source-options
+        one-point-card-options
+        orientation-options
+        orientation-required?]
+       (:justice :death :tower :moon)
+       [sword-major-controls
+        copied-power
+        params
+        board
+        rod-mode-options
+        sword-action-count-options
+        sword-target-kind-options
+        target-piece-options
+        target-board-options
+        distance-options
+        territory-card-source-options
+        replacement-card-options
+        orientation-options
+        orientation-required?
+        sword-orientation-available?
+        damage-options]
+       nil))])
+
 (defn- move-active-controls [selection controls]
   (let [{:keys [source params]} selection
         {:keys [board power power-options rod-mode-options piece-options
+                world-copy-options world-copied-power-options world-copied-power
                 disc-action-count-options sword-action-count-options sun-disc-mode-options
                 fool-reveal-count-options high-priestess-redraw-count-options
                 high-priestess-redraw-options judgement-card-options
@@ -904,6 +1055,37 @@
                     board
                     target-piece-options
                     orientation-options]
+            :world [world-move-controls
+                    params
+                    board
+                    world-copy-options
+                    world-copied-power-options
+                    world-copied-power
+                    rod-mode-options
+                    disc-action-count-options
+                    sword-action-count-options
+                    sun-disc-mode-options
+                    fool-reveal-count-options
+                    high-priestess-redraw-count-options
+                    high-priestess-redraw-options
+                    judgement-card-options
+                    judgement-card-maximum
+                    disc-minion-orientation-required?
+                    disc-target-kind-options
+                    sword-target-kind-options
+                    target-piece-options
+                    target-board-options
+                    target-wasteland-options
+                    territory-card-source-options
+                    one-point-card-options
+                    replacement-card-options
+                    orientation-options
+                    orientation-required?
+                    disc-orientation-available?
+                    sun-disc-orientation-available?
+                    sword-orientation-available?
+                    distance-options
+                    damage-options]
             (:empress :emperor :lovers :chariot :hanged-man :temperance)
             [composite-major-controls
              power
@@ -1025,6 +1207,37 @@
                     board
                     target-piece-options
                     orientation-options]
+            :world [world-move-controls
+                    params
+                    board
+                    world-copy-options
+                    world-copied-power-options
+                    world-copied-power
+                    rod-mode-options
+                    disc-action-count-options
+                    sword-action-count-options
+                    sun-disc-mode-options
+                    fool-reveal-count-options
+                    high-priestess-redraw-count-options
+                    high-priestess-redraw-options
+                    judgement-card-options
+                    judgement-card-maximum
+                    disc-minion-orientation-required?
+                    disc-target-kind-options
+                    sword-target-kind-options
+                    target-piece-options
+                    target-board-options
+                    target-wasteland-options
+                    territory-card-source-options
+                    one-point-card-options
+                    replacement-card-options
+                    orientation-options
+                    orientation-required?
+                    disc-orientation-available?
+                    sun-disc-orientation-available?
+                    sword-orientation-available?
+                    distance-options
+                    damage-options]
             (:empress :emperor :lovers :chariot :hanged-man :temperance)
             [composite-major-controls
              power

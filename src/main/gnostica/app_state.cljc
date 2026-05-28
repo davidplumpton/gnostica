@@ -681,6 +681,9 @@
 (def move-params move-selection/move-params)
 (def move-power-options move-selection/move-power-options)
 (def move-power move-selection/move-power)
+(def move-world-copy-options move-selection/move-world-copy-options)
+(def move-world-copied-power-options move-selection/move-world-copied-power-options)
+(def move-world-copied-power move-selection/move-world-copied-power)
 (def move-rod-mode-options move-selection/move-rod-mode-options)
 (def move-disc-action-count-options move-selection/move-disc-action-count-options)
 (def move-sword-action-count-options move-selection/move-sword-action-count-options)
@@ -744,6 +747,7 @@
 (def select-move-piece move-selection/select-move-piece)
 (def select-move-hand-card move-selection/select-move-hand-card)
 (def select-move-power move-selection/select-move-power)
+(def select-move-world-copy move-selection/select-move-world-copy)
 (def select-move-rod-mode move-selection/select-move-rod-mode)
 (def select-move-disc-target-kind move-selection/select-move-disc-target-kind)
 (def select-move-sword-target-kind move-selection/select-move-sword-target-kind)
@@ -780,6 +784,7 @@
 (defn move-panel-view-model
   [{:keys [current-player selection source-options prompt ready?
            board power power-options rod-mode-options disc-action-count-options
+           world-copy-options world-copied-power-options world-copied-power
            sword-action-count-options
            sun-disc-mode-options fool-reveal-count-options
            high-priestess-redraw-count-options high-priestess-redraw-options
@@ -800,6 +805,9 @@
    :controls {:board board
               :power power
               :power-options power-options
+              :world-copy-options world-copy-options
+              :world-copied-power-options world-copied-power-options
+              :world-copied-power world-copied-power
               :rod-mode-options rod-mode-options
               :disc-action-count-options disc-action-count-options
               :sword-action-count-options sword-action-count-options
@@ -841,6 +849,9 @@
     :board (board db)
     :power (move-power db)
     :power-options (move-power-options db)
+    :world-copy-options (move-world-copy-options db)
+    :world-copied-power-options (move-world-copied-power-options db)
+    :world-copied-power (move-world-copied-power db)
     :rod-mode-options (move-rod-mode-options db)
     :disc-action-count-options (move-disc-action-count-options db)
     :sword-action-count-options (move-sword-action-count-options db)

@@ -42,7 +42,7 @@
   [:empress :emperor :lovers :chariot :hanged-man :temperance
    :justice :death :tower :moon
    :cup :rod :disc :sun :sword
-   :fool :high-priestess :judgement :hierophant :hermit :devil])
+   :fool :high-priestess :judgement :hierophant :hermit :devil :world])
 
 (def move-power-definitions
   {:empress {:id :empress
@@ -86,7 +86,12 @@
    :hermit {:id :hermit
             :label "Hermit"}
    :devil {:id :devil
-           :label "Devil"}})
+           :label "Devil"}
+   :world {:id :world
+           :label "World"}})
+
+(def copied-suit-powers
+  #{:cup :rod :disc :sword})
 
 (def composite-major-card-powers
   {"empress" :empress
@@ -218,6 +223,8 @@
    :high-priestess-redraw-count "Choose how many redraw passes High Priestess applies."
    :high-priestess-redraws "Choose cards and draw counts for each redraw pass."
    :judgement-card-selection "Choose discard-pile cards for Judgement."
+   :copied-board-index "Choose a major territory for World to copy."
+   :copied-power "Choose the copied power."
    :target-piece-id "Choose a target piece."
    :target-board-index "Choose a target territory."
    :target-space "Choose a target territory, enemy piece, or wasteland."
@@ -373,7 +380,8 @@
       (= "judgement" (:id card)) (conj :judgement)
       (= "hierophant" (:id card)) (conj :hierophant)
       (= "hermit" (:id card)) (conj :hermit)
-      (= "devil" (:id card)) (conj :devil))))
+      (= "devil" (:id card)) (conj :devil)
+      (= "world" (:id card)) (conj :world))))
 
 (defn- selected-power [db source-id params]
   (when (gameplay-move-source? source-id)
@@ -393,6 +401,50 @@
         :else
         nil))))
 
+(defn- world-move? [db source-id params]
+  (= :world (selected-power db source-id params)))
+
+(defn- world-copy-board-indexes [db]
+  (set (map :board-index (game-state/world-major-territories (game db)))))
+
+(defn- world-copy-board-cell [db board-index]
+  (when (contains? (world-copy-board-indexes db) board-index)
+    (board-cell-by-index db board-index)))
+
+(defn- world-copied-card [db params]
+  (:card (world-copy-board-cell db (:copied-board-index params))))
+
+(defn- world-copied-power-ids-for-card [card]
+  (vec (remove #{:world} (move-power-ids-for-card card))))
+
+(defn- selected-world-copied-power [db source-id params]
+  (when (world-move? db source-id params)
+    (let [card (world-copied-card db params)
+          power-options (world-copied-power-ids-for-card card)
+          selected (:copied-power params)]
+      (cond
+        (contains? (set power-options) selected)
+        selected
+
+        (= 1 (count power-options))
+        (first power-options)
+
+        (and card (empty? power-options))
+        :unavailable
+
+        :else
+        nil))))
+
+(defn- active-power [db source-id params]
+  (if (world-move? db source-id params)
+    (selected-world-copied-power db source-id params)
+    (selected-power db source-id params)))
+
+(defn- active-card [db source-id params]
+  (if (world-move? db source-id params)
+    (world-copied-card db params)
+    (source-card db source-id params)))
+
 (defn- completed-major-actions [params]
   (vec (:major-actions params)))
 
@@ -400,10 +452,10 @@
   (count (completed-major-actions params)))
 
 (defn- composite-major-move? [db source-id params]
-  (contains? composite-major-powers (selected-power db source-id params)))
+  (contains? composite-major-powers (active-power db source-id params)))
 
 (defn- active-composite-action-power [db source-id params]
-  (case (selected-power db source-id params)
+  (case (active-power db source-id params)
     :empress (if (zero? (completed-major-action-count params))
                :orient-minion
                :cup)
@@ -424,10 +476,10 @@
   (= power (active-composite-action-power db source-id params)))
 
 (defn- sword-major-move? [db source-id params]
-  (contains? sword-major-powers (selected-power db source-id params)))
+  (contains? sword-major-powers (active-power db source-id params)))
 
 (defn- active-sword-major-action-power [db source-id params]
-  (case (selected-power db source-id params)
+  (case (active-power db source-id params)
     :justice (if (zero? (completed-major-action-count params))
                :trade-hand
                :sword)
@@ -454,15 +506,15 @@
       (sword-major-action-power? db source-id params :orient-minion)))
 
 (defn- cup-move? [db source-id params]
-  (or (= :cup (selected-power db source-id params))
+  (or (= :cup (active-power db source-id params))
       (composite-action-power? db source-id params :cup)))
 
 (defn- sun-move? [db source-id params]
-  (= :sun (selected-power db source-id params)))
+  (= :sun (active-power db source-id params)))
 
 (defn- selected-cup-variant [db source-id params]
   (when (cup-move? db source-id params)
-    (cards/cup-variant (source-card db source-id params))))
+    (cards/cup-variant (active-card db source-id params))))
 
 (defn- territory-card-source-option-ids [db source-id params]
   (when (cup-move? db source-id params)
@@ -471,28 +523,28 @@
       [:hand])))
 
 (defn- rod-move? [db source-id params]
-  (or (= :rod (selected-power db source-id params))
+  (or (= :rod (active-power db source-id params))
       (composite-action-power? db source-id params :rod)
       (sword-major-action-power? db source-id params :rod)))
 
 (defn- selected-rod-variant [db source-id params]
   (when (rod-move? db source-id params)
-    (cards/rod-variant (source-card db source-id params))))
+    (cards/rod-variant (active-card db source-id params))))
 
 (defn- disc-move? [db source-id params]
-  (= :disc (selected-power db source-id params)))
+  (= :disc (active-power db source-id params)))
 
 (defn- selected-disc-variant [db source-id params]
   (when (disc-move? db source-id params)
-    (cards/disc-variant (source-card db source-id params))))
+    (cards/disc-variant (active-card db source-id params))))
 
 (defn- strength-disc-source? [db source-id params]
   (and (disc-move? db source-id params)
-       (= "strength" (:id (source-card db source-id params)))))
+       (= "strength" (:id (active-card db source-id params)))))
 
 (defn- star-disc-source? [db source-id params]
   (and (disc-move? db source-id params)
-       (= "star" (:id (source-card db source-id params)))))
+       (= "star" (:id (active-card db source-id params)))))
 
 (defn- disc-action-count-option-values [db source-id params]
   (if (strength-disc-source? db source-id params)
@@ -515,11 +567,11 @@
             replacement-value))))
 
 (defn- sword-move? [db source-id params]
-  (or (= :sword (selected-power db source-id params))
+  (or (= :sword (active-power db source-id params))
       (sword-major-action-power? db source-id params :sword)))
 
 (defn- death-sword-source? [db source-id params]
-  (= :death (selected-power db source-id params)))
+  (= :death (active-power db source-id params)))
 
 (defn- death-sword-action-count-option-values [db source-id params]
   (if (death-sword-source? db source-id params)
@@ -533,22 +585,22 @@
     1))
 
 (defn- fool-move? [db source-id params]
-  (= :fool (selected-power db source-id params)))
+  (= :fool (active-power db source-id params)))
 
 (defn- high-priestess-move? [db source-id params]
-  (= :high-priestess (selected-power db source-id params)))
+  (= :high-priestess (active-power db source-id params)))
 
 (defn- judgement-move? [db source-id params]
-  (= :judgement (selected-power db source-id params)))
+  (= :judgement (active-power db source-id params)))
 
 (defn- hierophant-move? [db source-id params]
-  (= :hierophant (selected-power db source-id params)))
+  (= :hierophant (active-power db source-id params)))
 
 (defn- hermit-move? [db source-id params]
-  (= :hermit (selected-power db source-id params)))
+  (= :hermit (active-power db source-id params)))
 
 (defn- devil-move? [db source-id params]
-  (= :devil (selected-power db source-id params)))
+  (= :devil (active-power db source-id params)))
 
 (defn- manipulation-piece-power? [db source-id params]
   (or (hierophant-move? db source-id params)
@@ -556,7 +608,7 @@
 
 (defn- selected-sword-variant [db source-id params]
   (when (sword-move? db source-id params)
-    (cards/sword-variant (source-card db source-id params))))
+    (cards/sword-variant (active-card db source-id params))))
 
 (defn- card-worth-sword-damage-less? [replacement-card original-card damage]
   (let [original-value (cards/card-point-value original-card)
@@ -714,7 +766,7 @@
       (nil? state)
       nil
 
-      (and (= :tower (selected-power db source-id params))
+      (and (= :tower (active-power db source-id params))
            (tower-minion-orientation params))
       (let [orient-result (game-state/apply-orient-move
                            state
@@ -747,7 +799,7 @@
     (boolean
      (and state
           command
-          (if (= :moon (selected-power db source-id params))
+          (if (= :moon (active-power db source-id params))
             (moon-command-resolves? db source-id params command)
             (when-let [resolution-state (sword-resolution-state
                                          db
@@ -1297,12 +1349,14 @@
   (let [source-card (source-card db source-id params)]
     (cond-> (discard-pile db)
       (and (= :play-hand-card source-id)
-           (= "judgement" (:id source-card)))
+           (judgement-move? db source-id params)
+           source-card)
       (conj source-card))))
 
 (defn- judgement-card-maximum [db source-id params]
   (let [source-cost-count (if (and (= :play-hand-card source-id)
-                                   (= "judgement" (:id (source-card db source-id params))))
+                                   (judgement-move? db source-id params)
+                                   (source-card db source-id params))
                             1
                             0)
         hand-count (- (count (current-player-hand db)) source-cost-count)
@@ -1392,6 +1446,24 @@
 (defn move-power [db]
   (let [{:keys [source params]} (move-selection db)]
     (selected-power db source params)))
+
+(defn move-world-copy-options [db]
+  (let [copy-indexes (world-copy-board-indexes db)]
+    (filterv #(contains? copy-indexes (:index %))
+             (board db))))
+
+(defn move-world-copied-power-options [db]
+  (let [{:keys [source params]} (move-selection db)
+        options (world-copied-power-ids-for-card (world-copied-card db params))]
+    (if (world-move? db source params)
+      (mapv move-power-definitions
+            (filter #(contains? (set options) %)
+                    move-power-order))
+      [])))
+
+(defn move-world-copied-power [db]
+  (let [{:keys [source params]} (move-selection db)]
+    (selected-world-copied-power db source params)))
 
 (defn move-rod-mode-options [_db]
   (mapv rod-mode-definitions rod-mode-order))
@@ -1573,6 +1645,12 @@
 
     :power
     (some? (selected-power db source-id params))
+
+    :copied-board-index
+    (some? (world-copy-board-cell db (:copied-board-index params)))
+
+    :copied-power
+    (some? (selected-world-copied-power db source-id params))
 
     :rod-mode
     (and (rod-move? db source-id params)
@@ -1880,6 +1958,35 @@
     :trade-hand [:target-piece-id]
     []))
 
+(defn- power-requirements [db source-id params power]
+  (case power
+    :cup [:target-space :target-resolution]
+    :rod (rod-requirements db params)
+    :disc (disc-requirements db source-id params)
+    :sun (sun-requirements db source-id params)
+    :sword (sword-requirements db source-id params)
+    (:empress :emperor :lovers :chariot :hanged-man :temperance)
+    (composite-major-requirements db source-id params)
+    (:justice :death :tower :moon)
+    (sword-major-requirements db source-id params)
+    :fool (fool-requirements db source-id params)
+    :high-priestess (high-priestess-requirements db source-id params)
+    :judgement (judgement-requirements db source-id params)
+    :hierophant (hierophant-requirements db source-id params)
+    :hermit (hermit-requirements db source-id params)
+    :devil (devil-requirements db source-id params)
+    []))
+
+(defn- world-requirements [db source-id params]
+  (let [copy-selected? (some? (world-copy-board-cell db (:copied-board-index params)))
+        copied-power (selected-world-copied-power db source-id params)]
+    (vec
+     (concat [:copied-board-index]
+             (when (and copy-selected? (nil? copied-power))
+               [:copied-power])
+             (when copied-power
+               (power-requirements db source-id params copied-power))))))
+
 (defn- gameplay-source-requirements [db source-id params]
   (let [base (case source-id
                :activate-territory [:source-board-index :piece-id]
@@ -1890,23 +1997,9 @@
      (concat base
              (when (and card (nil? power))
                [:power])
-             (case power
-               :cup [:target-space :target-resolution]
-               :rod (rod-requirements db params)
-               :disc (disc-requirements db source-id params)
-               :sun (sun-requirements db source-id params)
-               :sword (sword-requirements db source-id params)
-               (:empress :emperor :lovers :chariot :hanged-man :temperance)
-               (composite-major-requirements db source-id params)
-               (:justice :death :tower :moon)
-               (sword-major-requirements db source-id params)
-               :fool (fool-requirements db source-id params)
-               :high-priestess (high-priestess-requirements db source-id params)
-               :judgement (judgement-requirements db source-id params)
-               :hierophant (hierophant-requirements db source-id params)
-               :hermit (hermit-requirements db source-id params)
-               :devil (devil-requirements db source-id params)
-               [])))))
+             (if (= :world power)
+               (world-requirements db source-id params)
+               (power-requirements db source-id params power))))))
 
 (defn- move-requirements [db source-id params]
   (case source-id
@@ -1929,6 +2022,8 @@
     :source-board-index :source-territory
     :hand-card-id :hand-card
     :power :power
+    :copied-board-index :world-copy
+    :copied-power :copied-power
     :piece-id :piece
     :rod-mode :rod-mode
     :disc-action-count :disc-action-count
@@ -1970,7 +2065,7 @@
     :draw-count :draw-count
     :confirm))
 
-(declare cup-target-command rod-command sword-target-command)
+(declare cup-target-command rod-command sword-target-command select-move-world-copy)
 
 (def ^:private current-major-action-param-keys
   [:target-board-index
@@ -2037,7 +2132,7 @@
     nil))
 
 (defn- sword-major-final-action? [db source-id params]
-  (case (selected-power db source-id params)
+  (case (active-power db source-id params)
     :justice (pos? (completed-major-action-count params))
     :tower (pos? (completed-major-action-count params))
     :moon (pos? (completed-major-action-count params))
@@ -2195,6 +2290,8 @@
       :else (get {:source-territory (:source-board-index requirement-prompts)
                   :hand-card (:hand-card-id requirement-prompts)
                   :power (:power requirement-prompts)
+                  :world-copy (:copied-board-index requirement-prompts)
+                  :copied-power (:copied-power requirement-prompts)
                   :piece (:piece-id requirement-prompts)
                   :rod-mode (:rod-mode requirement-prompts)
                   :disc-action-count (:disc-action-count requirement-prompts)
@@ -2285,6 +2382,21 @@
             :judgement-card-ids
             :major-actions))))
 
+(defn- clear-child-power-params [params]
+  (-> params
+      clear-power-target-params
+      (dissoc :rod-mode
+              :disc-target-kind
+              :sword-target-kind
+              :disc-action-count
+              :sword-action-count
+              :minion-orientation
+              :fool-reveal-count
+              :high-priestess-redraw-count
+              :redraws
+              :judgement-card-ids
+              :major-actions)))
+
 (defn- clear-piece-when-source-changes [params board-index]
   (let [next-params (assoc params :source-board-index board-index)]
     (if (= (:source-board-index params) board-index)
@@ -2293,6 +2405,8 @@
           clear-power-target-params
           (dissoc :piece-id
                   :power
+                  :copied-board-index
+                  :copied-power
                   :rod-mode
                   :disc-target-kind
                   :sword-target-kind
@@ -2347,7 +2461,9 @@
               :fool-reveal-count
               :high-priestess-redraw-count
               :redraws
-              :judgement-card-ids)))
+              :judgement-card-ids
+              :copied-board-index
+              :copied-power)))
 
 (defn- set-acting-piece [params piece-id]
   (let [next-params (assoc params :piece-id piece-id)]
@@ -2373,7 +2489,23 @@
                   :high-priestess-redraw-count
                   :redraws
                   :judgement-card-ids
-                  :major-actions)))))
+                  :major-actions
+                  :copied-board-index
+                  :copied-power)))))
+
+(defn- set-world-copy-param [params board-index]
+  (let [next-params (assoc params :copied-board-index board-index)]
+    (if (= (:copied-board-index params) board-index)
+      next-params
+      (-> next-params
+          clear-child-power-params
+          (dissoc :copied-power)))))
+
+(defn- set-world-copied-power-param [params power]
+  (let [next-params (assoc params :copied-power power)]
+    (if (= (:copied-power params) power)
+      next-params
+      (clear-child-power-params next-params))))
 
 (defn- set-rod-mode-param [params mode]
   (let [next-params (assoc params :rod-mode mode)]
@@ -2582,6 +2714,11 @@
           (cond
             (and has-source?
                  has-piece?
+                 (= :world-copy (:stage (move-selection db))))
+            (select-move-world-copy db index)
+
+            (and has-source?
+                 has-piece?
                  (sun-disc-territory-target-stage? db source params)
                  (sun-disc-territory-target? db source params cell))
             (update-move-selection-success db
@@ -2658,6 +2795,9 @@
 
         :play-hand-card
         (cond
+          (= :world-copy (:stage (move-selection db)))
+          (select-move-world-copy db index)
+
           (and (sun-disc-territory-target-stage? db source params)
                (sun-disc-territory-target? db source params cell))
           (update-move-selection-success db
@@ -2805,16 +2945,53 @@
                                        "Choose a card from the current player's hand."
                                        {:card-id card-id}))))
 
-(defn select-move-power [db power]
-  (let [power-ids (set (map :id (move-power-options db)))]
-    (if (contains? power-ids power)
-      (update-move-selection-success db update :params set-power-param power)
+(defn select-move-world-copy [db board-index]
+  (let [{:keys [source params]} (move-selection db)]
+    (cond
+      (not (world-move? db source params))
       (update-move-selection db assoc
                              :error
-                             (move-error :invalid-move-power
-                                         "Choose a power provided by the selected card."
-                                         {:power power
-                                          :options (vec power-ids)})))))
+                             (move-error :invalid-world-copy
+                                         "World copy choices are only available for World moves."
+                                         {:board-index board-index
+                                          :source source}))
+
+      (world-copy-board-cell db board-index)
+      (update-move-selection-success db update :params set-world-copy-param board-index)
+
+      :else
+      (update-move-selection db assoc
+                             :error
+                             (move-error :invalid-world-copy
+                                         "Choose a non-World major territory for World to copy."
+                                         {:board-index board-index})))))
+
+(defn select-move-power [db power]
+  (let [{:keys [source params]} (move-selection db)]
+    (if (and (world-move? db source params)
+             (world-copy-board-cell db (:copied-board-index params)))
+      (let [power-ids (set (map :id (move-world-copied-power-options db)))]
+        (if (contains? power-ids power)
+          (update-move-selection-success db
+                                         update
+                                         :params
+                                         set-world-copied-power-param
+                                         power)
+          (update-move-selection db assoc
+                                 :error
+                                 (move-error :invalid-world-copied-power
+                                             "Choose a power provided by the copied major territory."
+                                             {:power power
+                                              :options (vec power-ids)}))))
+      (let [power-ids (set (map :id (move-power-options db)))]
+        (if (contains? power-ids power)
+          (update-move-selection-success db update :params set-power-param power)
+          (update-move-selection db assoc
+                                 :error
+                                 (move-error :invalid-move-power
+                                             "Choose a power provided by the selected card."
+                                             {:power power
+                                              :options (vec power-ids)})))))))
 
 (defn select-move-rod-mode [db mode]
   (if (contains? rod-modes mode)
@@ -3432,6 +3609,10 @@
       (filterv #(empty-board-target? db (:index %))
                (board db))
 
+      (and (world-move? db source params)
+           (nil? (world-copy-board-cell db (:copied-board-index params))))
+      (move-world-copy-options db)
+
       (sun-disc-territory-target-stage? db source params)
       (filterv #(sun-disc-territory-target? db source params %)
                (board db))
@@ -3695,7 +3876,7 @@
                                    (sword-major-current-action db source params))))
         action-by-power (fn [power]
                           (some #(when (= power (:power %)) %) actions))]
-    (case (selected-power db source params)
+    (case (active-power db source params)
       :justice
       (merge {:hand-trade-target (:target (action-by-power :trade-hand))}
              (sword-command db source params))
@@ -3723,9 +3904,9 @@
   {:piece-id (:piece-id params)
    :card-ids (valid-judgement-card-ids db source params (:judgement-card-ids params))})
 
-(defn- unavailable-power-command [db source params]
-  (let [card (source-card db source params)]
-    (cond-> {:power (selected-power db source params)}
+(defn- unavailable-power-command [db source params power]
+  (let [card (active-card db source params)]
+    (cond-> {:power power}
       card
       (assoc :card-id (:id card)))))
 
@@ -3734,8 +3915,8 @@
                          (conj (completed-major-actions params)
                                (composite-current-action db source params))))})
 
-(defn- gameplay-power-command [db source params]
-  (case (selected-power db source params)
+(defn- gameplay-power-command-for-power [db source params power]
+  (case power
     :rod (rod-command db source params)
     :disc (disc-command db source params)
     :cup (cup-command db source params)
@@ -3751,7 +3932,19 @@
     :devil (piece-orientation-command params)
     (:empress :emperor :lovers :chariot :hanged-man :temperance)
     (composite-major-command db source params)
-    (unavailable-power-command db source params)))
+    (unavailable-power-command db source params power)))
+
+(defn- world-command [db source params]
+  (let [power (selected-world-copied-power db source params)
+        command (gameplay-power-command-for-power db source params power)]
+    (cond-> (assoc command :copied-board-index (:copied-board-index params))
+      (contains? copied-suit-powers power)
+      (assoc :copied-power power))))
+
+(defn- gameplay-power-command [db source params]
+  (if (world-move? db source params)
+    (world-command db source params)
+    (gameplay-power-command-for-power db source params (selected-power db source params))))
 
 (defn move-command [db]
   (let [{:keys [source params]} (move-selection db)]
@@ -3797,8 +3990,14 @@
          (not (contains? command :shuffle-fn)))
     (assoc :shuffle-fn (:shuffle-fn transition-options))))
 
+(defn- transition-power [db]
+  (let [{:keys [source params]} (move-selection db)]
+    (if (world-move? db source params)
+      (selected-world-copied-power db source params)
+      (move-power db))))
+
 (defn- confirmed-move-result [db command transition-options]
-  (let [power (move-power db)
+  (let [power (transition-power db)
         command (command-with-transition-options command transition-options power)]
     (cond
       (= :draw-cards (:source command))
@@ -3809,6 +4008,9 @@
 
       (= :place-initial-small (:source command))
       (game-state/apply-initial-placement (game db) command)
+
+      (= :world (move-power db))
+      (game-state/apply-world-move (game db) command)
 
       (= :cup (move-power db))
       (game-state/apply-cup-move (game db) command)

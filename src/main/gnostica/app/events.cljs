@@ -25,6 +25,7 @@
 (def select-move-territory-card-source :gnostica.app/select-move-territory-card-source)
 (def select-move-replacement-card :gnostica.app/select-move-replacement-card)
 (def select-move-power :gnostica.app/select-move-power)
+(def select-move-world-copy :gnostica.app/select-move-world-copy)
 (def select-move-rod-mode :gnostica.app/select-move-rod-mode)
 (def select-move-disc-target-kind :gnostica.app/select-move-disc-target-kind)
 (def select-move-sword-target-kind :gnostica.app/select-move-sword-target-kind)
@@ -87,6 +88,9 @@
 (def move-territory-card-source-options :gnostica.app/move-territory-card-source-options)
 (def move-power-options :gnostica.app/move-power-options)
 (def move-power :gnostica.app/move-power)
+(def move-world-copy-options :gnostica.app/move-world-copy-options)
+(def move-world-copied-power-options :gnostica.app/move-world-copied-power-options)
+(def move-world-copied-power :gnostica.app/move-world-copied-power)
 (def move-rod-mode-options :gnostica.app/move-rod-mode-options)
 (def move-disc-action-count-options :gnostica.app/move-disc-action-count-options)
 (def move-sword-action-count-options :gnostica.app/move-sword-action-count-options)
@@ -236,6 +240,11 @@ select-move-territory-card-source
  select-move-power
  (fn [db [_ power]]
    (app-state/select-move-power db power)))
+
+(rf/reg-event-db
+ select-move-world-copy
+ (fn [db [_ board-index]]
+   (app-state/select-move-world-copy db board-index)))
 
 (rf/reg-event-db
 select-move-rod-mode
@@ -565,6 +574,21 @@ select-move-rod-mode
    (app-state/move-power db)))
 
 (rf/reg-sub
+ move-world-copy-options
+ (fn [db _]
+   (app-state/move-world-copy-options db)))
+
+(rf/reg-sub
+ move-world-copied-power-options
+ (fn [db _]
+   (app-state/move-world-copied-power-options db)))
+
+(rf/reg-sub
+ move-world-copied-power
+ (fn [db _]
+   (app-state/move-world-copied-power db)))
+
+(rf/reg-sub
 move-rod-mode-options
 (fn [db _]
   (app-state/move-rod-mode-options db)))
@@ -783,6 +807,9 @@ move-rod-orientation-required?
  :<- [board]
  :<- [move-power]
  :<- [move-power-options]
+ :<- [move-world-copy-options]
+ :<- [move-world-copied-power-options]
+ :<- [move-world-copied-power]
  :<- [move-rod-mode-options]
  :<- [move-disc-action-count-options]
  :<- [move-sword-action-count-options]
@@ -814,7 +841,8 @@ move-rod-orientation-required?
  :<- [move-damage-options]
  :<- [draw-count-options]
 (fn [[current-player selection source-options prompt ready? board power
-       power-options rod-mode-options disc-action-count-options
+       power-options world-copy-options world-copied-power-options world-copied-power
+       rod-mode-options disc-action-count-options
        sword-action-count-options
        sun-disc-mode-options fool-reveal-count-options
        high-priestess-redraw-count-options high-priestess-redraw-options
@@ -836,6 +864,9 @@ move-rod-orientation-required?
      :board board
      :power power
      :power-options power-options
+     :world-copy-options world-copy-options
+     :world-copied-power-options world-copied-power-options
+     :world-copied-power world-copied-power
      :rod-mode-options rod-mode-options
      :disc-action-count-options disc-action-count-options
      :sword-action-count-options sword-action-count-options
