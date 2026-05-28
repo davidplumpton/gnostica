@@ -40,6 +40,18 @@
     :size :medium
     :orientation :south}])
 
+(def smoke-wasteland-piece
+  {:id :slate-wasteland-scout
+   :player-id :slate
+   :space {:kind :wasteland
+           :row 0
+           :col 3}
+   :size :small
+   :orientation :west})
+
+(def smoke-board-pieces
+  (conj demo-board-pieces smoke-wasteland-piece))
+
 (defn demo-board-pieces-for [player-specs]
   (let [player-ids (set (map :id player-specs))]
     (filterv #(contains? player-ids (:player-id %))
@@ -90,7 +102,7 @@
     {:start-in-lobby? false
      :bypass-lobby? true
      :player-specs (mapv #(select-keys % [:id :name]) pieces/players)
-     :demo-board-pieces demo-board-pieces
+     :demo-board-pieces smoke-board-pieces
      :game-options {:deck-order (major-icon-smoke-deck-order)}}))
 
 (defn merge-init-options [& options]

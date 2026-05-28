@@ -1063,6 +1063,10 @@ img {
   pointer-events: none;
 }
 
+.board-wasteland.has-pieces {
+  z-index: 1;
+}
+
 .board-wasteland.is-landscape {
   width: var(--card-long);
   height: var(--card-short);

@@ -176,6 +176,7 @@
        cssMajorIconCount: document.querySelectorAll('.board-fallback .board-card .gnostica-icon').length,
        cssBoardIconMetrics: iconMetrics('.board-fallback .board-card.is-portrait .gnostica-icon'),
        cssWastelands: document.querySelectorAll('.board-fallback .board-wasteland').length,
+       cssWastelandPieceMarkers: document.querySelectorAll('.board-fallback .board-wasteland.has-pieces .board-piece').length,
        canvas: Boolean(document.querySelector('.board-three__canvas')),
        tableSurfaceColor: stage ? stage.dataset.tableSurfaceColor : null,
        tableClearColor: stage ? stage.dataset.tableClearColor : null,
@@ -438,7 +439,7 @@
          (= 5 (long (or (get stats "majorIconCount") -1)))
          (three-icon-layout-ready? stats)
          (= 12 (get stats "wastelandCount"))
-         (pos? visible-piece-count)
+         (= (count fixtures/smoke-board-pieces) visible-piece-count)
          (= visible-piece-count piece-edge-outline-count)
          (= expected-table-surface-color (get stats "tableSurfaceColor"))
          (= expected-table-clear-color (get stats "tableClearColor"))
@@ -502,6 +503,7 @@
        (= 5 (long (or (get stats "cssMajorIconCount") -1)))
        (dom-icon-layout-ready? (get stats "cssBoardIconMetrics"))
        (= 12 (get stats "cssWastelands"))
+       (= 1 (long (or (get stats "cssWastelandPieceMarkers") -1)))
        (true? (get stats "cardZones"))
        (true? (get stats "cardZonesVisible"))
        (= 6 (long (or (get stats "handCardCount") -1)))

@@ -176,9 +176,16 @@
     (swap! geometries conj edge-geometry)
     (swap! materials conj edge-material)))
 
+(defn- spaces-by-key [spaces]
+  (into {}
+        (keep (fn [space]
+                (when-let [space-key (pieces/space-key space)]
+                  [space-key space])))
+        spaces))
+
 (defn- add-piece-mesh!
-  [scene geometries materials cells-by-index slot piece-count piece]
-  (when-let [cell (get cells-by-index (:space-index piece))]
+  [scene geometries materials spaces-by-key slot piece-count piece]
+  (when-let [space (get spaces-by-key (pieces/piece-space-key piece))]
     (let [piece-size (pieces/size-data piece)
           {:keys [radius height]} piece-size
           player (pieces/player-for piece)
@@ -186,7 +193,7 @@
           material (js/THREE.MeshLambertMaterial.
                     #js {:color (or (:color player) 0xffffff)})
           mesh (js/THREE.Mesh. geometry material)
-          [card-x card-y] (layout/card-position cell)
+          [card-x card-y] (layout/card-position space)
           [offset-x offset-y] (layout/piece-slot-offset slot piece-count)
           z (layout/piece-center-z piece-size (:orientation piece))]
       (add-piece-edge-outline! mesh geometries materials geometry)
@@ -209,20 +216,30 @@
       (swap! materials conj material)
       true)))
 
-(defn- add-piece-meshes! [scene geometries materials cells board-pieces]
-  (let [indexed-cells (layout/cells-by-index cells)
+(defn- add-piece-meshes! [scene geometries materials spaces board-pieces]
+  (let [indexed-spaces (spaces-by-key spaces)
         edge-outline-count (atom 0)]
-    (doseq [[_ space-pieces] (pieces/pieces-by-space board-pieces)
+    (doseq [[space-key space-pieces] (pieces/pieces-by-space board-pieces)
+            :when (contains? indexed-spaces space-key)
             [slot piece] (layout/visible-piece-slots space-pieces)]
-      (when (add-piece-mesh! scene geometries materials indexed-cells slot (count space-pieces) piece)
+      (when (add-piece-mesh! scene geometries materials indexed-spaces slot (count space-pieces) piece)
         (swap! edge-outline-count inc)))
     @edge-outline-count))
 
-(defn visible-piece-count [board-pieces]
-  (reduce (fn [total [_ space-pieces]]
-            (+ total (count (layout/visible-piece-slots space-pieces))))
-          0
-          (pieces/pieces-by-space board-pieces)))
+(defn visible-piece-count
+  ([board-pieces]
+   (reduce (fn [total [_ space-pieces]]
+             (+ total (count (layout/visible-piece-slots space-pieces))))
+           0
+           (pieces/pieces-by-space board-pieces)))
+  ([cells board-pieces]
+   (let [visible-space-keys (set (keys (spaces-by-key (layout/board-spaces cells))))]
+     (reduce (fn [total [space-key space-pieces]]
+               (if (contains? visible-space-keys space-key)
+                 (+ total (count (layout/visible-piece-slots space-pieces)))
+                 total))
+             0
+             (pieces/pieces-by-space board-pieces)))))
 
 (defn- show-card-icon-overlays? [card-icon-mode]
   (not= :popup card-icon-mode))
@@ -309,17 +326,17 @@
     (let [wastelands (layout/wasteland-spaces cells)
           board-spaces (vec (concat cells wastelands))]
       (add-table-plane! scene geometries materials textures board-spaces)
-      (add-wasteland-outlines! scene geometries materials wastelands))
-    (doseq [cell cells]
-      (add-card-plane! card-context cell))
-    (let [piece-edge-outline-count (add-piece-meshes! scene
-                                                       geometries
-                                                       materials
-                                                       cells
-                                                       board-pieces)]
-      {:geometries @geometries
-       :materials @materials
-       :textures @textures
-       :card-meshes @card-meshes
-       :selection-meshes @selection-meshes
-       :piece-edge-outline-count piece-edge-outline-count})))
+      (add-wasteland-outlines! scene geometries materials wastelands)
+      (doseq [cell cells]
+        (add-card-plane! card-context cell))
+      (let [piece-edge-outline-count (add-piece-meshes! scene
+                                                         geometries
+                                                         materials
+                                                         board-spaces
+                                                         board-pieces)]
+        {:geometries @geometries
+         :materials @materials
+         :textures @textures
+         :card-meshes @card-meshes
+         :selection-meshes @selection-meshes
+         :piece-edge-outline-count piece-edge-outline-count}))))

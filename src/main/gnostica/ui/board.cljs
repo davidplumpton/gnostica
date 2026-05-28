@@ -49,12 +49,31 @@
          ^{:key pip}
          [:span.board-piece__pip])]]]))
 
-(defn- board-wasteland [bounds {:keys [id orientation] :as space}]
+(defn- board-piece-markers [board-pieces]
+  (when (seq board-pieces)
+    [:div.board-card__pieces
+     {:aria-hidden "true"}
+     (for [[slot piece] (map-indexed vector
+                                     (take pieces/max-pieces-per-space board-pieces))]
+       (board-piece-marker slot piece))]))
+
+(defn- pieces-label [board-pieces]
+  (apply str (interpose "; " (map ui/piece-summary board-pieces))))
+
+(defn- board-wasteland [bounds {:keys [id orientation] :as space} board-pieces]
   ^{:key id}
   [:div.board-wasteland
-   {:class (str "is-" (name orientation))
+   {:class (str "is-" (name orientation)
+                (when (seq board-pieces) " has-pieces"))
     :style (board-space-style bounds space)
-    :aria-hidden "true"}])
+    :data-piece-count (count board-pieces)
+    :role (when (seq board-pieces) "img")
+    :aria-label (when (seq board-pieces)
+                  (str (ui/wasteland-label space)
+                       ", pieces: "
+                       (pieces-label board-pieces)))
+    :aria-hidden (when-not (seq board-pieces) "true")}
+   (board-piece-markers board-pieces)])
 
 (defn board-card [bounds {:keys [index row col orientation card] :as cell} selected? board-pieces card-icon-mode]
   (let [{:keys [title]} card]
@@ -76,14 +95,10 @@
                          (str ", special moves: " summary))
                        (when (seq board-pieces)
                          (str ", pieces: "
-                              (apply str (interpose "; " (map ui/piece-summary board-pieces))))))
+                              (pieces-label board-pieces))))
       :on-click #(rf/dispatch [events/select-board-card index])}
      [card-ui/card-face card "board-card__face" card-icon-mode]
-     (when (seq board-pieces)
-       [:div.board-card__pieces
-        {:aria-hidden "true"}
-        (for [[slot piece] (map-indexed vector (take pieces/max-pieces-per-space board-pieces))]
-          (board-piece-marker slot piece))])]))
+     (board-piece-markers board-pieces)]))
 
 (defn board-stage []
   (let [{:keys [cells board-pieces pieces-by-space wastelands space-bounds
@@ -118,15 +133,18 @@
           :aria-label "Gnostica board"
           :data-wasteland-count (count wastelands)
           :data-table-surface-color three-board/table-surface-css-color
-          :data-table-clear-color three-board/table-clear-css-color
+         :data-table-clear-color three-board/table-clear-css-color
           :style (board-stage-style space-bounds)}
          (for [space wastelands]
-           (board-wasteland space-bounds space))
+           (board-wasteland
+            space-bounds
+            space
+            (get pieces-by-space (pieces/wasteland-space (:row space) (:col space)))))
          (for [cell cells]
            ^{:key (:index cell)}
            [board-card
             space-bounds
             cell
             (= selected-index (:index cell))
-            (get pieces-by-space (:index cell))
+            (get pieces-by-space (pieces/territory-space (:index cell)))
             card-icon-mode])]])]))

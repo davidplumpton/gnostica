@@ -86,7 +86,7 @@
           :data-card-texture-max-icon-count (:max-card-icon-count texture-metadata)
           :data-card-texture-icon-stack-fits (:icon-stack-fits? texture-metadata)
           :data-wasteland-count (count (layout/wasteland-spaces _cells))
-          :data-visible-piece-count (scene-graph/visible-piece-count _pieces)
+          :data-visible-piece-count (scene-graph/visible-piece-count _cells _pieces)
           :data-piece-edge-outline-count (or (:piece-edge-outline-count state) 0)
           :data-antialias-requested resources/renderer-antialias-requested?
           :data-antialias-enabled (true? (:antialias-enabled? state))

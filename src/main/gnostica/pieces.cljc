@@ -92,8 +92,44 @@
     :west "West"
     "Unknown"))
 
+(defn territory-space [space-index]
+  (when (int? space-index)
+    {:kind :territory
+     :index space-index}))
+
+(defn wasteland-space [row col]
+  (when (and (int? row)
+             (int? col))
+    {:kind :wasteland
+     :row row
+     :col col}))
+
+(defn space-key [space]
+  (cond
+    (contains? space :space-index)
+    (territory-space (:space-index space))
+
+    (contains? space :index)
+    (territory-space (:index space))
+
+    (= :wasteland (:kind space))
+    (wasteland-space (:row space) (:col space))))
+
+(defn piece-space-key [piece]
+  (if-let [space (:space piece)]
+    (space-key space)
+    (space-key piece)))
+
 (defn pieces-by-space [pieces]
-  (group-by :space-index pieces))
+  (reduce (fn [groups piece]
+            (if-let [space (piece-space-key piece)]
+              (update groups space (fnil conj []) piece)
+              groups))
+          {}
+          pieces))
 
 (defn pieces-for-space [pieces space-index]
-  (get (pieces-by-space pieces) space-index []))
+  (get (pieces-by-space pieces) (territory-space space-index) []))
+
+(defn pieces-for-wasteland [pieces row col]
+  (get (pieces-by-space pieces) (wasteland-space row col) []))

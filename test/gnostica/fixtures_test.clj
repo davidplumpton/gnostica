@@ -14,16 +14,20 @@
     (is (<= 0 (:space-index piece) (dec board/board-card-count)))))
 
 (deftest demo-board-pieces-fit-space-capacity
-  (doseq [[space-index space-pieces] (pieces/pieces-by-space fixtures/demo-board-pieces)]
+  (doseq [[space-key space-pieces] (pieces/pieces-by-space fixtures/demo-board-pieces)]
     (is (<= (count space-pieces) pieces/max-pieces-per-space)
         (str "Expected no more than "
              pieces/max-pieces-per-space
              " pieces at space "
-             space-index))))
+             space-key))))
 
 (deftest demo-board-pieces-exercise-three-piece-layout
   (is (some #(= pieces/max-pieces-per-space (count %))
             (vals (pieces/pieces-by-space fixtures/demo-board-pieces)))))
+
+(deftest smoke-board-pieces-exercise-wasteland-rendering
+  (is (= [fixtures/smoke-wasteland-piece]
+         (pieces/pieces-for-wasteland fixtures/smoke-board-pieces 0 3))))
 
 (deftest demo-board-pieces-can-be-filtered-by-player-specs
   (is (= #{:rose :indigo}
@@ -45,7 +49,7 @@
     (is (= {:start-in-lobby? false
             :bypass-lobby? true
             :player-specs (mapv #(select-keys % [:id :name]) pieces/players)
-            :demo-board-pieces fixtures/demo-board-pieces
+            :demo-board-pieces fixtures/smoke-board-pieces
             :game-options {:deck-order deck-order}}
            (fixtures/smoke-init-options fixtures/smoke-major-icons-mode)))))
 

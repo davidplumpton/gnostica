@@ -437,7 +437,7 @@
     (is (= 9 (count (:cells view))))
     (is (= [rose-source-piece] (:board-pieces view)))
     (is (= [rose-source-piece]
-           (get-in view [:pieces-by-space 0])))
+           (get (:pieces-by-space view) (pieces/territory-space 0))))
     (is (= 12 (count (:wastelands view))))
     (is (= {:min-row -1
             :max-row 3
@@ -1834,7 +1834,8 @@
         wasteland-db (app-state/select-move-wasteland-target source-db 0 3)
         oriented-db (app-state/set-move-orientation wasteland-db :north)
         confirmed-db (app-state/confirm-move oriented-db)
-        created-piece (piece-by-id confirmed-db :rose-small-1)]
+        created-piece (piece-by-id confirmed-db :rose-small-1)
+        board-view (app-state/board-view confirmed-db)]
     (is (not (:enabled? (source-option db :activate-territory))))
     (is (:enabled? (source-option db :place-initial-small)))
     (is (= 9 (count (app-state/move-target-board-options source-db))))
@@ -1864,6 +1865,8 @@
             :size :small
             :orientation :north}
            created-piece))
+    (is (= [created-piece]
+           (get (:pieces-by-space board-view) (pieces/wasteland-space 0 3))))
     (is (= 4 (get-in confirmed-db [:game :players-by-id :rose :stash :small])))
     (is (game-schema/valid-game? (app-state/game confirmed-db)))))
 
