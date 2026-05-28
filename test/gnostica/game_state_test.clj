@@ -163,6 +163,16 @@
            %)
         (:board state)))
 
+(defn- with-board-cells-at [state index-coordinates]
+  (assoc state
+         :board
+         (mapv (fn [[board-index {:keys [row col]}]]
+                 (assoc (board-cell-by-index state board-index)
+                        :row row
+                        :col col
+                        :orientation (board/orientation-for row col)))
+               index-coordinates)))
+
 (defn- player-hand-ids [state player-id]
   (mapv :id (get-in state [:players-by-id player-id :hand])))
 
@@ -1168,6 +1178,55 @@
             :row 1
             :col 1}
            (:space passenger-after)))
+    (is (= :hermit/territory-moved (get-in events [0 :type])))
+    (is (game-schema/valid-game? state))))
+
+(deftest hermit-move-returns-pieces-left-in-void-by-territory-relocation
+  (let [initial-state (:state (game-state/create-game
+                               player-specs
+                               {:deck-order (deck-starting-with ["hermit"])}))
+        state (with-board-cells-at initial-state
+                [[0 {:row 0 :col 0}]
+                 [8 {:row 0 :col 3}]])
+        target-card (get-in state [:board 0 :card])
+        hermit-minion {:id :rose-hermit-minion
+                       :player-id :rose
+                       :space-index 0
+                       :size :medium
+                       :orientation :up}
+        passenger {:id :rose-hermit-passenger
+                   :player-id :rose
+                   :space-index 0
+                   :size :small
+                   :orientation :north}
+        state (game-state/with-board-pieces state [hermit-minion
+                                                   passenger])
+        {:keys [ok? state events]} (game-state/apply-hermit-move
+                                    state
+                                    {:player-id :rose
+                                     :source {:kind :hand-card
+                                              :card-id "hermit"
+                                              :piece-id :rose-hermit-minion}
+                                     :target {:kind :territory
+                                              :board-index 0}
+                                     :destination {:kind :wasteland
+                                                   :row 0
+                                                   :col 2}})
+        moved-cell (board-cell-by-index state 0)]
+    (is ok?)
+    (is (= {:index 0
+            :row 0
+            :col 2
+            :orientation :portrait
+            :face :up
+            :card target-card}
+           moved-cell))
+    (is (nil? (board-cell-at state 0 0)))
+    (is (nil? (piece-by-id state :rose-hermit-minion)))
+    (is (nil? (piece-by-id state :rose-hermit-passenger)))
+    (is (= 5 (get-in state [:pieces :stashes :rose :small])))
+    (is (= 5 (get-in state [:pieces :stashes :rose :medium])))
+    (is (= ["hermit"] (mapv :id (:discard-pile state))))
     (is (= :hermit/territory-moved (get-in events [0 :type])))
     (is (game-schema/valid-game? state))))
 
@@ -4308,6 +4367,55 @@
     (is (= events [(peek (:history state))]))
     (is (= (count cards/deck) (count (all-card-ids state))))
     (is (= (count cards/deck) (count (set (all-card-ids state)))))
+    (is (game-schema/valid-game? state))))
+
+(deftest rod-move-returns-pieces-left-in-void-by-territory-relocation
+  (let [initial-state (:state (game-state/create-game
+                               player-specs
+                               {:deck-order (deck-starting-with ["wands2"])}))
+        state (with-board-cells-at initial-state
+                [[0 {:row 0 :col 0}]
+                 [8 {:row 0 :col 3}]])
+        target-card (get-in state [:board 0 :card])
+        rod-minion {:id :rose-rod-wasteland-minion
+                    :player-id :rose
+                    :space {:kind :wasteland
+                            :row 0
+                            :col -1}
+                    :size :medium
+                    :orientation :east}
+        passenger {:id :rose-rod-passenger
+                   :player-id :rose
+                   :space-index 0
+                   :size :small
+                   :orientation :north}
+        state (game-state/with-board-pieces state [rod-minion
+                                                   passenger])
+        command {:player-id :rose
+                 :source {:kind :hand-card
+                          :card-id "wands2"
+                          :piece-id :rose-rod-wasteland-minion}
+                 :mode :push-territory
+                 :target {:kind :territory
+                          :board-index 0}
+                 :distance 2}
+        {:keys [ok? state events]} (game-state/apply-rod-move state command)
+        moved-cell (board-cell-by-index state 0)]
+    (is ok?)
+    (is (= {:index 0
+            :row 0
+            :col 2
+            :orientation :portrait
+            :face :up
+            :card target-card}
+           moved-cell))
+    (is (nil? (board-cell-at state 0 0)))
+    (is (nil? (piece-by-id state :rose-rod-wasteland-minion)))
+    (is (nil? (piece-by-id state :rose-rod-passenger)))
+    (is (= 5 (get-in state [:pieces :stashes :rose :small])))
+    (is (= 5 (get-in state [:pieces :stashes :rose :medium])))
+    (is (= ["wands2"] (mapv :id (:discard-pile state))))
+    (is (= :rod/territory-pushed (get-in events [0 :type])))
     (is (game-schema/valid-game? state))))
 
 (deftest rod-move-rejects-enemy-occupied-territory-push-targets_without_mutation

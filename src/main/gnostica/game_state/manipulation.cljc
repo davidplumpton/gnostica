@@ -554,11 +554,12 @@
                                (core/move-territory-cell (:index target-cell)
                                                          (:row destination)
                                                          (:col destination))
-                               (core/move-wasteland-pieces-to-board-index
-                                (:row destination)
-                                (:col destination)
-                                (:index target-cell))
-                               (core/append-history event))]
+                              (core/move-wasteland-pieces-to-board-index
+                               (:row destination)
+                               (:col destination)
+                               (:index target-cell))
+                              (core/return-void-pieces-to-stash)
+                              (core/append-history event))]
             (core/success next-state [event])))))))
 
 (defn- apply-hermit-action [state context action]

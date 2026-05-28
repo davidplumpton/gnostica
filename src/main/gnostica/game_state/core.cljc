@@ -775,6 +775,19 @@
                 (= (:col target) (:col space))))
          (board-layout/wasteland-spaces (:board state)))))
 
+(defn legal-piece-coordinate? [state [row col]]
+  (or (some? (board-cell-at state row col))
+      (wasteland-target? state {:kind :wasteland
+                                :row row
+                                :col col})))
+
+(defn void-pieces [state]
+  (->> (get-in state [:pieces :on-board])
+       (filterv (fn [piece]
+                  (let [coordinate (piece-coordinate state piece)]
+                    (or (nil? coordinate)
+                        (not (legal-piece-coordinate? state coordinate))))))))
+
 (defn enemy-pieces-at-coordinate [state player-id row col]
   (->> (get-in state [:pieces :on-board])
        (filter (fn [piece]
@@ -818,6 +831,11 @@
 
 (defn next-board-index [state]
   (inc (apply max -1 (map :index (:board state)))))
+
+(defn remove-piece-by-id [state piece-id]
+  (update-in state [:pieces :on-board]
+             (fn [board-pieces]
+               (vec (remove #(= piece-id (:id %)) board-pieces)))))
 
 (defn replace-piece-by-id [state piece-id piece]
   (update-in state [:pieces :on-board]
@@ -1000,11 +1018,16 @@
     {:state next-state
      :event event}))
 
-(defn- return-pieces-to-stash [state pieces]
-  (reduce (fn [next-state {:keys [player-id size]}]
-            (increment-stash next-state player-id size))
+(defn return-pieces-to-stash [state pieces]
+  (reduce (fn [next-state {:keys [id player-id size]}]
+            (-> next-state
+                (increment-stash player-id size)
+                (remove-piece-by-id id)))
           state
           pieces))
+
+(defn return-void-pieces-to-stash [state]
+  (return-pieces-to-stash state (void-pieces state)))
 
 (defn- remove-player-pieces [state player-id]
   (update-in state [:pieces :on-board]

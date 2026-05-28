@@ -652,6 +652,7 @@
                            (core/move-wasteland-pieces-to-board-index (:row destination)
                                                                  (:col destination)
                                                                  (:index target-cell))
+                           (core/return-void-pieces-to-stash)
                            (core/append-history event))]
         (core/success next-state [event])))))
 
