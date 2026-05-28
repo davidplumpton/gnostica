@@ -1,5 +1,5 @@
 (ns gnostica.fixtures
-  (:require [clojure.string :as str]
+  (:require #?(:cljs [clojure.string :as str])
             [gnostica.cards :as cards]
             [gnostica.pieces :as pieces]))
 

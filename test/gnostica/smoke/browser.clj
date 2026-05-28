@@ -168,34 +168,34 @@
   (let [next-id (AtomicLong. 0)
         pending (atom {})
         events (atom [])
-        partial (atom "")]
-    (let [listener (reify WebSocket$Listener
-                     (onOpen [_ websocket]
-                       (.request websocket 1))
-                     (onText [_ websocket data last?]
-                       (if last?
-                         (let [text (str @partial data)]
-                           (reset! partial "")
-                           (handle-cdp-message! pending events text))
-                         (swap! partial str data))
-                       (.request websocket 1)
-                       (CompletableFuture/completedFuture nil))
-                     (onError [_ _ error]
-                       (swap! events conj {"method" "gnostica.smoke/websocket-error"
-                                           "params" {"message" (.getMessage error)}}))
-                     (onClose [_ _ status-code reason]
-                       (swap! events conj {"method" "gnostica.smoke/websocket-closed"
-                                           "params" {"status" status-code
-                                                     "reason" reason}})
-                       (CompletableFuture/completedFuture nil)))
-          websocket (-> http-client
-                        .newWebSocketBuilder
-                        (.buildAsync (URI/create websocket-url) listener)
-                        .join)]
-      {:websocket websocket
-       :next-id next-id
-       :pending pending
-       :events events})))
+        partial (atom "")
+        listener (reify WebSocket$Listener
+                   (onOpen [_ websocket]
+                     (.request websocket 1))
+                   (onText [_ websocket data last?]
+                     (if last?
+                       (let [text (str @partial data)]
+                         (reset! partial "")
+                         (handle-cdp-message! pending events text))
+                       (swap! partial str data))
+                     (.request websocket 1)
+                     (CompletableFuture/completedFuture nil))
+                   (onError [_ _ error]
+                     (swap! events conj {"method" "gnostica.smoke/websocket-error"
+                                         "params" {"message" (.getMessage error)}}))
+                   (onClose [_ _ status-code reason]
+                     (swap! events conj {"method" "gnostica.smoke/websocket-closed"
+                                         "params" {"status" status-code
+                                                   "reason" reason}})
+                     (CompletableFuture/completedFuture nil)))
+        websocket (-> http-client
+                      .newWebSocketBuilder
+                      (.buildAsync (URI/create websocket-url) listener)
+                      .join)]
+    {:websocket websocket
+     :next-id next-id
+     :pending pending
+     :events events}))
 
 (defn close-cdp! [{:keys [websocket]}]
   (when websocket

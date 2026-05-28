@@ -230,8 +230,7 @@
       [row col])))
 
 (defn- targetable-piece? [db minion piece]
-  (let [minion-coordinate (piece-coordinate db minion)
-        target-coordinate (piece-coordinate db piece)]
+  (let [target-coordinate (piece-coordinate db piece)]
     (and minion
          piece
          target-coordinate
@@ -426,10 +425,6 @@
 
 (defn- target-board-cell [db params]
   (board-cell-by-index db (:target-board-index params)))
-
-(defn- discard-card-by-id [db card-id]
-  (some #(when (= card-id (:id %)) %)
-        (discard-pile db)))
 
 (defn- disc-base-command [db source-id params]
   (when (and (disc-move? db source-id params)

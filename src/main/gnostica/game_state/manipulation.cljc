@@ -48,9 +48,6 @@
 (defn- target-summary [target]
   (select-keys target [:kind :piece-id :board-index :row :col]))
 
-(defn- source-card-id [source-result]
-  (get-in source-result [:source-card :id]))
-
 (defn- command-action [command power]
   (assoc (dissoc command :player-id :source)
          :power power

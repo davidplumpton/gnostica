@@ -187,7 +187,7 @@
     []))
 
 (defn- matching-step-definition [step-definitions step]
-  (some (fn [{:keys [pattern run] :as step-definition}]
+  (some (fn [{:keys [pattern] :as step-definition}]
           (when-let [match (re-matches pattern (:text step))]
             (assoc step-definition :args (regex-groups match))))
         step-definitions))

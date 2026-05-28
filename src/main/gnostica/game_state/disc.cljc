@@ -975,7 +975,7 @@
 
     (:target disc-action)))
 
-(defn- sun-disc-source [command disc-action disc-target cup-result]
+(defn- sun-disc-source [command disc-action cup-result]
   (let [created-piece-id (cup-created-piece-id cup-result)
         piece-id (or (:piece-id disc-action)
                      (when (= :created-piece (get-in disc-action [:target :kind]))
@@ -992,7 +992,6 @@
                  (dissoc disc-action :piece-id :target))
           (assoc :source (sun-disc-source command
                                           disc-action
-                                          disc-target
                                           cup-result)
                  :target disc-target)))))
 
