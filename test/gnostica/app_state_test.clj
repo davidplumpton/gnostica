@@ -1956,6 +1956,7 @@
                       (app-state/select-move-source :play-hand-card)
                       (app-state/select-move-hand-card "tower")
                       (app-state/select-move-piece :rose-rod-minion)
+                      (app-state/select-move-power :sword)
                       (app-state/select-move-sword-target-kind :territory)
                       (app-state/select-board-card 4))
         damage-db (app-state/set-move-damage target-db 1)
@@ -1984,6 +1985,209 @@
     (is (:ok? (get-in confirmed-db [:move-selection :last-result])))
     (is (= "cupsking" (get-in shrunk-cell [:card :id])))
     (is (= ["tower" "sun"] (mapv :id (:discard-pile zones))))
+    (is (game-schema/valid-game? (app-state/game confirmed-db)))))
+
+(deftest justice-hand-card-can_stage_hand_trade_then_sword
+  (let [db (app-state/initialize {:player-specs test-player-specs
+                                  :game-options {:deck-order (deck-starting-with ["justice"])}
+                                  :demo-board-pieces [rose-rod-minion
+                                                      indigo-rod-target]})
+        trade-db (-> db
+                     (app-state/select-move-source :play-hand-card)
+                     (app-state/select-move-hand-card "justice")
+                     (app-state/select-move-piece :rose-rod-minion)
+                     (app-state/select-move-power :justice)
+                     (app-state/select-move-target-piece :indigo-rod-target))
+        kind-db (app-state/select-move-sword-target-kind trade-db :piece)
+        target-db (app-state/select-move-target-piece kind-db :indigo-rod-target)
+        damage-db (app-state/set-move-damage target-db 1)
+        confirmed-db (app-state/confirm-move damage-db)
+        zones (app-state/card-zones confirmed-db)]
+    (is (= [:justice :sword]
+           (mapv :id (app-state/move-power-options
+                      (-> db
+                          (app-state/select-move-source :play-hand-card)
+                          (app-state/select-move-hand-card "justice")
+                          (app-state/select-move-piece :rose-rod-minion))))))
+    (is (= :sword-target-kind (:stage (app-state/move-selection trade-db))))
+    (is (= [{:power :trade-hand
+             :piece-id :rose-rod-minion
+             :target {:kind :piece
+                      :piece-id :indigo-rod-target}}]
+           (get-in trade-db [:move-selection :params :major-actions])))
+    (is (= {:player-id :rose
+            :source {:kind :hand-card
+                     :card-id "justice"
+                     :piece-id :rose-rod-minion}
+            :hand-trade-target {:kind :piece
+                                :piece-id :indigo-rod-target}
+            :target {:kind :piece
+                     :piece-id :indigo-rod-target}
+            :damage 1
+            :sword-variant :sword}
+           (app-state/move-command damage-db)))
+    (is (:ok? (get-in confirmed-db [:move-selection :last-result])))
+    (is (nil? (piece-by-id confirmed-db :indigo-rod-target)))
+    (is (= ["justice"] (mapv :id (:discard-pile zones))))
+    (is (game-schema/valid-game? (app-state/game confirmed-db)))))
+
+(deftest death-hand-card-can_stage_two_sword_actions
+  (let [target-piece {:id :indigo-death-target
+                      :player-id :indigo
+                      :space-index 4
+                      :size :medium
+                      :orientation :north}
+        db (app-state/initialize {:player-specs test-player-specs
+                                  :game-options {:deck-order (deck-starting-with ["death"])}
+                                  :demo-board-pieces [rose-rod-minion target-piece]})
+        action-db (-> db
+                      (app-state/select-move-source :play-hand-card)
+                      (app-state/select-move-hand-card "death")
+                      (app-state/select-move-piece :rose-rod-minion)
+                      (app-state/select-move-power :death)
+                      (app-state/set-move-sword-action-count 2))
+        first-db (-> action-db
+                     (app-state/select-move-sword-target-kind :piece)
+                     (app-state/select-move-target-piece :indigo-death-target)
+                     (app-state/set-move-damage 1))
+        second-db (-> first-db
+                      (app-state/select-move-sword-target-kind :piece)
+                      (app-state/select-move-target-piece :indigo-death-target)
+                      (app-state/set-move-damage 1))
+        confirmed-db (app-state/confirm-move second-db)
+        zones (app-state/card-zones confirmed-db)]
+    (is (= :sword-action-count (:stage (app-state/move-selection
+                                        (-> db
+                                            (app-state/select-move-source :play-hand-card)
+                                            (app-state/select-move-hand-card "death")
+                                            (app-state/select-move-piece :rose-rod-minion)
+                                            (app-state/select-move-power :death))))))
+    (is (= [1 2]
+           (get-in (app-state/move-panel-view action-db)
+                   [:controls :sword-action-count-options])))
+    (is (= :sword-target-kind (:stage (app-state/move-selection first-db))))
+    (is (= [{:power :sword
+             :target {:kind :piece
+                      :piece-id :indigo-death-target}
+             :damage 1
+             :piece-id :rose-rod-minion}]
+           (get-in first-db [:move-selection :params :major-actions])))
+    (is (= {:player-id :rose
+            :source {:kind :hand-card
+                     :card-id "death"
+                     :piece-id :rose-rod-minion}
+            :sword-actions [{:target {:kind :piece
+                                      :piece-id :indigo-death-target}
+                             :damage 1
+                             :piece-id :rose-rod-minion}
+                            {:target {:kind :piece
+                                      :piece-id :indigo-death-target}
+                             :damage 1
+                             :piece-id :rose-rod-minion}]}
+           (app-state/move-command second-db)))
+    (is (:ok? (get-in confirmed-db [:move-selection :last-result])))
+    (is (nil? (piece-by-id confirmed-db :indigo-death-target)))
+    (is (= ["death"] (mapv :id (:discard-pile zones))))
+    (is (game-schema/valid-game? (app-state/game confirmed-db)))))
+
+(deftest tower-hand-card-can_stage_orient_then_sword
+  (let [tower-minion (assoc rose-rod-minion :orientation :north)
+        db (app-state/initialize {:player-specs test-player-specs
+                                  :game-options {:deck-order (deck-starting-with ["tower"])}
+                                  :demo-board-pieces [tower-minion indigo-rod-target]})
+        orient-db (-> db
+                      (app-state/select-move-source :play-hand-card)
+                      (app-state/select-move-hand-card "tower")
+                      (app-state/select-move-piece :rose-rod-minion)
+                      (app-state/select-move-power :tower)
+                      (app-state/set-move-minion-orientation :east))
+        kind-db (app-state/select-move-sword-target-kind orient-db :piece)
+        target-db (app-state/select-move-target-piece kind-db :indigo-rod-target)
+        damage-db (app-state/set-move-damage target-db 1)
+        confirmed-db (app-state/confirm-move damage-db)
+        source-piece (piece-by-id confirmed-db :rose-rod-minion)
+        zones (app-state/card-zones confirmed-db)]
+    (is (= [:tower :sword]
+           (mapv :id (app-state/move-power-options
+                      (-> db
+                          (app-state/select-move-source :play-hand-card)
+                          (app-state/select-move-hand-card "tower")
+                          (app-state/select-move-piece :rose-rod-minion))))))
+    (is (= :sword-target-kind (:stage (app-state/move-selection orient-db))))
+    (is (= [{:power :orient-minion
+             :piece-id :rose-rod-minion
+             :orientation :east}]
+           (get-in orient-db [:move-selection :params :major-actions])))
+    (is (= {:player-id :rose
+            :source {:kind :hand-card
+                     :card-id "tower"
+                     :piece-id :rose-rod-minion}
+            :minion-orientation :east
+            :target {:kind :piece
+                     :piece-id :indigo-rod-target}
+            :damage 1
+            :sword-variant :sword-from-discard}
+           (app-state/move-command damage-db)))
+    (is (:ok? (get-in confirmed-db [:move-selection :last-result])))
+    (is (= :east (:orientation source-piece)))
+    (is (nil? (piece-by-id confirmed-db :indigo-rod-target)))
+    (is (= ["tower"] (mapv :id (:discard-pile zones))))
+    (is (game-schema/valid-game? (app-state/game confirmed-db)))))
+
+(deftest moon-hand-card-can_stage_rod_then_sword
+  (let [db (app-state/initialize {:player-specs test-player-specs
+                                  :game-options {:deck-order (deck-starting-with ["moon"])}
+                                  :demo-board-pieces [rose-rod-minion
+                                                      indigo-rod-target]})
+        rod-db (-> db
+                   (app-state/select-move-source :play-hand-card)
+                   (app-state/select-move-hand-card "moon")
+                   (app-state/select-move-piece :rose-rod-minion)
+                   (app-state/select-move-power :moon)
+                   (app-state/select-move-rod-mode :move-minion)
+                   (app-state/set-move-distance 1)
+                   (app-state/set-move-orientation :up))
+        kind-db (app-state/select-move-sword-target-kind rod-db :piece)
+        target-db (app-state/select-move-target-piece kind-db :indigo-rod-target)
+        damage-db (app-state/set-move-damage target-db 1)
+        confirmed-db (app-state/confirm-move damage-db)
+        moved-piece (piece-by-id confirmed-db :rose-rod-minion)
+        zones (app-state/card-zones confirmed-db)]
+    (is (= [:moon :rod :sword]
+           (mapv :id (app-state/move-power-options
+                      (-> db
+                          (app-state/select-move-source :play-hand-card)
+                          (app-state/select-move-hand-card "moon")
+                          (app-state/select-move-piece :rose-rod-minion))))))
+    (is (= :sword-target-kind (:stage (app-state/move-selection rod-db))))
+    (is (= [{:power :rod
+             :mode :move-minion
+             :distance 1
+             :orientation :up
+             :piece-id :rose-rod-minion}]
+           (get-in rod-db [:move-selection :params :major-actions])))
+    (is (= {:player-id :rose
+            :source {:kind :hand-card
+                     :card-id "moon"
+                     :piece-id :rose-rod-minion}
+            :rod {:mode :move-minion
+                  :distance 1
+                  :orientation :up
+                  :piece-id :rose-rod-minion}
+            :sword {:target {:kind :piece
+                             :piece-id :indigo-rod-target}
+                    :damage 1
+                    :piece-id :rose-rod-minion}}
+           (app-state/move-command damage-db)))
+    (is (:ok? (get-in confirmed-db [:move-selection :last-result])))
+    (is (= {:id :rose-rod-minion
+            :player-id :rose
+            :space-index 4
+            :size :medium
+            :orientation :up}
+           moved-piece))
+    (is (nil? (piece-by-id confirmed-db :indigo-rod-target)))
+    (is (= ["moon"] (mapv :id (:discard-pile zones))))
     (is (game-schema/valid-game? (app-state/game confirmed-db)))))
 
 (deftest rejected-sword-confirmation-keeps-staged-selection

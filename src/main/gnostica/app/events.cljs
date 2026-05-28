@@ -29,6 +29,7 @@
 (def select-move-disc-target-kind :gnostica.app/select-move-disc-target-kind)
 (def select-move-sword-target-kind :gnostica.app/select-move-sword-target-kind)
 (def set-move-disc-action-count :gnostica.app/set-move-disc-action-count)
+(def set-move-sword-action-count :gnostica.app/set-move-sword-action-count)
 (def set-move-fool-reveal-count :gnostica.app/set-move-fool-reveal-count)
 (def set-move-high-priestess-redraw-count :gnostica.app/set-move-high-priestess-redraw-count)
 (def toggle-move-high-priestess-discard-card :gnostica.app/toggle-move-high-priestess-discard-card)
@@ -88,6 +89,7 @@
 (def move-power :gnostica.app/move-power)
 (def move-rod-mode-options :gnostica.app/move-rod-mode-options)
 (def move-disc-action-count-options :gnostica.app/move-disc-action-count-options)
+(def move-sword-action-count-options :gnostica.app/move-sword-action-count-options)
 (def move-sun-disc-mode-options :gnostica.app/move-sun-disc-mode-options)
 (def move-fool-reveal-count-options :gnostica.app/move-fool-reveal-count-options)
 (def move-high-priestess-redraw-count-options :gnostica.app/move-high-priestess-redraw-count-options)
@@ -254,6 +256,11 @@ select-move-rod-mode
  set-move-disc-action-count
  (fn [db [_ action-count]]
    (app-state/set-move-disc-action-count db action-count)))
+
+(rf/reg-event-db
+ set-move-sword-action-count
+ (fn [db [_ action-count]]
+   (app-state/set-move-sword-action-count db action-count)))
 
 (rf/reg-event-db
  set-move-fool-reveal-count
@@ -568,6 +575,11 @@ move-rod-mode-options
    (app-state/move-disc-action-count-options db)))
 
 (rf/reg-sub
+ move-sword-action-count-options
+ (fn [db _]
+   (app-state/move-sword-action-count-options db)))
+
+(rf/reg-sub
  move-sun-disc-mode-options
  (fn [db _]
    (app-state/move-sun-disc-mode-options db)))
@@ -773,6 +785,7 @@ move-rod-orientation-required?
  :<- [move-power-options]
  :<- [move-rod-mode-options]
  :<- [move-disc-action-count-options]
+ :<- [move-sword-action-count-options]
  :<- [move-sun-disc-mode-options]
  :<- [move-fool-reveal-count-options]
  :<- [move-high-priestess-redraw-count-options]
@@ -800,8 +813,9 @@ move-rod-orientation-required?
  :<- [move-distance-options]
  :<- [move-damage-options]
  :<- [draw-count-options]
- (fn [[current-player selection source-options prompt ready? board power
+(fn [[current-player selection source-options prompt ready? board power
        power-options rod-mode-options disc-action-count-options
+       sword-action-count-options
        sun-disc-mode-options fool-reveal-count-options
        high-priestess-redraw-count-options high-priestess-redraw-options
        judgement-card-options judgement-card-maximum
@@ -824,6 +838,7 @@ move-rod-orientation-required?
      :power-options power-options
      :rod-mode-options rod-mode-options
      :disc-action-count-options disc-action-count-options
+     :sword-action-count-options sword-action-count-options
      :sun-disc-mode-options sun-disc-mode-options
      :fool-reveal-count-options fool-reveal-count-options
      :high-priestess-redraw-count-options high-priestess-redraw-count-options

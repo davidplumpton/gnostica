@@ -311,7 +311,22 @@
        {:type "button"
         :class (when (= selected-count action-count) "is-selected")
         :aria-pressed (= selected-count action-count)
-       :on-click #(rf/dispatch [events/set-move-disc-action-count action-count])}
+        :on-click #(rf/dispatch [events/set-move-disc-action-count action-count])}
+       action-count])]])
+
+(defn- sword-action-count-choices [options selected-count]
+  [:div.move-step
+   [:div.move-step__header
+    [:span "Sword actions"]
+    [:strong (or selected-count "None")]]
+   [:div.move-choice-list.is-compact
+    (for [action-count options]
+      ^{:key action-count}
+      [:button.move-chip
+       {:type "button"
+        :class (when (= selected-count action-count) "is-selected")
+        :aria-pressed (= selected-count action-count)
+        :on-click #(rf/dispatch [events/set-move-sword-action-count action-count])}
        action-count])]])
 
 (defn- sun-disc-mode-choices [options selected-mode]
@@ -696,6 +711,14 @@
     :temperance :cup
     nil))
 
+(defn- sword-major-active-action-power [power params]
+  (case power
+    :justice (if (zero? (count (:major-actions params))) :trade-hand :sword)
+    :death :sword
+    :tower (if (zero? (count (:major-actions params))) :orient-minion :sword)
+    :moon (if (zero? (count (:major-actions params))) :rod :sword)
+    nil))
+
 (defn- composite-major-controls
   [power params board rod-mode-options target-piece-options target-board-options
    target-wasteland-options distance-options territory-card-source-options
@@ -732,10 +755,54 @@
 
     nil))
 
+(defn- sword-major-controls
+  [power params board rod-mode-options sword-action-count-options sword-target-kind-options
+   target-piece-options target-board-options distance-options replacement-source-options
+   replacement-card-options orientation-options orientation-required? sword-orientation-available?
+   damage-options]
+  [:<>
+   (when (= :death power)
+     [sword-action-count-choices sword-action-count-options (:sword-action-count params)])
+   (when (or (not= :death power)
+             (:sword-action-count params))
+     (case (sword-major-active-action-power power params)
+       :trade-hand
+       [target-piece-choices board target-piece-options (:target-piece-id params)]
+
+       :orient-minion
+       [orientation-choices "Minion orientation"
+        events/set-move-minion-orientation
+        orientation-options
+        (:minion-orientation params)]
+
+       :rod
+       [rod-move-controls params
+        board
+        rod-mode-options
+        target-piece-options
+        target-board-options
+        distance-options
+        orientation-options
+        orientation-required?]
+
+       :sword
+       [sword-move-controls params
+        board
+        sword-target-kind-options
+        target-piece-options
+        target-board-options
+        replacement-source-options
+        replacement-card-options
+        orientation-options
+        sword-orientation-available?
+        damage-options]
+
+       nil))])
+
 (defn- move-active-controls [selection controls]
   (let [{:keys [source params]} selection
         {:keys [board power power-options rod-mode-options piece-options
-                disc-action-count-options sun-disc-mode-options
+                disc-action-count-options sword-action-count-options sun-disc-mode-options
                 fool-reveal-count-options high-priestess-redraw-count-options
                 high-priestess-redraw-options judgement-card-options
                 judgement-card-maximum
@@ -851,6 +918,23 @@
              one-point-card-options
              orientation-options
              orientation-required?]
+            (:justice :death :tower :moon)
+            [sword-major-controls
+             power
+             params
+             board
+             rod-mode-options
+             sword-action-count-options
+             sword-target-kind-options
+             target-piece-options
+             target-board-options
+             distance-options
+             territory-card-source-options
+             replacement-card-options
+             orientation-options
+             orientation-required?
+             sword-orientation-available?
+             damage-options]
             nil)])]
 
       :play-hand-card
@@ -955,6 +1039,23 @@
              one-point-card-options
              orientation-options
              orientation-required?]
+            (:justice :death :tower :moon)
+            [sword-major-controls
+             power
+             params
+             board
+             rod-mode-options
+             sword-action-count-options
+             sword-target-kind-options
+             target-piece-options
+             target-board-options
+             distance-options
+             territory-card-source-options
+             replacement-card-options
+             orientation-options
+             orientation-required?
+             sword-orientation-available?
+             damage-options]
             nil)])]
 
       :draw-cards

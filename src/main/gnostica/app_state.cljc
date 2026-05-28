@@ -683,6 +683,7 @@
 (def move-power move-selection/move-power)
 (def move-rod-mode-options move-selection/move-rod-mode-options)
 (def move-disc-action-count-options move-selection/move-disc-action-count-options)
+(def move-sword-action-count-options move-selection/move-sword-action-count-options)
 (def move-sun-disc-mode-options move-selection/move-sun-disc-mode-options)
 (def move-fool-reveal-count-options move-selection/move-fool-reveal-count-options)
 (def move-high-priestess-redraw-count-options move-selection/move-high-priestess-redraw-count-options)
@@ -747,6 +748,7 @@
 (def select-move-disc-target-kind move-selection/select-move-disc-target-kind)
 (def select-move-sword-target-kind move-selection/select-move-sword-target-kind)
 (def set-move-disc-action-count move-selection/set-move-disc-action-count)
+(def set-move-sword-action-count move-selection/set-move-sword-action-count)
 (def set-move-fool-reveal-count move-selection/set-move-fool-reveal-count)
 (def set-move-high-priestess-redraw-count move-selection/set-move-high-priestess-redraw-count)
 (def toggle-move-high-priestess-discard-card move-selection/toggle-move-high-priestess-discard-card)
@@ -778,6 +780,7 @@
 (defn move-panel-view-model
   [{:keys [current-player selection source-options prompt ready?
            board power power-options rod-mode-options disc-action-count-options
+           sword-action-count-options
            sun-disc-mode-options fool-reveal-count-options
            high-priestess-redraw-count-options high-priestess-redraw-options
            judgement-card-options judgement-card-maximum
@@ -799,6 +802,7 @@
               :power-options power-options
               :rod-mode-options rod-mode-options
               :disc-action-count-options disc-action-count-options
+              :sword-action-count-options sword-action-count-options
               :sun-disc-mode-options sun-disc-mode-options
               :fool-reveal-count-options fool-reveal-count-options
               :high-priestess-redraw-count-options high-priestess-redraw-count-options
@@ -839,6 +843,7 @@
     :power-options (move-power-options db)
     :rod-mode-options (move-rod-mode-options db)
     :disc-action-count-options (move-disc-action-count-options db)
+    :sword-action-count-options (move-sword-action-count-options db)
     :sun-disc-mode-options (move-sun-disc-mode-options db)
     :fool-reveal-count-options (move-fool-reveal-count-options db)
     :high-priestess-redraw-count-options (move-high-priestess-redraw-count-options db)
