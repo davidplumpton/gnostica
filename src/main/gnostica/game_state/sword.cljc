@@ -656,8 +656,11 @@
                            (select-keys target-result
                                         [:target-piece :target-cell]))))))))))))
 
-(defn resolve-sword-command [state command]
-  (resolve-sword-command* state command {}))
+(defn resolve-sword-command
+  ([state command]
+   (resolve-sword-command* state command {}))
+  ([state command source-opts]
+   (resolve-sword-command* state command source-opts)))
 
 (defn- piece-space [piece]
   (select-keys piece [:space-index :space]))

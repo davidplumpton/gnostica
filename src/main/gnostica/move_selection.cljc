@@ -445,6 +445,18 @@
     (world-copied-card db params)
     (source-card db source-id params)))
 
+(defn- world-source-opts [db source-id params]
+  (when (world-move? db source-id params)
+    (let [source-result (game-state/resolve-major-source
+                         (game db)
+                         {:player-id (current-player-id db)
+                          :source (source-command source-id params)})
+          copied-card (world-copied-card db params)]
+      (when (and (:ok? source-result) copied-card)
+        (assoc (game-state/major-paid-source-opts source-result)
+               :power-card copied-card
+               :allow-major-minion? true)))))
+
 (defn- completed-major-actions [params]
   (vec (:major-actions params)))
 
@@ -659,7 +671,7 @@
         (:state orient-result)))
     state))
 
-(defn- disc-command-resolves? [db command]
+(defn- disc-command-resolves? [db source-id params command]
   (let [state (game db)]
     (boolean
      (and state
@@ -667,13 +679,16 @@
           (when-let [resolution-state (disc-resolution-state state command)]
             (:ok? (game-state/resolve-disc-command
                    resolution-state
-                   (dissoc command :minion-orientation))))))))
+                   (dissoc command :minion-orientation)
+                   (or (world-source-opts db source-id params) {}))))))))
 
 (defn- disc-piece-target? [db source-id params piece]
   (and piece
        (= :piece (:disc-target-kind params))
        (disc-command-resolves?
         db
+        source-id
+        params
         (assoc (disc-base-command db source-id params)
                :target {:kind :piece
                         :piece-id (:id piece)}))))
@@ -683,6 +698,8 @@
        (= :territory (:disc-target-kind params))
        (disc-command-resolves?
         db
+        source-id
+        params
         (assoc (disc-base-command db source-id params)
                :target {:kind :territory
                         :board-index (:index cell)}))))
@@ -783,16 +800,21 @@
   (let [rod-action (completed-major-action-by-power params :rod)]
     (boolean
      (and rod-action
-          (:ok? (game-state/apply-moon-move
-                 (game db)
-                 {:player-id (current-player-id db)
-                  :source (source-command source-id params)
-                  :rod rod-action
-                  :sword (assoc (dissoc command
-                                         :player-id
-                                         :source
-                                         :sword-variant)
-                                :piece-id (:piece-id params))}))))))
+          (let [moon-command {:player-id (current-player-id db)
+                              :source (source-command source-id params)
+                              :rod rod-action
+                              :sword (assoc (dissoc command
+                                                     :player-id
+                                                     :source
+                                                     :sword-variant)
+                                            :piece-id (:piece-id params))}
+                result (if (world-move? db source-id params)
+                         (game-state/apply-world-move
+                          (game db)
+                          (assoc moon-command
+                                 :copied-board-index (:copied-board-index params)))
+                         (game-state/apply-moon-move (game db) moon-command))]
+            (:ok? result))))))
 
 (defn- sword-command-resolves? [db source-id params command]
   (let [state (game db)]
@@ -808,7 +830,8 @@
                                          command)]
               (:ok? (game-state/resolve-sword-command
                      resolution-state
-                     command))))))))
+                     command
+                     (or (world-source-opts db source-id params) {})))))))))
 
 (defn- sword-piece-target? [db source-id params piece]
   (and piece

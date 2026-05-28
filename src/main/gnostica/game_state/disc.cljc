@@ -516,8 +516,11 @@
           source-result
           (resolve-disc-action state player-id source-result command))))))
 
-(defn resolve-disc-command [state command]
-  (resolve-disc-command* state command {}))
+(defn resolve-disc-command
+  ([state command]
+   (resolve-disc-command* state command {}))
+  ([state command source-opts]
+   (resolve-disc-command* state command source-opts)))
 
 (defn- piece-space [piece]
   (select-keys piece [:space-index :space]))

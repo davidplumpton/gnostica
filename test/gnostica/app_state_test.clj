@@ -114,6 +114,30 @@
               [:game :players-by-id]
               (into {} (map (juxt :id identity) players)))))
 
+(def ^:private expected-major-power-options
+  {"fool" [:fool]
+   "magician" [:cup :rod :disc :sword]
+   "high-priestess" [:high-priestess]
+   "empress" [:empress :cup]
+   "emperor" [:emperor :rod]
+   "hierophant" [:hierophant]
+   "lovers" [:lovers :cup :rod]
+   "chariot" [:chariot :rod]
+   "justice" [:justice :sword]
+   "hermit" [:hermit]
+   "wheeloffortune" [:cup]
+   "strength" [:disc]
+   "hangedman" [:hanged-man :rod]
+   "death" [:death :sword]
+   "temperance" [:temperance :cup]
+   "devil" [:devil]
+   "tower" [:tower :sword]
+   "star" [:disc]
+   "moon" [:moon :rod :sword]
+   "sun" [:cup :disc :sun]
+   "judgement" [:judgement]
+   "world" [:world]})
+
 (deftest initialize-builds-app-db-from-shared-game-state
   (let [hand-count (* game-state/starting-hand-size
                       (count app-state/default-player-specs))
@@ -405,6 +429,57 @@
            (app-state/selected-board-cell selected-db)))
     (is (= (pieces/pieces-for-space fixtures/demo-board-pieces 4)
            (app-state/selected-board-pieces selected-db)))))
+
+(deftest major-card-power-options-cover-implemented-browser-powers
+  (doseq [[card-id expected-options] expected-major-power-options]
+    (let [db (app-state/initialize {:player-specs test-player-specs
+                                    :game-options {:deck-order
+                                                   (deck-starting-with
+                                                    [card-id])}
+                                    :demo-board-pieces [rose-hand-piece]})
+          piece-db (-> db
+                       (app-state/select-move-source :play-hand-card)
+                       (app-state/select-move-hand-card card-id)
+                       (app-state/select-move-piece :rose-striker))
+          expected-power (when (= 1 (count expected-options))
+                           (first expected-options))]
+      (is (= expected-options
+             (mapv :id (app-state/move-power-options piece-db)))
+          card-id)
+      (is (= expected-power
+             (app-state/move-power piece-db))
+          card-id))))
+
+(deftest unsupported-card-powers-fail-explicitly-without-mutating-game
+  (let [blank-card {:id "blank-major"
+                    :title "Blank Major"
+                    :image "/images/blank-major.png"
+                    :arcana :major
+                    :group "Major Arcana"}
+        db (-> (app-state/initialize {:player-specs test-player-specs
+                                      :game-options {:shuffle-fn identity}
+                                      :demo-board-pieces [rose-hand-piece]})
+               (replace-game-player-hand :rose [blank-card]))
+        ready-db (-> db
+                     (app-state/select-move-source :play-hand-card)
+                     (app-state/select-move-hand-card "blank-major")
+                     (app-state/select-move-piece :rose-striker))
+        confirmed-db (app-state/confirm-move ready-db)]
+    (is (empty? (app-state/move-power-options ready-db)))
+    (is (= :unavailable (app-state/move-power ready-db)))
+    (is (= :confirm (:stage (app-state/move-selection ready-db))))
+    (is (= {:player-id :rose
+            :source {:kind :hand-card
+                     :card-id "blank-major"
+                     :piece-id :rose-striker}
+            :power :unavailable
+            :card-id "blank-major"}
+           (app-state/move-command ready-db)))
+    (is (= :rejected (:stage (app-state/move-selection confirmed-db))))
+    (is (= :move-transition-unavailable
+           (get-in confirmed-db [:move-selection :error :code])))
+    (is (= (app-state/game ready-db)
+           (app-state/game confirmed-db)))))
 
 (deftest selecting-surviving-territory-after-destruction-uses-board-index
   (let [source-piece {:id :rose-gap-source
@@ -2247,6 +2322,69 @@
     (is (= ["world"] (mapv :id (:discard-pile zones))))
     (is (not (some #{"world"} (map :id (:hand zones)))))
     (is (= "empress" (get-in (board-cell-by-index confirmed-db 3) [:card :id])))
+    (is (game-schema/valid-game? (app-state/game confirmed-db)))))
+
+(deftest world-hand-card-can_stage_copied_death_major
+  (let [target-piece {:id :indigo-world-death-target
+                      :player-id :indigo
+                      :space-index 4
+                      :size :medium
+                      :orientation :north}
+        deck-order (deck-with-cards-at {0 "world"
+                                        (board-card-position test-player-specs 5) "death"})
+        db (app-state/initialize {:player-specs test-player-specs
+                                  :game-options {:deck-order deck-order}
+                                  :demo-board-pieces [rose-rod-minion
+                                                      target-piece]})
+        piece-db (-> db
+                     (app-state/select-move-source :play-hand-card)
+                     (app-state/select-move-hand-card "world")
+                     (app-state/select-move-piece :rose-rod-minion))
+        copy-db (app-state/select-move-world-copy piece-db 5)
+        power-db (app-state/select-move-power copy-db :death)
+        action-count-db (app-state/set-move-sword-action-count power-db 2)
+        first-db (-> action-count-db
+                     (app-state/select-move-sword-target-kind :piece)
+                     (app-state/select-move-target-piece :indigo-world-death-target)
+                     (app-state/set-move-damage 1))
+        ready-db (-> first-db
+                     (app-state/select-move-sword-target-kind :piece)
+                     (app-state/select-move-target-piece :indigo-world-death-target)
+                     (app-state/set-move-damage 1))
+        confirmed-db (app-state/confirm-move ready-db)
+        zones (app-state/card-zones confirmed-db)]
+    (is (= :copied-power (:stage (app-state/move-selection copy-db))))
+    (is (= [:death :sword]
+           (mapv :id (app-state/move-world-copied-power-options copy-db))))
+    (is (= :sword-action-count (:stage (app-state/move-selection power-db))))
+    (is (= :sword-target-kind (:stage (app-state/move-selection action-count-db))))
+    (is (= :sword-target-kind (:stage (app-state/move-selection first-db))))
+    (is (= [{:power :sword
+             :target {:kind :piece
+                      :piece-id :indigo-world-death-target}
+             :damage 1
+             :piece-id :rose-rod-minion}]
+           (get-in first-db [:move-selection :params :major-actions])))
+    (is (= :confirm (:stage (app-state/move-selection ready-db))))
+    (is (= {:player-id :rose
+            :source {:kind :hand-card
+                     :card-id "world"
+                     :piece-id :rose-rod-minion}
+            :copied-board-index 5
+            :sword-actions [{:target {:kind :piece
+                                      :piece-id :indigo-world-death-target}
+                             :damage 1
+                             :piece-id :rose-rod-minion}
+                            {:target {:kind :piece
+                                      :piece-id :indigo-world-death-target}
+                             :damage 1
+                             :piece-id :rose-rod-minion}]}
+           (app-state/move-command ready-db)))
+    (is (:ok? (get-in confirmed-db [:move-selection :last-result])))
+    (is (nil? (piece-by-id confirmed-db :indigo-world-death-target)))
+    (is (= ["world"] (mapv :id (:discard-pile zones))))
+    (is (not (some #{"world"} (map :id (:hand zones)))))
+    (is (= "death" (get-in (board-cell-by-index confirmed-db 5) [:card :id])))
     (is (game-schema/valid-game? (app-state/game confirmed-db)))))
 
 (deftest world-territory-source-can_stage_copied_suit_power

@@ -105,8 +105,11 @@
 (defn disc-target-coordinate [coordinate orientation]
   (disc/disc-target-coordinate coordinate orientation))
 
-(defn resolve-disc-command [state command]
-  (disc/resolve-disc-command state command))
+(defn resolve-disc-command
+  ([state command]
+   (disc/resolve-disc-command state command))
+  ([state command source-opts]
+   (disc/resolve-disc-command state command source-opts)))
 
 (defn apply-disc-move [state command]
   (disc/apply-disc-move state command))
@@ -119,8 +122,11 @@
 (defn sword-target-coordinate [coordinate orientation]
   (sword/sword-target-coordinate coordinate orientation))
 
-(defn resolve-sword-command [state command]
-  (sword/resolve-sword-command state command))
+(defn resolve-sword-command
+  ([state command]
+   (sword/resolve-sword-command state command))
+  ([state command source-opts]
+   (sword/resolve-sword-command state command source-opts)))
 
 (defn apply-sword-move [state command]
   (sword/apply-sword-move state command))
