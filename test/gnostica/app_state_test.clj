@@ -694,6 +694,119 @@
                        [:move-selection :last-result :events 0 :reshuffled-discard?])))
     (is (game-schema/valid-game? (app-state/game first-confirmed-db)))))
 
+(deftest fool-hand-card-can_stage_reveals_with_injected_shuffle
+  (let [seed 20260528
+        initial-db (app-state/initialize {:player-specs test-player-specs
+                                          :game-options {:deck-order (deck-starting-with ["fool"])}
+                                          :demo-board-pieces [rose-hand-piece]})
+        prepared-discard (vec (get-in initial-db [:game :draw-pile]))
+        db (-> initial-db
+               (assoc-in [:game :draw-pile] [])
+               (assoc-in [:game :discard-pile] prepared-discard))
+        piece-db (-> db
+                     (app-state/select-move-source :play-hand-card)
+                     (app-state/select-move-hand-card "fool")
+                     (app-state/select-move-piece :rose-striker))
+        reveal-db (app-state/set-move-fool-reveal-count piece-db 2)
+        confirmed-db (app-handlers/confirm-move-db reveal-db {:shuffle-seed seed})
+        repeated-confirmed-db (app-handlers/confirm-move-db reveal-db {:shuffle-seed seed})
+        expected-shuffled (deterministic-shuffle/shuffle-with-seed
+                           seed
+                           (conj prepared-discard (cards/card-by-id "fool")))
+        events (get-in confirmed-db [:move-selection :last-result :events])
+        zones (app-state/card-zones confirmed-db)]
+    (is (= :fool-reveal-count (:stage (app-state/move-selection piece-db))))
+    (is (= [0 1 2] (app-state/move-fool-reveal-count-options piece-db)))
+    (is (= :confirm (:stage (app-state/move-selection reveal-db))))
+    (is (= {:player-id :rose
+            :source {:kind :hand-card
+                     :card-id "fool"
+                     :piece-id :rose-striker}
+            :reveals [{} {}]}
+           (app-state/move-command reveal-db)))
+    (is (= (app-state/game confirmed-db)
+           (app-state/game repeated-confirmed-db)))
+    (is (:ok? (get-in confirmed-db [:move-selection :last-result])))
+    (is (= [:fool/card-revealed :fool/card-revealed]
+           (mapv :type events)))
+    (is (= (mapv :id (take 2 expected-shuffled))
+           (mapv :card-id events)))
+    (is (not (some #{"fool"} (map :id (:hand zones)))))
+    (is (game-schema/valid-game? (app-state/game confirmed-db)))))
+
+(deftest high-priestess-hand-card-can_stage_two_redraw_passes
+  (let [db (app-state/initialize {:player-specs test-player-specs
+                                  :game-options {:deck-order
+                                                 (deck-starting-with
+                                                  ["high-priestess" "cups2" "wands2"
+                                                   "coins2" "swords2" "cups3"])}
+                                  :demo-board-pieces [rose-hand-piece]})
+        first-drawn-card (first (get-in db [:game :draw-pile]))
+        second-drawn-card (second (get-in db [:game :draw-pile]))
+        piece-db (-> db
+                     (app-state/select-move-source :play-hand-card)
+                     (app-state/select-move-hand-card "high-priestess")
+                     (app-state/select-move-piece :rose-striker))
+        count-db (app-state/set-move-high-priestess-redraw-count piece-db 2)
+        first-pass-db (-> count-db
+                          (app-state/toggle-move-high-priestess-discard-card 1 "cups2")
+                          (app-state/set-move-high-priestess-draw-count 1 1))
+        second-pass-db (-> first-pass-db
+                           (app-state/toggle-move-high-priestess-discard-card 2 "wands2")
+                           (app-state/set-move-high-priestess-draw-count 2 1))
+        confirmed-db (app-state/confirm-move second-pass-db)
+        zones (app-state/card-zones confirmed-db)]
+    (is (= :high-priestess-redraw-count
+           (:stage (app-state/move-selection piece-db))))
+    (is (= [0 1 2] (app-state/move-high-priestess-redraw-count-options piece-db)))
+    (is (= :high-priestess-redraw
+           (:stage (app-state/move-selection count-db))))
+    (is (= [1 2]
+           (mapv :pass-index (app-state/move-high-priestess-redraw-options count-db))))
+    (is (= :confirm (:stage (app-state/move-selection second-pass-db))))
+    (is (= {:player-id :rose
+            :source {:kind :hand-card
+                     :card-id "high-priestess"
+                     :piece-id :rose-striker}
+            :redraws [{:discard-card-ids ["cups2"]
+                       :draw-count 1}
+                      {:discard-card-ids ["wands2"]
+                       :draw-count 1}]}
+           (app-state/move-command second-pass-db)))
+    (is (:ok? (get-in confirmed-db [:move-selection :last-result])))
+    (is (= ["coins2" "swords2" "cups3" (:id first-drawn-card) (:id second-drawn-card)]
+           (mapv :id (:hand zones))))
+    (is (= ["high-priestess" "cups2" "wands2"]
+           (mapv :id (:discard-pile zones))))
+    (is (game-schema/valid-game? (app-state/game confirmed-db)))))
+
+(deftest judgement-hand-card-can_stage_source_card_draw_after_cost
+  (let [db (app-state/initialize {:player-specs test-player-specs
+                                  :game-options {:deck-order (deck-starting-with ["judgement"])}
+                                  :demo-board-pieces [rose-hand-piece]})
+        piece-db (-> db
+                     (app-state/select-move-source :play-hand-card)
+                     (app-state/select-move-hand-card "judgement")
+                     (app-state/select-move-piece :rose-striker))
+        card-db (app-state/toggle-move-judgement-card piece-db "judgement")
+        confirmed-db (app-state/confirm-move card-db)
+        zones (app-state/card-zones confirmed-db)]
+    (is (= :confirm (:stage (app-state/move-selection piece-db))))
+    (is (= ["judgement"]
+           (mapv :id (app-state/move-judgement-card-options piece-db))))
+    (is (= 1 (app-state/move-judgement-card-maximum piece-db)))
+    (is (= {:player-id :rose
+            :source {:kind :hand-card
+                     :card-id "judgement"
+                     :piece-id :rose-striker}
+            :piece-id :rose-striker
+            :card-ids ["judgement"]}
+           (app-state/move-command card-db)))
+    (is (:ok? (get-in confirmed-db [:move-selection :last-result])))
+    (is (= "judgement" (:id (last (:hand zones)))))
+    (is (empty? (:discard-pile zones)))
+    (is (game-schema/valid-game? (app-state/game confirmed-db)))))
+
 (deftest activating-a-board-territory-uses-board-and-piece-selections
   (let [deck-order (deck-with-card-at (board-card-position test-player-specs 0)
                                       "cups2")

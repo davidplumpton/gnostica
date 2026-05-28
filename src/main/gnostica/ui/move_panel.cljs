@@ -346,6 +346,97 @@
         :on-click #(rf/dispatch [events/set-move-draw-count draw-count])}
        draw-count])]])
 
+(defn- count-choices [label event-id options selected-count]
+  [:div.move-step
+   [:div.move-step__header
+    [:span label]
+    [:strong (or selected-count "None")]]
+   [:div.move-choice-list.is-compact
+    (for [option options]
+      ^{:key option}
+      [:button.move-chip
+       {:type "button"
+        :class (when (= selected-count option) "is-selected")
+        :aria-pressed (= selected-count option)
+        :on-click #(rf/dispatch [event-id option])}
+       option])]])
+
+(defn- fool-reveal-count-choices [options selected-count]
+  [count-choices "Reveals" events/set-move-fool-reveal-count options selected-count])
+
+(defn- high-priestess-redraw-count-choices [options selected-count]
+  [count-choices "Redraw passes" events/set-move-high-priestess-redraw-count options selected-count])
+
+(defn- high-priestess-pass-controls
+  [{:keys [pass-index discard-card-options selected-discard-card-ids
+           draw-count-options selected-draw-count]}]
+  (let [selected-discard-card-ids (set selected-discard-card-ids)
+        selected-count (count selected-discard-card-ids)]
+    [:div.move-step
+     [:div.move-step__header
+      [:span (str "Redraw " pass-index)]
+      [:strong (if (pos? selected-count)
+                 (ui/card-count-label selected-count)
+                 "No discards")]]
+     (if (seq discard-card-options)
+       [:div.move-discard-list
+        (for [card discard-card-options
+              :let [selected? (contains? selected-discard-card-ids (:id card))]]
+          ^{:key (str "hp-" pass-index "-" (:id card))}
+          [:label.move-discard-choice
+           {:class (when selected? "is-selected")}
+           [:input
+            {:type "checkbox"
+             :checked selected?
+             :on-change #(rf/dispatch [events/toggle-move-high-priestess-discard-card
+                                        pass-index
+                                        (:id card)])}]
+           [:span (:title card)]])]
+       [:p.move-step__empty "No hand cards available."])
+     [:div.move-choice-list.is-compact
+      (for [draw-count draw-count-options]
+        ^{:key (str "hp-draw-" pass-index "-" draw-count)}
+        [:button.move-chip
+         {:type "button"
+          :class (when (= selected-draw-count draw-count) "is-selected")
+          :aria-pressed (= selected-draw-count draw-count)
+          :on-click #(rf/dispatch [events/set-move-high-priestess-draw-count
+                                   pass-index
+                                   draw-count])}
+         draw-count])]]))
+
+(defn- high-priestess-redraw-controls [redraw-options]
+  [:<>
+   (for [redraw-option redraw-options]
+     ^{:key (:pass-index redraw-option)}
+     [high-priestess-pass-controls redraw-option])])
+
+(defn- judgement-card-choices [cards selected-card-ids maximum]
+  (let [selected-card-ids (set selected-card-ids)
+        selected-count (count selected-card-ids)]
+    [:div.move-step
+     [:div.move-step__header
+      [:span "Judgement cards"]
+      [:strong (str selected-count "/" maximum)]]
+     (if (seq cards)
+       [:div.move-discard-list
+        (for [card cards
+              :let [selected? (contains? selected-card-ids (:id card))
+                    limit-reached? (and (not selected?)
+                                        (<= maximum selected-count))]]
+          ^{:key (str "judgement-" (:id card))}
+          [:label.move-discard-choice
+           {:class (cond
+                     selected? "is-selected"
+                     limit-reached? "is-disabled")}
+           [:input
+            {:type "checkbox"
+             :checked selected?
+             :disabled limit-reached?
+             :on-change #(rf/dispatch [events/toggle-move-judgement-card (:id card)])}]
+           [:span (:title card)]])]
+       [:p.move-step__empty "No discard-pile cards available."])]))
+
 (defn- distance-choices [options selected-distance]
   [:div.move-step
    [:div.move-step__header
@@ -599,6 +690,9 @@
   (let [{:keys [source params]} selection
         {:keys [board power power-options rod-mode-options piece-options
                 disc-action-count-options sun-disc-mode-options
+                fool-reveal-count-options high-priestess-redraw-count-options
+                high-priestess-redraw-options judgement-card-options
+                judgement-card-maximum
                 disc-minion-orientation-required?
                 disc-target-kind-options sword-target-kind-options
                 target-piece-options hand-options discard-card-options source-board-options
@@ -665,6 +759,19 @@
                     orientation-options
                     sword-orientation-available?
                     damage-options]
+            :fool [fool-reveal-count-choices
+                   fool-reveal-count-options
+                   (:fool-reveal-count params)]
+            :high-priestess [:<>
+                             [high-priestess-redraw-count-choices
+                              high-priestess-redraw-count-options
+                              (:high-priestess-redraw-count params)]
+                             [high-priestess-redraw-controls
+                              high-priestess-redraw-options]]
+            :judgement [judgement-card-choices
+                        judgement-card-options
+                        (:judgement-card-ids params)
+                        judgement-card-maximum]
             :hierophant [piece-orientation-major-controls
                          "Replacement orientation"
                          params
@@ -742,6 +849,19 @@
                     orientation-options
                     sword-orientation-available?
                     damage-options]
+            :fool [fool-reveal-count-choices
+                   fool-reveal-count-options
+                   (:fool-reveal-count params)]
+            :high-priestess [:<>
+                             [high-priestess-redraw-count-choices
+                              high-priestess-redraw-count-options
+                              (:high-priestess-redraw-count params)]
+                             [high-priestess-redraw-controls
+                              high-priestess-redraw-options]]
+            :judgement [judgement-card-choices
+                        judgement-card-options
+                        (:judgement-card-ids params)
+                        judgement-card-maximum]
             :hierophant [piece-orientation-major-controls
                          "Replacement orientation"
                          params

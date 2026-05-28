@@ -684,6 +684,11 @@
 (def move-rod-mode-options move-selection/move-rod-mode-options)
 (def move-disc-action-count-options move-selection/move-disc-action-count-options)
 (def move-sun-disc-mode-options move-selection/move-sun-disc-mode-options)
+(def move-fool-reveal-count-options move-selection/move-fool-reveal-count-options)
+(def move-high-priestess-redraw-count-options move-selection/move-high-priestess-redraw-count-options)
+(def move-high-priestess-redraw-options move-selection/move-high-priestess-redraw-options)
+(def move-judgement-card-options move-selection/move-judgement-card-options)
+(def move-judgement-card-maximum move-selection/move-judgement-card-maximum)
 (def move-disc-minion-orientation-required? move-selection/move-disc-minion-orientation-required?)
 (def move-disc-target-kind-options move-selection/move-disc-target-kind-options)
 (def move-sword-target-kind-options move-selection/move-sword-target-kind-options)
@@ -742,6 +747,11 @@
 (def select-move-disc-target-kind move-selection/select-move-disc-target-kind)
 (def select-move-sword-target-kind move-selection/select-move-sword-target-kind)
 (def set-move-disc-action-count move-selection/set-move-disc-action-count)
+(def set-move-fool-reveal-count move-selection/set-move-fool-reveal-count)
+(def set-move-high-priestess-redraw-count move-selection/set-move-high-priestess-redraw-count)
+(def toggle-move-high-priestess-discard-card move-selection/toggle-move-high-priestess-discard-card)
+(def set-move-high-priestess-draw-count move-selection/set-move-high-priestess-draw-count)
+(def toggle-move-judgement-card move-selection/toggle-move-judgement-card)
 (def set-move-minion-orientation move-selection/set-move-minion-orientation)
 (def select-move-sun-disc-mode move-selection/select-move-sun-disc-mode)
 (def set-move-sun-disc-orientation move-selection/set-move-sun-disc-orientation)
@@ -768,7 +778,9 @@
 (defn move-panel-view-model
   [{:keys [current-player selection source-options prompt ready?
            board power power-options rod-mode-options disc-action-count-options
-           sun-disc-mode-options
+           sun-disc-mode-options fool-reveal-count-options
+           high-priestess-redraw-count-options high-priestess-redraw-options
+           judgement-card-options judgement-card-maximum
            disc-minion-orientation-required? disc-target-kind-options
            sword-target-kind-options piece-options
            target-piece-options hand-options discard-card-options source-board-options
@@ -788,6 +800,11 @@
               :rod-mode-options rod-mode-options
               :disc-action-count-options disc-action-count-options
               :sun-disc-mode-options sun-disc-mode-options
+              :fool-reveal-count-options fool-reveal-count-options
+              :high-priestess-redraw-count-options high-priestess-redraw-count-options
+              :high-priestess-redraw-options high-priestess-redraw-options
+              :judgement-card-options judgement-card-options
+              :judgement-card-maximum judgement-card-maximum
               :disc-minion-orientation-required? disc-minion-orientation-required?
               :disc-target-kind-options disc-target-kind-options
               :sword-target-kind-options sword-target-kind-options
@@ -823,6 +840,11 @@
     :rod-mode-options (move-rod-mode-options db)
     :disc-action-count-options (move-disc-action-count-options db)
     :sun-disc-mode-options (move-sun-disc-mode-options db)
+    :fool-reveal-count-options (move-fool-reveal-count-options db)
+    :high-priestess-redraw-count-options (move-high-priestess-redraw-count-options db)
+    :high-priestess-redraw-options (move-high-priestess-redraw-options db)
+    :judgement-card-options (move-judgement-card-options db)
+    :judgement-card-maximum (move-judgement-card-maximum db)
     :disc-minion-orientation-required? (move-disc-minion-orientation-required? db)
     :disc-target-kind-options (move-disc-target-kind-options db)
     :sword-target-kind-options (move-sword-target-kind-options db)

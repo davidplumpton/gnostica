@@ -39,7 +39,7 @@
     :requirements [:target-space :orientation]}})
 
 (def move-power-order
-  [:cup :rod :disc :sun :sword :hierophant :hermit :devil])
+  [:cup :rod :disc :sun :sword :fool :high-priestess :judgement :hierophant :hermit :devil])
 
 (def move-power-definitions
   {:cup {:id :cup
@@ -52,6 +52,12 @@
          :label "Sun"}
    :sword {:id :sword
            :label "Sword"}
+   :fool {:id :fool
+          :label "Fool"}
+   :high-priestess {:id :high-priestess
+                    :label "High Priestess"}
+   :judgement {:id :judgement
+               :label "Judgement"}
    :hierophant {:id :hierophant
                 :label "Hierophant"}
    :hermit {:id :hermit
@@ -123,6 +129,12 @@
    :territory {:id :territory
                :label "Attack territory"}})
 
+(def fool-reveal-count-order
+  [0 1 2])
+
+(def high-priestess-redraw-count-order
+  [0 1 2])
+
 (def strength-disc-action-count-order
   [1 2])
 
@@ -155,6 +167,10 @@
    :sun-disc-mode "Choose whether Sun applies Disc."
    :disc-target-kind "Choose piece or territory growth."
    :sword-target-kind "Choose piece or territory attack."
+   :fool-reveal-count "Choose how many cards Fool reveals."
+   :high-priestess-redraw-count "Choose how many redraw passes High Priestess applies."
+   :high-priestess-redraws "Choose cards and draw counts for each redraw pass."
+   :judgement-card-selection "Choose discard-pile cards for Judgement."
    :target-piece-id "Choose a target piece."
    :target-board-index "Choose a target territory."
    :target-space "Choose a target territory, enemy piece, or wasteland."
@@ -301,6 +317,9 @@
       (cards/disc-card? card) (conj :disc)
       (= "sun" (:id card)) (conj :sun)
       (cards/sword-card? card) (conj :sword)
+      (= "fool" (:id card)) (conj :fool)
+      (= "high-priestess" (:id card)) (conj :high-priestess)
+      (= "judgement" (:id card)) (conj :judgement)
       (= "hierophant" (:id card)) (conj :hierophant)
       (= "hermit" (:id card)) (conj :hermit)
       (= "devil" (:id card)) (conj :devil))))
@@ -383,6 +402,15 @@
 
 (defn- sword-move? [db source-id params]
   (= :sword (selected-power db source-id params)))
+
+(defn- fool-move? [db source-id params]
+  (= :fool (selected-power db source-id params)))
+
+(defn- high-priestess-move? [db source-id params]
+  (= :high-priestess (selected-power db source-id params)))
+
+(defn- judgement-move? [db source-id params]
+  (= :judgement (selected-power db source-id params)))
 
 (defn- hierophant-move? [db source-id params]
   (= :hierophant (selected-power db source-id params)))
@@ -997,6 +1025,119 @@
       :else
       (dissoc params :draw-count))))
 
+(defn- high-priestess-source-card-id [source-id params]
+  (when (= :play-hand-card source-id)
+    (:hand-card-id params)))
+
+(defn- high-priestess-hand-card-options [db source-id params]
+  (let [source-card-id (high-priestess-source-card-id source-id params)]
+    (cond->> (current-player-hand db)
+      source-card-id
+      (remove #(= source-card-id (:id %)))
+      true
+      vec)))
+
+(defn- high-priestess-valid-discard-card-ids [db source-id params discard-card-ids]
+  (let [hand-card-ids (set (map :id (high-priestess-hand-card-options db source-id params)))]
+    (vec (filter hand-card-ids (distinct (or discard-card-ids []))))))
+
+(defn- high-priestess-draw-count-options [db source-id params discard-card-ids]
+  (let [discard-count (count (high-priestess-valid-discard-card-ids
+                              db
+                              source-id
+                              params
+                              discard-card-ids))
+        source-cost-count (if (high-priestess-source-card-id source-id params) 1 0)
+        post-source-hand-count (- (count (current-player-hand db)) source-cost-count)
+        post-discard-hand-count (- post-source-hand-count discard-count)
+        hand-slots (- game-state/starting-hand-size post-discard-hand-count)
+        available-cards (+ (count (get-in db [:game :draw-pile] []))
+                           (count (get-in db [:game :discard-pile] []))
+                           source-cost-count
+                           discard-count)
+        max-draw-count (max 0 (min hand-slots available-cards))]
+    (vec (range 0 (inc max-draw-count)))))
+
+(defn- selected-high-priestess-redraw-count [params]
+  (when (some #{(:high-priestess-redraw-count params)}
+              high-priestess-redraw-count-order)
+    (:high-priestess-redraw-count params)))
+
+(defn- redraw-pass-offset [pass-index]
+  (when (and (int? pass-index)
+             (<= 1 pass-index 2))
+    (dec pass-index)))
+
+(defn- high-priestess-redraw-pass [params pass-index]
+  (let [offset (redraw-pass-offset pass-index)]
+    (when (some? offset)
+      (get (vec (:redraws params)) offset {:discard-card-ids []}))))
+
+(defn- normalize-high-priestess-redraws [db source-id params]
+  (if-let [redraw-count (selected-high-priestess-redraw-count params)]
+    (assoc params
+           :redraws
+           (mapv (fn [offset]
+                   (let [pass (get (vec (:redraws params)) offset {})
+                         discard-card-ids (high-priestess-valid-discard-card-ids
+                                           db
+                                           source-id
+                                           params
+                                           (:discard-card-ids pass))
+                         options (set (high-priestess-draw-count-options
+                                       db
+                                       source-id
+                                       params
+                                       discard-card-ids))
+                         pass (assoc pass :discard-card-ids discard-card-ids)]
+                     (if (contains? options (:draw-count pass))
+                       pass
+                       (dissoc pass :draw-count))))
+                 (range redraw-count)))
+    (dissoc params :redraws)))
+
+(defn- high-priestess-redraws-complete? [db source-id params]
+  (if-let [redraw-count (selected-high-priestess-redraw-count params)]
+    (every? (fn [offset]
+              (let [pass (get (vec (:redraws params)) offset)
+                    options (set (high-priestess-draw-count-options
+                                  db
+                                  source-id
+                                  params
+                                  (:discard-card-ids pass)))]
+                (contains? options (:draw-count pass))))
+            (range redraw-count))
+    false))
+
+(defn- judgement-discard-card-options [db source-id params]
+  (let [source-card (source-card db source-id params)]
+    (cond-> (discard-pile db)
+      (and (= :play-hand-card source-id)
+           (= "judgement" (:id source-card)))
+      (conj source-card))))
+
+(defn- judgement-card-maximum [db source-id params]
+  (let [source-cost-count (if (and (= :play-hand-card source-id)
+                                   (= "judgement" (:id (source-card db source-id params))))
+                            1
+                            0)
+        hand-count (- (count (current-player-hand db)) source-cost-count)
+        hand-slots (max 0 (- game-state/starting-hand-size hand-count))
+        minion-pips (or (some-> (piece-by-id db (:piece-id params)) pieces/pips) 0)]
+    (min minion-pips hand-slots)))
+
+(defn- valid-judgement-card-ids [db source-id params card-ids]
+  (let [selected-card-ids (set (or card-ids []))]
+    (->> (judgement-discard-card-options db source-id params)
+         (map :id)
+         (filter selected-card-ids)
+         (take (judgement-card-maximum db source-id params))
+         vec)))
+
+(defn- judgement-card-selection-complete? [db source-id params]
+  (= (vec (:judgement-card-ids params))
+     (valid-judgement-card-ids db source-id params (:judgement-card-ids params))))
+
 (defn- small-stash-count [db]
   (or (get-in (current-player db) [:stash :small])
       (get-in db [:game :pieces :stashes (current-player-id db) :small])
@@ -1079,6 +1220,53 @@
   (let [{:keys [source params]} (move-selection db)]
     (mapv sun-disc-mode-definitions
           (sun-disc-mode-option-ids db source params))))
+
+(defn move-fool-reveal-count-options [db]
+  (let [{:keys [source params]} (move-selection db)]
+    (if (fool-move? db source params)
+      fool-reveal-count-order
+      [])))
+
+(defn move-high-priestess-redraw-count-options [db]
+  (let [{:keys [source params]} (move-selection db)]
+    (if (high-priestess-move? db source params)
+      high-priestess-redraw-count-order
+      [])))
+
+(defn move-high-priestess-redraw-options [db]
+  (let [{:keys [source params]} (move-selection db)]
+    (if-let [redraw-count (and (high-priestess-move? db source params)
+                               (selected-high-priestess-redraw-count params))]
+      (mapv (fn [pass-index]
+              (let [pass (high-priestess-redraw-pass params pass-index)
+                    discard-card-ids (:discard-card-ids pass)]
+                {:pass-index pass-index
+                 :discard-card-options (high-priestess-hand-card-options db source params)
+                 :selected-discard-card-ids (high-priestess-valid-discard-card-ids
+                                             db
+                                             source
+                                             params
+                                             discard-card-ids)
+                 :draw-count-options (high-priestess-draw-count-options
+                                      db
+                                      source
+                                      params
+                                      discard-card-ids)
+                 :selected-draw-count (:draw-count pass)}))
+            (range 1 (inc redraw-count)))
+      [])))
+
+(defn move-judgement-card-options [db]
+  (let [{:keys [source params]} (move-selection db)]
+    (if (judgement-move? db source params)
+      (judgement-discard-card-options db source params)
+      [])))
+
+(defn move-judgement-card-maximum [db]
+  (let [{:keys [source params]} (move-selection db)]
+    (if (judgement-move? db source params)
+      (judgement-card-maximum db source params)
+      0)))
 
 (defn move-disc-minion-orientation-required? [db]
   (let [{:keys [source params]} (move-selection db)]
@@ -1227,6 +1415,23 @@
     :sword-target-kind
     (and (sword-move? db source-id params)
          (contains? sword-target-kinds (:sword-target-kind params)))
+
+    :fool-reveal-count
+    (and (fool-move? db source-id params)
+         (some #{(:fool-reveal-count params)} fool-reveal-count-order))
+
+    :high-priestess-redraw-count
+    (and (high-priestess-move? db source-id params)
+         (some #{(:high-priestess-redraw-count params)}
+               high-priestess-redraw-count-order))
+
+    :high-priestess-redraws
+    (and (high-priestess-move? db source-id params)
+         (high-priestess-redraws-complete? db source-id params))
+
+    :judgement-card-selection
+    (and (judgement-move? db source-id params)
+         (judgement-card-selection-complete? db source-id params))
 
     :target-piece-id
     (cond
@@ -1422,6 +1627,18 @@
 
              []))))
 
+(defn- fool-requirements [_db _source-id _params]
+  [:fool-reveal-count])
+
+(defn- high-priestess-requirements [_db _source-id params]
+  (vec
+   (concat [:high-priestess-redraw-count]
+           (when (some? (selected-high-priestess-redraw-count params))
+             [:high-priestess-redraws]))))
+
+(defn- judgement-requirements [_db _source-id _params]
+  [:judgement-card-selection])
+
 (defn- hierophant-requirements [_db _source-id _params]
   [:target-piece-id :orientation])
 
@@ -1453,6 +1670,9 @@
                :disc (disc-requirements db source-id params)
                :sun (sun-requirements db source-id params)
                :sword (sword-requirements db source-id params)
+               :fool (fool-requirements db source-id params)
+               :high-priestess (high-priestess-requirements db source-id params)
+               :judgement (judgement-requirements db source-id params)
                :hierophant (hierophant-requirements db source-id params)
                :hermit (hermit-requirements db source-id params)
                :devil (devil-requirements db source-id params)
@@ -1486,6 +1706,10 @@
     :sun-disc-mode :sun-disc-mode
     :disc-target-kind :disc-target-kind
     :sword-target-kind :sword-target-kind
+    :fool-reveal-count :fool-reveal-count
+    :high-priestess-redraw-count :high-priestess-redraw-count
+    :high-priestess-redraws :high-priestess-redraw
+    :judgement-card-selection :judgement-card-selection
     :target-piece-id :target-piece
     :sun-disc-target-piece-id :target-piece
     :target-board-index :target
@@ -1592,6 +1816,10 @@
                   :sun-disc-mode (:sun-disc-mode requirement-prompts)
                   :disc-target-kind (:disc-target-kind requirement-prompts)
                   :sword-target-kind (:sword-target-kind requirement-prompts)
+                  :fool-reveal-count (:fool-reveal-count requirement-prompts)
+                  :high-priestess-redraw-count (:high-priestess-redraw-count requirement-prompts)
+                  :high-priestess-redraw (:high-priestess-redraws requirement-prompts)
+                  :judgement-card-selection (:judgement-card-selection requirement-prompts)
                   :target-piece (:target-piece-id requirement-prompts)
                   :orientation (:orientation requirement-prompts)
                   :distance (:distance requirement-prompts)
@@ -1662,7 +1890,11 @@
             :replacement-card-id
             :orientation
             :distance
-            :damage))))
+            :damage
+            :fool-reveal-count
+            :high-priestess-redraw-count
+            :redraws
+            :judgement-card-ids))))
 
 (defn- clear-piece-when-source-changes [params board-index]
   (let [next-params (assoc params :source-board-index board-index)]
@@ -1676,7 +1908,11 @@
                   :disc-target-kind
                   :sword-target-kind
                   :disc-action-count
-                  :minion-orientation)))))
+                  :minion-orientation
+                  :fool-reveal-count
+                  :high-priestess-redraw-count
+                  :redraws
+                  :judgement-card-ids)))))
 
 (defn- set-territory-target [params board-index]
   (-> params
@@ -1715,7 +1951,11 @@
               :disc-target-kind
               :sword-target-kind
               :disc-action-count
-              :minion-orientation)))
+              :minion-orientation
+              :fool-reveal-count
+              :high-priestess-redraw-count
+              :redraws
+              :judgement-card-ids)))
 
 (defn- set-acting-piece [params piece-id]
   (let [next-params (assoc params :piece-id piece-id)]
@@ -1735,7 +1975,11 @@
                   :disc-target-kind
                   :sword-target-kind
                   :disc-action-count
-                  :minion-orientation)))))
+                  :minion-orientation
+                  :fool-reveal-count
+                  :high-priestess-redraw-count
+                  :redraws
+                  :judgement-card-ids)))))
 
 (defn- set-rod-mode-param [params mode]
   (let [next-params (assoc params :rod-mode mode)]
@@ -1787,6 +2031,24 @@
     (if (= (:disc-action-count params) action-count)
       next-params
       (dissoc next-params :replacement-card-id))))
+
+(defn- set-high-priestess-redraw-count-param [params db source redraw-count]
+  (normalize-high-priestess-redraws
+   db
+   source
+   (assoc params :high-priestess-redraw-count redraw-count)))
+
+(defn- update-high-priestess-redraw-pass [params pass-index f & args]
+  (if-let [offset (redraw-pass-offset pass-index)]
+    (let [redraw-count (or (selected-high-priestess-redraw-count params) 0)
+          redraws (vec (concat (:redraws params)
+                               (repeat (max 0 (- redraw-count
+                                                 (count (:redraws params))))
+                                       {:discard-card-ids []})))]
+      (assoc params
+             :redraws
+             (update redraws offset #(apply f (or % {:discard-card-ids []}) args))))
+    params))
 
 (defn- set-damage-param [params damage]
   (let [next-params (assoc params :damage damage)]
@@ -2190,6 +2452,162 @@
                                          "Choose a supported Disc action count."
                                          {:action-count action-count
                                           :options options})))))
+
+(defn set-move-fool-reveal-count [db reveal-count]
+  (let [{:keys [source params]} (move-selection db)]
+    (if (and (fool-move? db source params)
+             (some #{reveal-count} fool-reveal-count-order))
+      (update-move-selection-success db assoc-in [:params :fool-reveal-count] reveal-count)
+      (update-move-selection db assoc
+                             :error
+                             (move-error :invalid-fool-reveal-count
+                                         "Choose a supported Fool reveal count."
+                                         {:reveal-count reveal-count
+                                          :options fool-reveal-count-order})))))
+
+(defn set-move-high-priestess-redraw-count [db redraw-count]
+  (let [{:keys [source params]} (move-selection db)]
+    (if (and (high-priestess-move? db source params)
+             (some #{redraw-count} high-priestess-redraw-count-order))
+      (update-move-selection-success db
+                                     update
+                                     :params
+                                     set-high-priestess-redraw-count-param
+                                     db
+                                     source
+                                     redraw-count)
+      (update-move-selection db assoc
+                             :error
+                             (move-error :invalid-high-priestess-redraw-count
+                                         "Choose a supported High Priestess redraw count."
+                                         {:redraw-count redraw-count
+                                          :options high-priestess-redraw-count-order})))))
+
+(defn toggle-move-high-priestess-discard-card [db pass-index card-id]
+  (let [{:keys [source params]} (move-selection db)
+        pass (high-priestess-redraw-pass params pass-index)
+        card-options (high-priestess-hand-card-options db source params)
+        card-option-ids (set (map :id card-options))]
+    (cond
+      (not (high-priestess-move? db source params))
+      (update-move-selection db assoc
+                             :error
+                             (move-error :invalid-high-priestess-discard-card
+                                         "High Priestess discard choices are only available for High Priestess moves."
+                                         {:card-id card-id
+                                          :source source}))
+
+      (or (nil? pass)
+          (not (<= 1 pass-index (or (selected-high-priestess-redraw-count params) 0))))
+      (update-move-selection db assoc
+                             :error
+                             (move-error :invalid-high-priestess-pass
+                                         "Choose an available High Priestess redraw pass."
+                                         {:pass-index pass-index}))
+
+      (not (contains? card-option-ids card-id))
+      (update-move-selection db assoc
+                             :error
+                             (move-error :invalid-high-priestess-discard-card
+                                         "Choose a card from the current player's redraw hand."
+                                         {:card-id card-id}))
+
+      :else
+      (let [selected-card-ids (set (:discard-card-ids pass))
+            next-selected-card-ids (if (contains? selected-card-ids card-id)
+                                     (disj selected-card-ids card-id)
+                                     (conj selected-card-ids card-id))
+            next-discard-card-ids (->> card-options
+                                       (map :id)
+                                       (filter next-selected-card-ids)
+                                       vec)]
+        (update-move-selection-success
+         db
+         update
+         :params
+         (fn [params]
+           (normalize-high-priestess-redraws
+            db
+            source
+            (update-high-priestess-redraw-pass
+             params
+             pass-index
+             assoc
+             :discard-card-ids
+             next-discard-card-ids))))))))
+
+(defn set-move-high-priestess-draw-count [db pass-index draw-count]
+  (let [{:keys [source params]} (move-selection db)
+        pass (high-priestess-redraw-pass params pass-index)
+        options (high-priestess-draw-count-options db
+                                                   source
+                                                   params
+                                                   (:discard-card-ids pass))]
+    (if (and (high-priestess-move? db source params)
+             (int? pass-index)
+             (<= 1 pass-index (or (selected-high-priestess-redraw-count params) 0))
+             (some #{draw-count} options))
+      (update-move-selection-success
+       db
+       update
+       :params
+       update-high-priestess-redraw-pass
+       pass-index
+       assoc
+       :draw-count
+       draw-count)
+      (update-move-selection db assoc
+                             :error
+                             (move-error :invalid-high-priestess-draw-count
+                                         "Choose a draw count for this High Priestess redraw pass."
+                                         {:pass-index pass-index
+                                          :draw-count draw-count
+                                          :options options})))))
+
+(defn toggle-move-judgement-card [db card-id]
+  (let [{:keys [source params]} (move-selection db)
+        options (judgement-discard-card-options db source params)
+        option-ids (set (map :id options))
+        selected-card-ids (set (:judgement-card-ids params))
+        selected? (contains? selected-card-ids card-id)
+        maximum (judgement-card-maximum db source params)]
+    (cond
+      (not (judgement-move? db source params))
+      (update-move-selection db assoc
+                             :error
+                             (move-error :invalid-judgement-card
+                                         "Judgement card choices are only available for Judgement moves."
+                                         {:card-id card-id
+                                          :source source}))
+
+      (not (contains? option-ids card-id))
+      (update-move-selection db assoc
+                             :error
+                             (move-error :invalid-judgement-card
+                                         "Choose a card from the discard pile."
+                                         {:card-id card-id}))
+
+      (and (not selected?)
+           (<= maximum (count selected-card-ids)))
+      (update-move-selection db assoc
+                             :error
+                             (move-error :judgement-card-limit
+                                         "Judgement cannot draw more cards than the minion's pips or hand limit allow."
+                                         {:card-id card-id
+                                          :maximum maximum}))
+
+      :else
+      (let [next-selected-card-ids (if selected?
+                                     (disj selected-card-ids card-id)
+                                     (conj selected-card-ids card-id))]
+        (update-move-selection-success
+         db
+         assoc-in
+         [:params :judgement-card-ids]
+         (->> options
+              (map :id)
+              (filter next-selected-card-ids)
+              vec))))))
 
 (defn set-move-minion-orientation [db orientation]
   (let [{:keys [source params]} (move-selection db)]
@@ -2827,6 +3245,16 @@
       sword-variant
       (assoc :sword-variant sword-variant))))
 
+(defn- fool-command [_db _source params]
+  {:reveals (vec (repeat (or (:fool-reveal-count params) 0) {}))})
+
+(defn- high-priestess-command [_db _source params]
+  {:redraws (vec (:redraws params))})
+
+(defn- judgement-command [db source params]
+  {:piece-id (:piece-id params)
+   :card-ids (valid-judgement-card-ids db source params (:judgement-card-ids params))})
+
 (defn- unavailable-power-command [db source params]
   (let [card (source-card db source params)]
     (cond-> {:power (selected-power db source params)}
@@ -2840,6 +3268,9 @@
     :cup (cup-command db source params)
     :sun (sun-command db source params)
     :sword (sword-command db source params)
+    :fool (fool-command db source params)
+    :high-priestess (high-priestess-command db source params)
+    :judgement (judgement-command db source params)
     :hierophant (piece-orientation-command params)
     :hermit (hermit-command db source params)
     :devil (piece-orientation-command params)
@@ -2881,15 +3312,17 @@
          :player-id (current-player-id db)
          :params params}))))
 
-(defn- command-with-transition-options [command transition-options]
+(defn- command-with-transition-options [command transition-options power]
   (cond-> command
-    (and (= :draw-cards (:source command))
+    (and (or (= :draw-cards (:source command))
+             (contains? #{:fool :high-priestess} power))
          (:shuffle-fn transition-options)
          (not (contains? command :shuffle-fn)))
     (assoc :shuffle-fn (:shuffle-fn transition-options))))
 
 (defn- confirmed-move-result [db command transition-options]
-  (let [command (command-with-transition-options command transition-options)]
+  (let [power (move-power db)
+        command (command-with-transition-options command transition-options power)]
     (cond
       (= :draw-cards (:source command))
       (game-state/apply-draw-move (game db) command)
@@ -2914,6 +3347,15 @@
 
       (= :sun (move-power db))
       (game-state/apply-sun-move (game db) command)
+
+      (= :fool (move-power db))
+      (game-state/apply-fool-move (game db) command)
+
+      (= :high-priestess (move-power db))
+      (game-state/apply-high-priestess-move (game db) command)
+
+      (= :judgement (move-power db))
+      (game-state/apply-judgement-move (game db) command)
 
       (= :hierophant (move-power db))
       (game-state/apply-hierophant-move (game db) command)
