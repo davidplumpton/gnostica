@@ -39,10 +39,24 @@
     :requirements [:target-space :orientation]}})
 
 (def move-power-order
-  [:cup :rod :disc :sun :sword :fool :high-priestess :judgement :hierophant :hermit :devil])
+  [:empress :emperor :lovers :chariot :hanged-man :temperance
+   :cup :rod :disc :sun :sword
+   :fool :high-priestess :judgement :hierophant :hermit :devil])
 
 (def move-power-definitions
-  {:cup {:id :cup
+  {:empress {:id :empress
+             :label "Empress"}
+   :emperor {:id :emperor
+             :label "Emperor"}
+   :lovers {:id :lovers
+            :label "Lovers"}
+   :chariot {:id :chariot
+             :label "Chariot"}
+   :hanged-man {:id :hanged-man
+                :label "Hanged Man"}
+   :temperance {:id :temperance
+                :label "Temperance"}
+   :cup {:id :cup
          :label "Cup"}
    :rod {:id :rod
          :label "Rod"}
@@ -64,6 +78,17 @@
             :label "Hermit"}
    :devil {:id :devil
            :label "Devil"}})
+
+(def composite-major-card-powers
+  {"empress" :empress
+   "emperor" :emperor
+   "lovers" :lovers
+   "chariot" :chariot
+   "hangedman" :hanged-man
+   "temperance" :temperance})
+
+(def composite-major-powers
+  (set (vals composite-major-card-powers)))
 
 (def rod-mode-order
   [:move-minion
@@ -312,6 +337,8 @@
 (defn- move-power-ids-for-card [card]
   (when card
     (cond-> []
+      (contains? composite-major-card-powers (:id card))
+      (conj (get composite-major-card-powers (:id card)))
       (cards/cup-card? card) (conj :cup)
       (cards/rod-card? card) (conj :rod)
       (cards/disc-card? card) (conj :disc)
@@ -342,8 +369,45 @@
         :else
         nil))))
 
+(defn- completed-major-actions [params]
+  (vec (:major-actions params)))
+
+(defn- completed-major-action-count [params]
+  (count (completed-major-actions params)))
+
+(defn- composite-major-move? [db source-id params]
+  (contains? composite-major-powers (selected-power db source-id params)))
+
+(defn- active-composite-action-power [db source-id params]
+  (case (selected-power db source-id params)
+    :empress (if (zero? (completed-major-action-count params))
+               :orient-minion
+               :cup)
+    :emperor (if (zero? (completed-major-action-count params))
+               :orient-minion
+               :rod)
+    :lovers (if (zero? (completed-major-action-count params))
+              :rod
+              :cup)
+    :chariot :rod
+    :hanged-man (if (zero? (completed-major-action-count params))
+                  :rod
+                  :trade-hand)
+    :temperance :cup
+    nil))
+
+(defn- composite-action-power? [db source-id params power]
+  (= power (active-composite-action-power db source-id params)))
+
+(defn- hanged-man-trade-stage? [db source-id params]
+  (composite-action-power? db source-id params :trade-hand))
+
+(defn- major-orient-step? [db source-id params]
+  (composite-action-power? db source-id params :orient-minion))
+
 (defn- cup-move? [db source-id params]
-  (= :cup (selected-power db source-id params)))
+  (or (= :cup (selected-power db source-id params))
+      (composite-action-power? db source-id params :cup)))
 
 (defn- sun-move? [db source-id params]
   (= :sun (selected-power db source-id params)))
@@ -359,7 +423,8 @@
       [:hand])))
 
 (defn- rod-move? [db source-id params]
-  (= :rod (selected-power db source-id params)))
+  (or (= :rod (selected-power db source-id params))
+      (composite-action-power? db source-id params :rod)))
 
 (defn- selected-rod-variant [db source-id params]
   (when (rod-move? db source-id params)
@@ -1316,6 +1381,9 @@
       (filterv #(major-target-piece? db params %)
                (board-pieces db))
 
+      (hanged-man-trade-stage? db source params)
+      (board-pieces db)
+
       :else
       [])))
 
@@ -1453,6 +1521,9 @@
                                (hierophant-target-piece? db params %)
                                (major-target-piece? db params %))
                             (board-pieces db))))
+
+      (hanged-man-trade-stage? db source-id params)
+      (some? (piece-by-id db (:target-piece-id params)))
 
       :else
       false)
@@ -1654,6 +1725,17 @@
 (defn- devil-requirements [_db _source-id _params]
   [:target-piece-id :orientation])
 
+(defn- cup-requirements [_db _source-id _params]
+  [:target-space :target-resolution])
+
+(defn- composite-major-requirements [db source-id params]
+  (case (active-composite-action-power db source-id params)
+    :orient-minion [:minion-orientation]
+    :cup (cup-requirements db source-id params)
+    :rod (rod-requirements db params)
+    :trade-hand [:target-piece-id]
+    []))
+
 (defn- gameplay-source-requirements [db source-id params]
   (let [base (case source-id
                :activate-territory [:source-board-index :piece-id]
@@ -1670,6 +1752,8 @@
                :disc (disc-requirements db source-id params)
                :sun (sun-requirements db source-id params)
                :sword (sword-requirements db source-id params)
+               (:empress :emperor :lovers :chariot :hanged-man :temperance)
+               (composite-major-requirements db source-id params)
                :fool (fool-requirements db source-id params)
                :high-priestess (high-priestess-requirements db source-id params)
                :judgement (judgement-requirements db source-id params)
@@ -1739,6 +1823,89 @@
     :draw-count :draw-count
     :confirm))
 
+(declare cup-target-command rod-command)
+
+(def ^:private current-major-action-param-keys
+  [:target-board-index
+   :target-wasteland
+   :target-piece-id
+   :territory-card-source
+   :one-point-card-id
+   :replacement-card-source
+   :replacement-card-id
+   :orientation
+   :distance
+   :damage
+   :rod-mode
+   :minion-orientation])
+
+(defn- clear-current-major-action-params [params]
+  (apply dissoc params current-major-action-param-keys))
+
+(defn- composite-final-action? [_power params]
+  (pos? (completed-major-action-count params)))
+
+(defn- composite-current-action-complete? [db source-id params]
+  (case (active-composite-action-power db source-id params)
+    :orient-minion
+    (requirement-complete? db source-id params :minion-orientation)
+
+    :cup
+    (and (requirement-complete? db source-id params :target-space)
+         (requirement-complete? db source-id params :target-resolution))
+
+    :rod
+    (every? #(requirement-complete? db source-id params %)
+            (rod-requirements db params))
+
+    :trade-hand
+    (requirement-complete? db source-id params :target-piece-id)
+
+    false))
+
+(defn- composite-current-action [db source-id params]
+  (case (active-composite-action-power db source-id params)
+    :orient-minion
+    {:power :orient-minion
+     :piece-id (:piece-id params)
+     :orientation (:minion-orientation params)}
+
+    :cup
+    (assoc (cup-target-command params)
+           :power :cup
+           :piece-id (:piece-id params))
+
+    :rod
+    (assoc (dissoc (rod-command db source-id params) :rod-variant)
+           :power :rod
+           :piece-id (:piece-id params))
+
+    :trade-hand
+    {:power :trade-hand
+     :piece-id (:piece-id params)
+     :target {:kind :piece
+              :piece-id (:target-piece-id params)}}
+
+    nil))
+
+(defn- advance-composite-steps [db]
+  (loop [db db]
+    (let [{:keys [source params]} (move-selection db)
+          power (selected-power db source params)]
+      (if (and (composite-major-move? db source params)
+               (not (composite-final-action? power params))
+               (composite-current-action-complete? db source params))
+        (let [action (composite-current-action db source params)]
+          (recur (update-in db
+                            [:move-selection :params]
+                            (fn [params]
+                              (-> params
+                                  clear-current-major-action-params
+                                  (update :major-actions
+                                          (fnil conj [])
+                                          action))))))
+        db))))
+
 (defn- refresh-move-selection [db]
   (let [{:keys [source params] :as selection} (move-selection db)]
     (assoc db :move-selection
@@ -1759,12 +1926,13 @@
 
 (defn- update-move-selection-success [db f & args]
   (refresh-move-selection
-   (update db :move-selection
-           (fnil (fn [selection]
-                   (assoc (apply f selection args)
-                          :error nil
-                          :last-result nil))
-                 (empty-move-selection)))))
+   (advance-composite-steps
+    (update db :move-selection
+            (fnil (fn [selection]
+                    (assoc (apply f selection args)
+                           :error nil
+                           :last-result nil))
+                  (empty-move-selection))))))
 
 (defn move-ready? [db]
   (= :confirm (:stage (move-selection db))))
@@ -1894,7 +2062,8 @@
             :fool-reveal-count
             :high-priestess-redraw-count
             :redraws
-            :judgement-card-ids))))
+            :judgement-card-ids
+            :major-actions))))
 
 (defn- clear-piece-when-source-changes [params board-index]
   (let [next-params (assoc params :source-board-index board-index)]
@@ -1912,7 +2081,8 @@
                   :fool-reveal-count
                   :high-priestess-redraw-count
                   :redraws
-                  :judgement-card-ids)))))
+                  :judgement-card-ids
+                  :major-actions)))))
 
 (defn- set-territory-target [params board-index]
   (-> params
@@ -1979,7 +2149,8 @@
                   :fool-reveal-count
                   :high-priestess-redraw-count
                   :redraws
-                  :judgement-card-ids)))))
+                  :judgement-card-ids
+                  :major-actions)))))
 
 (defn- set-rod-mode-param [params mode]
   (let [next-params (assoc params :rod-mode mode)]
@@ -2612,11 +2783,12 @@
 (defn set-move-minion-orientation [db orientation]
   (let [{:keys [source params]} (move-selection db)]
     (cond
-      (not (star-disc-source? db source params))
+      (not (or (star-disc-source? db source params)
+               (major-orient-step? db source params)))
       (update-move-selection db assoc
                              :error
                              (move-error :invalid-minion-orientation
-                                         "Minion orientation is only available for Star Disc moves."
+                                         "Minion orientation is only available for Star Disc or ordered major moves."
                                          {:orientation orientation
                                           :source source}))
 
@@ -2750,6 +2922,17 @@
                              :error
                              (move-error :invalid-target-piece
                                          "Choose a Devil-targetable piece."
+                                         {:piece-id piece-id}))
+
+      (and (hanged-man-trade-stage? db source params)
+           selectable-piece?)
+      (update-move-selection-success db update :params set-target-piece (:id piece))
+
+      (hanged-man-trade-stage? db source params)
+      (update-move-selection db assoc
+                             :error
+                             (move-error :invalid-target-piece
+                                         "Choose a Hanged Man hand-trade target piece."
                                          {:piece-id piece-id}))
 
       (and (disc-move? db source params)
@@ -3261,6 +3444,11 @@
       card
       (assoc :card-id (:id card)))))
 
+(defn- composite-major-command [db source params]
+  {:actions (vec (remove nil?
+                         (conj (completed-major-actions params)
+                               (composite-current-action db source params))))})
+
 (defn- gameplay-power-command [db source params]
   (case (selected-power db source params)
     :rod (rod-command db source params)
@@ -3274,6 +3462,8 @@
     :hierophant (piece-orientation-command params)
     :hermit (hermit-command db source params)
     :devil (piece-orientation-command params)
+    (:empress :emperor :lovers :chariot :hanged-man :temperance)
+    (composite-major-command db source params)
     (unavailable-power-command db source params)))
 
 (defn move-command [db]
@@ -3365,6 +3555,24 @@
 
       (= :devil (move-power db))
       (game-state/apply-devil-move (game db) command)
+
+      (= :empress (move-power db))
+      (game-state/apply-empress-move (game db) command)
+
+      (= :emperor (move-power db))
+      (game-state/apply-emperor-move (game db) command)
+
+      (= :lovers (move-power db))
+      (game-state/apply-lovers-move (game db) command)
+
+      (= :chariot (move-power db))
+      (game-state/apply-chariot-move (game db) command)
+
+      (= :hanged-man (move-power db))
+      (game-state/apply-hanged-man-move (game db) command)
+
+      (= :temperance (move-power db))
+      (game-state/apply-temperance-move (game db) command)
 
       :else
       (game-state/failure :move-transition-unavailable

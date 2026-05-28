@@ -952,6 +952,7 @@
         oriented-db (-> db
                         (app-state/select-move-source :activate-territory)
                         (app-state/select-move-piece :rose-rod-minion)
+                        (app-state/select-move-power :rod)
                         (app-state/select-move-rod-mode :move-minion)
                         (app-state/set-move-distance 1)
                         (app-state/set-move-orientation :south))
@@ -1266,6 +1267,7 @@
         oriented-db (-> db
                         (app-state/select-move-source :activate-territory)
                         (app-state/select-move-piece :rose-scout)
+                        (app-state/select-move-power :cup)
                         (app-state/select-board-card 4)
                         (app-state/set-move-orientation :up))
         confirmed-db (app-state/confirm-move oriented-db)
@@ -1288,6 +1290,121 @@
             :indigo-target-large
             :rose-small-1]
            target-piece-ids))
+    (is (game-schema/valid-game? (app-state/game confirmed-db)))))
+
+(deftest empress-territory-source-confirms-ordered-major-actions
+  (let [deck-order (deck-with-card-at (board-card-position test-player-specs 0)
+                                      "empress")
+        db (app-state/initialize
+            {:player-specs test-player-specs
+             :game-options {:deck-order deck-order}
+             :demo-board-pieces [rose-source-piece
+                                 indigo-rod-target
+                                 {:id :rose-target-small
+                                  :player-id :rose
+                                  :space-index 4
+                                  :size :small
+                                  :orientation :north}
+                                 {:id :indigo-target-large
+                                  :player-id :indigo
+                                  :space-index 4
+                                  :size :large
+                                  :orientation :west}]})
+        orient-db (-> db
+                      (app-state/select-move-source :activate-territory)
+                      (app-state/select-move-piece :rose-scout)
+                      (app-state/select-move-power :empress)
+                      (app-state/set-move-minion-orientation :east))
+        target-db (app-state/select-board-card orient-db 4)
+        ready-db (app-state/set-move-orientation target-db :up)
+        confirmed-db (app-state/confirm-move ready-db)
+        source-piece (piece-by-id confirmed-db :rose-scout)
+        target-piece-ids (->> (app-state/board-pieces confirmed-db)
+                              (filter #(= 4 (:space-index %)))
+                              (mapv :id))]
+    (is (= :target (:stage (app-state/move-selection orient-db))))
+    (is (= [{:power :orient-minion
+             :piece-id :rose-scout
+             :orientation :east}]
+           (get-in orient-db [:move-selection :params :major-actions])))
+    (is (= {:player-id :rose
+            :source {:kind :territory
+                     :board-index 0
+                     :piece-id :rose-scout}
+            :actions [{:power :orient-minion
+                       :piece-id :rose-scout
+                       :orientation :east}
+                      {:power :cup
+                       :piece-id :rose-scout
+                       :target {:kind :territory
+                                :board-index 4}
+                       :orientation :up}]}
+           (app-state/move-command ready-db)))
+    (is (:ok? (get-in confirmed-db [:move-selection :last-result])))
+    (is (= :east (:orientation source-piece)))
+    (is (= [:indigo-rod-target
+            :rose-target-small
+            :indigo-target-large
+            :rose-small-1]
+           target-piece-ids))
+    (is (game-schema/valid-game? (app-state/game confirmed-db)))))
+
+(deftest lovers-hand-card-confirms-promoted-ordered-major-actions
+  (let [db (app-state/initialize
+            {:player-specs test-player-specs
+             :game-options {:deck-order (deck-starting-with ["lovers"])}
+             :demo-board-pieces [(assoc rose-rod-minion :orientation :east)]})
+        rod-db (-> db
+                   (app-state/select-move-source :play-hand-card)
+                   (app-state/select-move-hand-card "lovers")
+                   (app-state/select-move-piece :rose-rod-minion)
+                   (app-state/select-move-power :lovers)
+                   (app-state/select-move-rod-mode :move-minion)
+                   (app-state/set-move-distance 1)
+                   (app-state/set-move-orientation :east))
+        target-db (app-state/select-board-card rod-db 5)
+        ready-db (app-state/set-move-orientation target-db :up)
+        confirmed-db (app-state/confirm-move ready-db)
+        zones (app-state/card-zones confirmed-db)
+        moved-piece (piece-by-id confirmed-db :rose-rod-minion)
+        created-piece (piece-by-id confirmed-db :rose-small-1)]
+    (is (= :target (:stage (app-state/move-selection rod-db))))
+    (is (= [{:power :rod
+             :mode :move-minion
+             :distance 1
+             :orientation :east
+             :piece-id :rose-rod-minion}]
+           (get-in rod-db [:move-selection :params :major-actions])))
+    (is (= {:player-id :rose
+            :source {:kind :hand-card
+                     :card-id "lovers"
+                     :piece-id :rose-rod-minion}
+            :actions [{:power :rod
+                       :mode :move-minion
+                       :distance 1
+                       :orientation :east
+                       :piece-id :rose-rod-minion}
+                      {:power :cup
+                       :piece-id :rose-rod-minion
+                       :target {:kind :territory
+                                :board-index 5}
+                       :orientation :up}]}
+           (app-state/move-command ready-db)))
+    (is (:ok? (get-in confirmed-db [:move-selection :last-result])))
+    (is (= {:id :rose-rod-minion
+            :player-id :rose
+            :space-index 4
+            :size :medium
+            :orientation :east}
+           moved-piece))
+    (is (= {:id :rose-small-1
+            :player-id :rose
+            :space-index 5
+            :size :small
+            :orientation :up}
+           created-piece))
+    (is (= ["lovers"] (mapv :id (:discard-pile zones))))
+    (is (not (some #{"lovers"} (map :id (:hand zones)))))
     (is (game-schema/valid-game? (app-state/game confirmed-db)))))
 
 (deftest wheel-cup-hand-card-can-use_top_draw_pile_for_wasteland_territory

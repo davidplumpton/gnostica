@@ -686,6 +686,52 @@
                     (:hermit-destination-wasteland params)))
        [orientation-choices orientation-options (:orientation params)])]))
 
+(defn- composite-active-action-power [power params]
+  (case power
+    :empress (if (zero? (count (:major-actions params))) :orient-minion :cup)
+    :emperor (if (zero? (count (:major-actions params))) :orient-minion :rod)
+    :lovers (if (zero? (count (:major-actions params))) :rod :cup)
+    :chariot :rod
+    :hanged-man (if (zero? (count (:major-actions params))) :rod :trade-hand)
+    :temperance :cup
+    nil))
+
+(defn- composite-major-controls
+  [power params board rod-mode-options target-piece-options target-board-options
+   target-wasteland-options distance-options territory-card-source-options
+   one-point-card-options orientation-options orientation-required?]
+  (case (composite-active-action-power power params)
+    :orient-minion
+    [orientation-choices "Minion orientation"
+     events/set-move-minion-orientation
+     orientation-options
+     (:minion-orientation params)]
+
+    :rod
+    [rod-move-controls params
+     board
+     rod-mode-options
+     target-piece-options
+     target-board-options
+     distance-options
+     orientation-options
+     orientation-required?]
+
+    :cup
+    [cup-move-controls params
+     board
+     target-piece-options
+     target-board-options
+     target-wasteland-options
+     territory-card-source-options
+     one-point-card-options
+     orientation-options]
+
+    :trade-hand
+    [target-piece-choices board target-piece-options (:target-piece-id params)]
+
+    nil))
+
 (defn- move-active-controls [selection controls]
   (let [{:keys [source params]} selection
         {:keys [board power power-options rod-mode-options piece-options
@@ -791,6 +837,20 @@
                     board
                     target-piece-options
                     orientation-options]
+            (:empress :emperor :lovers :chariot :hanged-man :temperance)
+            [composite-major-controls
+             power
+             params
+             board
+             rod-mode-options
+             target-piece-options
+             target-board-options
+             target-wasteland-options
+             distance-options
+             territory-card-source-options
+             one-point-card-options
+             orientation-options
+             orientation-required?]
             nil)])]
 
       :play-hand-card
@@ -881,6 +941,20 @@
                     board
                     target-piece-options
                     orientation-options]
+            (:empress :emperor :lovers :chariot :hanged-man :temperance)
+            [composite-major-controls
+             power
+             params
+             board
+             rod-mode-options
+             target-piece-options
+             target-board-options
+             target-wasteland-options
+             distance-options
+             territory-card-source-options
+             one-point-card-options
+             orientation-options
+             orientation-required?]
             nil)])]
 
       :draw-cards
