@@ -74,7 +74,9 @@
     (is (= (set (range board/board-card-count))
            (set (keys cells-by-index))))
     (doseq [cell cells]
-      (is (= cell (get cells-by-index (:index cell)))))))
+      (is (= cell (get cells-by-index (:index cell))))
+      (is (= cell (layout/cell-by-index cells (:index cell)))))
+    (is (nil? (layout/cell-by-index cells 99)))))
 
 (deftest piece-slots-are-stable-and-limited
   (let [space-pieces (mapv #(assoc (first fixtures/demo-board-pieces) :id %)

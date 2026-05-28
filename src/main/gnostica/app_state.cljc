@@ -487,8 +487,11 @@
 (defn selected-board-index [db]
   (:selected-board-index db))
 
+(defn board-cell-by-index [db index]
+  (layout/cell-by-index (board db) index))
+
 (defn selected-board-cell [db]
-  (get (board db) (selected-board-index db)))
+  (board-cell-by-index db (selected-board-index db)))
 
 (defn selected-board-pieces [db]
   (pieces/pieces-for-space (board-pieces db) (selected-board-index db)))
@@ -699,7 +702,7 @@
 (def select-board-for-active-move move-selection/select-board-for-active-move)
 
 (defn select-board-card [db index]
-  (if (contains? (board db) index)
+  (if (board-cell-by-index db index)
     (select-board-for-active-move
      (-> db
          (assoc :selected-board-index index)

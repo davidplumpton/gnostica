@@ -117,6 +117,9 @@
 (defn cells-by-index [cells]
   (into {} (map (juxt :index identity) cells)))
 
+(defn cell-by-index [cells index]
+  (get (cells-by-index cells) index))
+
 (defn piece-slot-offset [slot piece-count]
   (get (case piece-count
          1 [[0 -0.03]]

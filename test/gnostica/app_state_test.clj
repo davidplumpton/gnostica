@@ -96,6 +96,14 @@
   (some #(when (= board-index (:index %)) %)
         (app-state/board db)))
 
+(defn- remove-board-cell [db board-index]
+  (let [cell (board-cell-by-index db board-index)]
+    (cond-> (update-in db [:game :board]
+                       (fn [cells]
+                         (vec (remove #(= board-index (:index %)) cells))))
+      cell
+      (update-in [:game :discard-pile] conj (:card cell)))))
+
 (defn- replace-game-player-hand [db player-id hand]
   (let [players (mapv (fn [player]
                         (if (= player-id (:id player))
@@ -397,6 +405,29 @@
            (app-state/selected-board-cell selected-db)))
     (is (= (pieces/pieces-for-space fixtures/demo-board-pieces 4)
            (app-state/selected-board-pieces selected-db)))))
+
+(deftest selecting-surviving-territory-after-destruction-uses-board-index
+  (let [source-piece {:id :rose-gap-source
+                      :player-id :rose
+                      :space-index 5
+                      :size :small
+                      :orientation :up}
+        deck-order (deck-with-cards-at {(board-card-position test-player-specs 5) "cups2"
+                                        (board-card-position test-player-specs 6) "swords2"})
+        db (app-state/initialize {:player-specs test-player-specs
+                                  :game-options {:deck-order deck-order}
+                                  :demo-board-pieces [source-piece]})
+        gapped-db (remove-board-cell db 4)
+        selected-db (app-state/select-board-card gapped-db 5)
+        source-db (app-state/select-move-source selected-db :activate-territory)
+        piece-db (app-state/select-move-piece source-db :rose-gap-source)]
+    (is (= 5 (app-state/selected-board-index selected-db)))
+    (is (= 5 (get-in (app-state/selected-board-cell selected-db) [:index])))
+    (is (= [source-piece] (app-state/selected-board-pieces selected-db)))
+    (is (= [5] (mapv :index (app-state/move-source-board-options gapped-db))))
+    (is (= {:source-board-index 5}
+           (app-state/move-params source-db)))
+    (is (= [:cup] (mapv :id (app-state/move-power-options piece-db))))))
 
 (deftest board-view-model-aggregates-fallback-layout-data
   (let [db (app-state/initialize {:player-specs test-player-specs
@@ -720,6 +751,38 @@
             :target-board-index 3
             :orientation :north}
            (app-state/move-params oriented-db)))))
+
+(deftest selecting-new-territory-created-after-a-board-gap-uses-board-index
+  (let [deck-order (deck-with-cards-at {0 "coins2"
+                                        (board-card-position test-player-specs 3) "cups2"})
+        db (app-state/initialize {:player-specs test-player-specs
+                                  :game-options {:deck-order deck-order}
+                                  :demo-board-pieces [rose-rod-minion]})
+        gapped-db (remove-board-cell db 4)
+        create-result (game-state/apply-cup-move
+                       (app-state/game gapped-db)
+                       {:player-id :rose
+                        :source {:kind :territory
+                                 :board-index 3
+                                 :piece-id :rose-rod-minion}
+                        :target {:kind :wasteland
+                                 :row 1
+                                 :col 1}
+                        :one-point-card-id "coins2"})
+        created-db (assoc gapped-db :game (:state create-result))
+        selected-db (app-state/select-board-card created-db 9)
+        source-db (-> created-db
+                      (app-state/select-board-card 3)
+                      (app-state/select-move-source :activate-territory)
+                      (app-state/select-move-piece :rose-rod-minion))
+        target-db (app-state/select-board-card source-db 9)]
+    (is (:ok? create-result))
+    (is (= 9 (get-in (app-state/selected-board-cell selected-db) [:index])))
+    (is (= :orientation (:stage (app-state/move-selection target-db))))
+    (is (= {:source-board-index 3
+            :piece-id :rose-rod-minion
+            :target-board-index 9}
+           (app-state/move-params target-db)))))
 
 (deftest rod-territory-source-can-move-the-acting-minion
   (let [deck-order (deck-with-card-at (board-card-position test-player-specs 0)
@@ -1228,6 +1291,36 @@
     (is (= ["coins2" "cups2"] (mapv :id (:discard-pile zones))))
     (is (not (some #{"coins2" "cupsking"} (map :id (:hand zones)))))
     (is (game-schema/valid-game? (app-state/game confirmed-db)))))
+
+(deftest disc-targets-surviving-territory-after-destruction-gap-by-board-index
+  (let [targeting-piece {:id :rose-gap-disc-minion
+                         :player-id :rose
+                         :space-index 2
+                         :size :medium
+                         :orientation :south}
+        deck-order (deck-with-cards-at {0 "coins2"
+                                        1 "cupsking"
+                                        (board-card-position test-player-specs 5) "cups2"
+                                        (board-card-position test-player-specs 6) "swords2"})
+        db (app-state/initialize {:player-specs test-player-specs
+                                  :game-options {:deck-order deck-order}
+                                  :demo-board-pieces [targeting-piece]})
+        gapped-db (remove-board-cell db 4)
+        kind-db (-> gapped-db
+                    (app-state/select-move-source :play-hand-card)
+                    (app-state/select-move-hand-card "coins2")
+                    (app-state/select-move-piece :rose-gap-disc-minion)
+                    (app-state/select-move-disc-target-kind :territory))
+        target-db (app-state/select-board-card kind-db 5)]
+    (is (= [5] (mapv :index (app-state/move-target-board-options kind-db))))
+    (is (= :replacement-card (:stage (app-state/move-selection target-db))))
+    (is (= {:hand-card-id "coins2"
+            :piece-id :rose-gap-disc-minion
+            :disc-target-kind :territory
+            :target-board-index 5}
+           (app-state/move-params target-db)))
+    (is (= ["cupsking"]
+           (mapv :id (app-state/move-replacement-card-options target-db))))))
 
 (deftest star-disc-can_orient_minion_before_discard_pile_replacement
   (let [deck-order (deck-with-cards-at {0 "star"

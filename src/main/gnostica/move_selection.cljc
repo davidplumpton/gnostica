@@ -183,6 +183,9 @@
 (defn board [db]
   (get-in db [:game :board] []))
 
+(defn- board-cell-by-index [db index]
+  (layout/cell-by-index (board db) index))
+
 (defn board-pieces [db]
   (get-in db [:game :pieces :on-board] []))
 
@@ -210,7 +213,7 @@
 (defn- piece-coordinate [db piece]
   (if-let [{:keys [row col]} (:space piece)]
     [row col]
-    (when-let [{:keys [row col]} (get (board db) (:space-index piece))]
+    (when-let [{:keys [row col]} (board-cell-by-index db (:space-index piece))]
       [row col])))
 
 (defn- pieces-at-coordinate [db row col]
@@ -271,7 +274,7 @@
     (:hand-card-id params)))
 
 (defn- source-board-card [db params]
-  (:card (get (board db) (:source-board-index params))))
+  (:card (board-cell-by-index db (:source-board-index params))))
 
 (defn- source-card [db source-id params]
   (case source-id
@@ -419,10 +422,10 @@
         (one-point-card-options-for db source-id params)))
 
 (defn valid-board-index? [db index]
-  (contains? (board db) index))
+  (some? (board-cell-by-index db index)))
 
 (defn- target-board-cell [db params]
-  (get (board db) (:target-board-index params)))
+  (board-cell-by-index db (:target-board-index params)))
 
 (defn- discard-card-by-id [db card-id]
   (some #(when (= card-id (:id %)) %)
@@ -677,7 +680,7 @@
       piece)))
 
 (defn- empty-board-target? [db index]
-  (when-let [{:keys [row col]} (get (board db) index)]
+  (when-let [{:keys [row col]} (board-cell-by-index db index)]
     (empty? (pieces-at-coordinate db row col))))
 
 (defn- empty-wasteland-target? [db {:keys [row col]}]
@@ -909,7 +912,7 @@
        (current-player-piece? db (sun-disc-target-piece db source-id params))))
 
 (defn- sun-disc-target-cell [db params]
-  (get (board db) (:sun-disc-target-board-index params)))
+  (board-cell-by-index db (:sun-disc-target-board-index params)))
 
 (defn- sun-disc-replacement-source-cards [db source-id params]
   (let [source-card-id (source-hand-card-id source-id params)
@@ -1868,7 +1871,7 @@
               :sun-disc-orientation))))
 
 (defn- select-hermit-board-target [db params index]
-  (let [cell (get (board db) index)]
+  (let [cell (board-cell-by-index db index)]
     (cond
       (hermit-piece-target-selected? params)
       (if (empty-board-target? db index)
@@ -1903,7 +1906,8 @@
 (defn select-board-for-active-move [db index]
   (if-not (valid-board-index? db index)
     db
-    (let [{:keys [source params]} (move-selection db)]
+    (let [{:keys [source params]} (move-selection db)
+          cell (board-cell-by-index db index)]
       (case source
         :activate-territory
         (let [has-source? (requirement-complete? db source params :source-board-index)
@@ -1913,7 +1917,7 @@
             (and has-source?
                  has-piece?
                  (sun-disc-territory-target-stage? db source params)
-                 (sun-disc-territory-target? db source params (get (board db) index)))
+                 (sun-disc-territory-target? db source params cell))
             (update-move-selection-success db
                                            update
                                            :params
@@ -1938,10 +1942,10 @@
                  has-piece?
                  (or (and (disc-move? db source params)
                           (= :territory (:disc-target-kind params))
-                          (disc-territory-target? db source params (get (board db) index)))
+                          (disc-territory-target? db source params cell))
                      (and (sword-move? db source params)
                           (= :territory (:sword-target-kind params))
-                          (sword-territory-target? db source params (get (board db) index)))))
+                          (sword-territory-target? db source params cell))))
             (update-move-selection-success db update :params set-territory-target index)
 
             (and has-source?
@@ -1989,7 +1993,7 @@
         :play-hand-card
         (cond
           (and (sun-disc-territory-target-stage? db source params)
-               (sun-disc-territory-target? db source params (get (board db) index)))
+               (sun-disc-territory-target? db source params cell))
           (update-move-selection-success db
                                          update
                                          :params
@@ -2015,7 +2019,7 @@
           db
 
           (and (disc-move? db source params)
-               (not (disc-territory-target? db source params (get (board db) index))))
+               (not (disc-territory-target? db source params cell)))
           (update-move-selection db assoc
                                  :error
                                  (move-error :invalid-disc-target
@@ -2023,7 +2027,7 @@
                                              {:board-index index}))
 
           (and (sword-move? db source params)
-               (not (sword-territory-target? db source params (get (board db) index))))
+               (not (sword-territory-target? db source params cell)))
           (update-move-selection db assoc
                                  :error
                                  (move-error :invalid-sword-target
