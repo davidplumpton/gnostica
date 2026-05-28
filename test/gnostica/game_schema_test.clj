@@ -1,6 +1,7 @@
 (ns gnostica.game-schema-test
   (:require [clojure.test :refer [deftest is]]
             [gnostica.board :as board]
+            [gnostica.board-layout :as board-layout]
             [gnostica.cards :as cards]
             [gnostica.game-schema :as game-schema]
             [gnostica.game-state :as game-state]
@@ -125,6 +126,73 @@
              :data {:piece-id :rose-missing-space
                     :space-index 99
                     :board-indexes (vec (range board/board-card-count))}}]
+           (:invariants explanation)))))
+
+(deftest rejects-pieces-with-ambiguous-or-missing-locations
+  (let [state (game-for 2)
+        ambiguous-piece {:id :rose-ambiguous-location
+                         :player-id :rose
+                         :space-index 0
+                         :space {:kind :wasteland
+                                 :row 0
+                                 :col 3}
+                         :size :small
+                         :orientation :up}
+        missing-location-piece {:id :rose-missing-location
+                                :player-id :rose
+                                :size :small
+                                :orientation :up}
+        ambiguous-state (game-state/with-board-pieces state [ambiguous-piece])
+        missing-state (game-state/with-board-pieces state [missing-location-piece])]
+    (is (false? (game-schema/valid-game? ambiguous-state)))
+    (is (= [{:code :ambiguous-piece-location
+             :message "Pieces must use either :space-index or :space, not both."
+             :data {:piece-id :rose-ambiguous-location
+                    :space-index 0
+                    :space {:kind :wasteland
+                            :row 0
+                            :col 3}}}]
+           (:invariants (game-schema/explain-game ambiguous-state))))
+    (is (false? (game-schema/valid-game? missing-state)))
+    (is (= [{:code :missing-piece-location
+             :message "Pieces must include exactly one location field: :space-index or :space."
+             :data {:piece-id :rose-missing-location}}]
+           (:invariants (game-schema/explain-game missing-state))))))
+
+(deftest rejects-wasteland-pieces-outside-current-wasteland-spaces
+  (let [state (game-for 2)
+        invalid-piece {:id :rose-lost-wasteland
+                       :player-id :rose
+                       :space {:kind :wasteland
+                               :row 99
+                               :col 99}
+                       :size :small
+                       :orientation :up}
+        invalid-state (game-state/with-board-pieces state [invalid-piece])
+        expected-wastelands (->> (board-layout/wasteland-spaces (:board state))
+                                 (map #(select-keys % [:kind :row :col]))
+                                 (sort-by (juxt :row :col))
+                                 vec)
+        explanation (game-schema/explain-game invalid-state)]
+    (is (false? (game-schema/valid-game? invalid-state)))
+    (is (= [{:code :piece-wasteland-missing
+             :message "Pieces in wasteland space must reference a current wasteland coordinate."
+             :data {:piece-id :rose-lost-wasteland
+                    :space {:kind :wasteland
+                            :row 99
+                            :col 99}
+                    :wasteland-spaces expected-wastelands}}]
+           (:invariants explanation)))))
+
+(deftest rejects-unofficial-setup-target-scores
+  (let [state (assoc-in (game-for 2) [:setup :target-score] 99)
+        explanation (game-schema/explain-game state)]
+    (is (false? (game-schema/valid-game? state)))
+    (is (= [{:code :invalid-target-score
+             :message "Target score must be one of the official Gnostica target scores."
+             :data {:path [:setup :target-score]
+                    :target-score 99
+                    :allowed-target-scores [8 9 10]}}]
            (:invariants explanation)))))
 
 (deftest rejects-stashes-that-do-not-account-for-active-pieces

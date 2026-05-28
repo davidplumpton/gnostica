@@ -1,6 +1,7 @@
 (ns gnostica.game-schema
   (:require [clojure.string :as str]
             [gnostica.board :as board]
+            [gnostica.board-layout :as board-layout]
             [gnostica.game-state :as game-state]
             [gnostica.pieces :as pieces]
             [malli.core :as m]
@@ -207,6 +208,67 @@
                            :board-indexes (vec (sort board-indexes))}})))
          vec)))
 
+(defn- exactly-one-piece-location? [piece]
+  (not= (contains? piece :space-index)
+        (contains? piece :space)))
+
+(defn- piece-location-errors [state]
+  (->> (get-in state [:pieces :on-board])
+       (keep (fn [{:keys [id] :as piece}]
+               (let [has-space-index? (contains? piece :space-index)
+                     has-space? (contains? piece :space)]
+                 (cond
+                   (and has-space-index? has-space?)
+                   {:code :ambiguous-piece-location
+                    :message "Pieces must use either :space-index or :space, not both."
+                    :data {:piece-id id
+                           :space-index (:space-index piece)
+                           :space (:space piece)}}
+
+                   (not (or has-space-index? has-space?))
+                   {:code :missing-piece-location
+                    :message "Pieces must include exactly one location field: :space-index or :space."
+                    :data {:piece-id id}}))))
+       vec))
+
+(defn- wasteland-space-key [space]
+  (select-keys space [:kind :row :col]))
+
+(defn- wasteland-spaces-by-key [state]
+  (->> (board-layout/wasteland-spaces (:board state))
+       (map wasteland-space-key)
+       set))
+
+(defn- sorted-wasteland-spaces [state]
+  (->> (board-layout/wasteland-spaces (:board state))
+       (map wasteland-space-key)
+       (sort-by (juxt :row :col))
+       vec))
+
+(defn- piece-wasteland-errors [state]
+  (let [valid-spaces (wasteland-spaces-by-key state)
+        sorted-spaces (delay (sorted-wasteland-spaces state))]
+    (->> (get-in state [:pieces :on-board])
+         (keep (fn [{:keys [id space] :as piece}]
+                 (when (and (contains? piece :space)
+                            (= :wasteland (:kind space))
+                            (not (contains? valid-spaces (wasteland-space-key space))))
+                   {:code :piece-wasteland-missing
+                    :message "Pieces in wasteland space must reference a current wasteland coordinate."
+                    :data {:piece-id id
+                           :space (wasteland-space-key space)
+                           :wasteland-spaces @sorted-spaces}})))
+         vec)))
+
+(defn- target-score-errors [state]
+  (let [target-score (get-in state [:setup :target-score])]
+    (when-not (contains? game-state/allowed-target-scores target-score)
+      [{:code :invalid-target-score
+        :message "Target score must be one of the official Gnostica target scores."
+        :data {:path [:setup :target-score]
+               :target-score target-score
+               :allowed-target-scores (vec (sort game-state/allowed-target-scores))}}])))
+
 (defn- turn-errors [state]
   (cond-> []
     (not (turn-order-matches-players? state))
@@ -227,13 +289,25 @@
     (hand-limit-errors state)
     (duplicate-card-errors state)
     (piece-owner-errors state)
+    (piece-location-errors state)
     (piece-space-errors state)
+    (piece-wasteland-errors state)
+    (target-score-errors state)
     (stash-mirror-errors state)
     (stash-piece-count-errors state)
     (turn-errors state))))
 
 (defn- piece-space-indexes-match-board? [state]
   (empty? (piece-space-errors state)))
+
+(defn- pieces-have-exactly-one-location? [state]
+  (empty? (piece-location-errors state)))
+
+(defn- piece-wasteland-spaces-current? [state]
+  (empty? (piece-wasteland-errors state)))
+
+(defn- setup-target-score-allowed? [state]
+  (empty? (target-score-errors state)))
 
 (defn- piece-stashes-consistent? [state]
   (and (player-stashes-match-piece-stashes? state)
@@ -256,6 +330,9 @@
 
 (def PositiveInt
   [:fn {:error/message "must be a positive integer"} positive-int?])
+
+(def TargetScore
+  (enum-schema (sort game-state/allowed-target-scores)))
 
 (def CardReference
   [:map
@@ -336,7 +413,9 @@
    [:orientation (enum-schema pieces/legal-orientations)]])
 
 (def Piece
-  [:or BoardPiece WastelandPiece])
+  [:and
+   [:or BoardPiece WastelandPiece]
+   [:fn {:error/message "piece must include exactly one location field"} exactly-one-piece-location?]])
 
 (def Turn
   [:map
@@ -359,14 +438,14 @@
    [:bid-redraw-order {:optional true} [:vector PlayerId]]
    [:bid-redraws {:optional true} [:vector :any]]
    [:starting-player-id [:maybe PlayerId]]
-   [:target-score PositiveInt]])
+   [:target-score TargetScore]])
 
 (def Winner
   [:map
    [:player-id PlayerId]
    [:reason [:enum :challenge :last-active-player]]
    [:score NonNegativeInt]
-   [:target-score PositiveInt]])
+   [:target-score TargetScore]])
 
 (def HistoryEvent
   [:map
@@ -394,7 +473,10 @@
    [:fn {:error/message "turn order must match players"} turn-order-matches-players?]
    [:fn {:error/message "current player must match the turn index"} current-player-matches-turn-index?]
    [:fn {:error/message "piece owners must be participating players"} pieces-owned-by-players?]
+   [:fn {:error/message "pieces must include exactly one location field"} pieces-have-exactly-one-location?]
    [:fn {:error/message "piece space indexes must reference board cells"} piece-space-indexes-match-board?]
+   [:fn {:error/message "wasteland pieces must reference current wasteland coordinates"} piece-wasteland-spaces-current?]
+   [:fn {:error/message "target score must be one of the official scores"} setup-target-score-allowed?]
    [:fn {:error/message "piece stashes must match participating players"} stashes-match-players?]
    [:fn {:error/message "player stashes must match piece stash mirrors and active piece counts"} piece-stashes-consistent?]
    [:fn {:error/message "card ids must be unique across all game zones"} all-card-ids-unique?]])
