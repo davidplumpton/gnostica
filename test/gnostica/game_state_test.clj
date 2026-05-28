@@ -114,6 +114,9 @@
    :size :small
    :orientation :north})
 
+(def rose-cup-wasteland-minion
+  (assoc rose-cup-minion :orientation :west))
+
 (def rose-rod-minion
   {:id :rose-rod-minion
    :player-id :rose
@@ -1473,23 +1476,23 @@
     (is (= (count cards/deck) (count (set (all-card-ids state)))))
     (is (game-schema/valid-game? state))))
 
-(deftest cup-move-creates-territory-from-one-point-card-in-wasteland
-  (let [state (state-with-pieces [rose-cup-minion])
+(deftest cup-move-creates-territory-from-one-point-card-in-targeted-wasteland
+  (let [state (state-with-pieces [rose-cup-wasteland-minion])
         command {:player-id :rose
                  :source {:kind :territory
                           :board-index 3
                           :piece-id :rose-cup-minion}
                  :target {:kind :wasteland
-                          :row 0
-                          :col 3}
+                          :row 1
+                          :col -1}
                  :one-point-card-id "coins2"}
         {:keys [ok? state events]} (game-state/apply-cup-move state command)
         created-cell (board-cell-by-index state 9)]
     (is ok?)
     (is (= {:index 9
-            :row 0
-            :col 3
-            :orientation :landscape
+            :row 1
+            :col -1
+            :orientation :portrait
             :face :up
             :card (cards/card-by-id "coins2")}
            created-cell))
@@ -1501,8 +1504,8 @@
 	                      :board-index 3
 	                      :piece-id :rose-cup-minion}
              :target {:kind :wasteland
-                      :row 0
-	                      :col 3}
+                      :row 1
+	                      :col -1}
 	             :board-index 9
 	             :card-id "coins2"
 	             :territory-card-source :hand}]
@@ -1510,6 +1513,25 @@
     (is (= (count cards/deck) (count (all-card-ids state))))
     (is (= (count cards/deck) (count (set (all-card-ids state)))))
     (is (game-schema/valid-game? state))))
+
+(deftest cup-move-rejects-untargeted-wasteland-territory-creation
+  (let [state (state-with-pieces [rose-cup-wasteland-minion])
+        result (game-state/apply-cup-move
+                state
+                {:player-id :rose
+                 :source {:kind :territory
+                          :board-index 3
+                          :piece-id :rose-cup-minion}
+                 :target {:kind :wasteland
+                          :row 0
+                          :col 3}
+                 :one-point-card-id "coins2"})]
+    (is (= :cup-target-out-of-range
+           (get-in result [:error :code])))
+    (is (= {:row 1 :col -1}
+           (get-in result [:error :data :expected-coordinate])))
+    (is (= {:row 0 :col 3}
+           (get-in result [:error :data :target-coordinate])))))
 
 (deftest cup-move-rejects-invalid-command-shapes-and_sources
   (let [non-cup-source (assoc rose-cup-minion
@@ -1619,15 +1641,15 @@
            (get-in result [:error :data :available-variants])))))
 
 (deftest cup-move-rejects-invalid-wasteland-territory-cards
-  (let [state (state-with-pieces [rose-cup-minion])
+  (let [state (state-with-pieces [rose-cup-wasteland-minion])
         result (game-state/apply-cup-move state
                                           {:player-id :rose
                                            :source {:kind :territory
                                                     :board-index 3
                                                     :piece-id :rose-cup-minion}
                                            :target {:kind :wasteland
-                                                    :row 0
-                                                    :col 3}
+                                                    :row 1
+                                                    :col -1}
                                            :one-point-card-id "chariot"})]
     (is (= :invalid-one-point-card
            (get-in result [:error :code])))))
@@ -1637,15 +1659,15 @@
                                player-specs
                                {:deck-order (deck-with-board-card 3 "wheeloffortune")}))
         draw-pile-card (first (:draw-pile initial-state))
-        state (game-state/with-board-pieces initial-state [rose-cup-minion])
+        state (game-state/with-board-pieces initial-state [rose-cup-wasteland-minion])
         command {:player-id :rose
                  :source {:kind :territory
                           :board-index 3
                           :piece-id :rose-cup-minion}
                  :cup-variant :wheel-cup
                  :target {:kind :wasteland
-                          :row 0
-                          :col 3}
+                          :row 1
+                          :col -1}
                  :territory-card-source :draw-pile-top}
         {:keys [ok? state events]} (game-state/apply-cup-move state command)
         created-cell (board-cell-by-index state 9)]
@@ -1660,8 +1682,8 @@
                       :board-index 3
                       :piece-id :rose-cup-minion}
              :target {:kind :wasteland
-                      :row 0
-                      :col 3}
+                      :row 1
+                      :col -1}
              :board-index 9
              :card-id (:id draw-pile-card)
              :territory-card-source :draw-pile-top}]
@@ -1669,7 +1691,7 @@
     (is (game-schema/valid-game? state))))
 
 (deftest non-wheel-cups-reject-draw-pile-territory-source
-  (let [state (state-with-pieces [rose-cup-minion])
+  (let [state (state-with-pieces [rose-cup-wasteland-minion])
         result (game-state/apply-cup-move
                 state
                 {:player-id :rose
@@ -1678,29 +1700,29 @@
                           :piece-id :rose-cup-minion}
                  :cup-variant :cup
                  :target {:kind :wasteland
-                          :row 0
-                          :col 3}
+                          :row 1
+                          :col -1}
                  :territory-card-source :draw-pile-top})]
     (is (= :cup-variant-option-unavailable
            (get-in result [:error :code])))))
 
 (deftest cup-move-rejects-wastelands-occupied-by-enemy-pieces
-  (let [state (state-with-pieces [rose-cup-minion
+  (let [state (state-with-pieces [rose-cup-wasteland-minion
                                   {:id :indigo-wasteland-minion
                                    :player-id :indigo
                                    :space {:kind :wasteland
-                                           :row 0
-                                           :col 3}
+                                           :row 1
+                                           :col -1}
                                    :size :small
                                    :orientation :up}])
         result (game-state/apply-cup-move state
                                           {:player-id :rose
                                            :source {:kind :territory
-                                                    :board-index 3
-                                                    :piece-id :rose-cup-minion}
+                                                   :board-index 3
+                                                   :piece-id :rose-cup-minion}
                                            :target {:kind :wasteland
-                                                    :row 0
-                                                    :col 3}
+                                                    :row 1
+                                                    :col -1}
                                            :one-point-card-id "coins2"})]
     (is (= :wasteland-occupied-by-enemy
            (get-in result [:error :code])))
@@ -3686,7 +3708,9 @@
   (let [state (:state (game-state/create-game
                        player-specs
                        {:deck-order (deck-starting-with ["sun" "cupsking"])}))
-        state (game-state/with-board-pieces state [rose-disc-minion])
+        state (game-state/with-board-pieces
+               state
+               [(assoc rose-disc-minion :orientation :west)])
         {:keys [ok? state events]} (game-state/apply-sun-move
                                     state
                                     {:player-id :rose
@@ -3694,16 +3718,16 @@
                                               :card-id "sun"
                                               :piece-id :rose-disc-minion}
                                      :cup {:target {:kind :wasteland
-                                                    :row 0
-                                                    :col 3}}
+                                                    :row 1
+                                                    :col -1}}
                                      :disc {:target {:kind :created-territory}
                                             :replacement-card-id "cupsking"}})
         created-cell (last (:board state))]
     (is ok?)
     (is (= [:sun/territory-created-and-grown]
            (mapv :type events)))
-    (is (= {:row 0
-            :col 3}
+    (is (= {:row 1
+            :col -1}
            (select-keys created-cell [:row :col])))
     (is (= "cupsking" (get-in created-cell [:card :id])))
     (is (= ["sun"] (mapv :id (:discard-pile state))))

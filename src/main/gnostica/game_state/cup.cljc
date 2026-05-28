@@ -6,6 +6,52 @@
 
 (def cup-territory-card-sources #{:hand :draw-pile-top})
 
+(def cup-direction-offsets
+  {:north [-1 0]
+   :east [0 1]
+   :south [1 0]
+   :west [0 -1]})
+
+(defn- coordinate-map [coordinate]
+  (cond
+    (map? coordinate)
+    (when (and (int? (:row coordinate))
+               (int? (:col coordinate)))
+      (select-keys coordinate [:row :col]))
+
+    (sequential? coordinate)
+    (let [[row col] coordinate]
+      (when (and (int? row)
+                 (int? col))
+        {:row row
+         :col col}))))
+
+(defn- cup-target-coordinate [state source]
+  (when-let [{:keys [row col]} (coordinate-map (core/piece-coordinate state (:piece source)))]
+    (if (= :up (get-in source [:piece :orientation]))
+      {:row row
+       :col col}
+      (when-let [[row-offset col-offset] (get cup-direction-offsets
+                                               (get-in source [:piece :orientation]))]
+        {:row (+ row row-offset)
+         :col (+ col col-offset)}))))
+
+(defn- target-summary [target]
+  (select-keys target [:kind :piece-id :board-index :row :col]))
+
+(defn- cup-targetable-coordinate? [state source target-coordinate]
+  (= (coordinate-map target-coordinate)
+     (cup-target-coordinate state source)))
+
+(defn- cup-target-out-of-range [state source target target-coordinate]
+  (core/failure :cup-target-out-of-range
+                "Cup targets must be in the acting minion's target space."
+                {:piece-id (get-in source [:piece :id])
+                 :orientation (get-in source [:piece :orientation])
+                 :target (target-summary target)
+                 :target-coordinate (coordinate-map target-coordinate)
+                 :expected-coordinate (cup-target-coordinate state source)}))
+
 (defn- discard-pile-card [state card-id]
   (some (fn [card]
           (when (= card-id (:id card))
@@ -148,60 +194,61 @@
   (= :cup-unbounded (:cup-variant source)))
 
 (defn- place-small-piece [state player-id source target orientation]
-  (cond
-    (not (map? target))
-    (core/failure :invalid-cup-target
-             "Cup small-piece targets must be territory target maps."
-             {:target target})
+  (let [target-cell (core/board-cell-by-index state (:board-index target))]
+    (cond
+      (not (map? target))
+      (core/failure :invalid-cup-target
+                    "Cup small-piece targets must be territory target maps."
+                    {:target target})
 
-    (not= :territory (:kind target))
-    (core/failure :invalid-cup-target
-             "Cup small-piece placement targets an existing territory."
-             {:target target})
+      (not= :territory (:kind target))
+      (core/failure :invalid-cup-target
+                    "Cup small-piece placement targets an existing territory."
+                    {:target target})
 
-    (nil? (core/board-cell-by-index state (:board-index target)))
-    (core/failure :invalid-target-territory
-             "Cup small-piece targets must reference an existing board cell."
-             {:board-index (:board-index target)})
+      (nil? target-cell)
+      (core/failure :invalid-target-territory
+                    "Cup small-piece targets must reference an existing board cell."
+                    {:board-index (:board-index target)})
 
-    (not (contains? pieces/legal-orientations orientation))
-    (core/failure :invalid-orientation
-             "Cup small-piece placement requires a legal orientation."
-             {:orientation orientation
-              :legal-orientations pieces/legal-orientations})
+      (not (contains? pieces/legal-orientations orientation))
+      (core/failure :invalid-orientation
+                    "Cup small-piece placement requires a legal orientation."
+                    {:orientation orientation
+                     :legal-orientations pieces/legal-orientations})
 
-    (and (not (cup-unbounded? source))
-         (<= pieces/max-pieces-per-space
-             (count (core/pieces-at-board-index state (:board-index target)))))
-    (core/failure :target-territory-full
-             "Cup small-piece placement requires fewer than three pieces on the target territory."
-             {:board-index (:board-index target)
-              :maximum pieces/max-pieces-per-space})
+      (and (not (cup-unbounded? source))
+           (<= pieces/max-pieces-per-space
+               (count (core/pieces-at-board-index state (:board-index target)))))
+      (core/failure :target-territory-full
+                    "Cup small-piece placement requires fewer than three pieces on the target territory."
+                    {:board-index (:board-index target)
+                     :maximum pieces/max-pieces-per-space})
 
-    (not (pos? (core/small-stash-count state player-id)))
-    (core/failure :no-small-piece-available
-             "The player has no small pieces available in stash."
-             {:player-id player-id})
+      (not (pos? (core/small-stash-count state player-id)))
+      (core/failure :no-small-piece-available
+                    "The player has no small pieces available in stash."
+                    {:player-id player-id})
 
-    :else
-    (let [piece {:id (core/next-piece-id state player-id :small)
-                 :player-id player-id
-                 :space-index (:board-index target)
-                 :size :small
-                 :orientation orientation}
-          event {:type :cup/small-piece-created
-                 :player-id player-id
-                 :cup-variant (:cup-variant source)
-                 :source (core/source-summary (:source source))
-                 :target {:kind :territory
-                          :board-index (:board-index target)}
-                 :piece piece}
-          next-state (-> state
-                         (core/apply-source-cost player-id source)
-                         (core/decrement-small-stash player-id)
-                         (update-in [:pieces :on-board] conj piece)
-                         (core/append-history event))]
-      (core/success next-state [event]))))
+      :else
+      (let [piece {:id (core/next-piece-id state player-id :small)
+                   :player-id player-id
+                   :space-index (:board-index target)
+                   :size :small
+                   :orientation orientation}
+            event {:type :cup/small-piece-created
+                   :player-id player-id
+                   :cup-variant (:cup-variant source)
+                   :source (core/source-summary (:source source))
+                   :target {:kind :territory
+                            :board-index (:board-index target)}
+                   :piece piece}
+            next-state (-> state
+                           (core/apply-source-cost player-id source)
+                           (core/decrement-small-stash player-id)
+                           (update-in [:pieces :on-board] conj piece)
+                           (core/append-history event))]
+        (core/success next-state [event])))))
 
 (defn- create-enemy-small-piece [state player-id source target orientation]
   (let [target-piece (core/piece-by-id state (:piece-id target))
@@ -306,6 +353,9 @@
       (core/failure :target-not-wasteland
                "Cup territory creation cannot target the void."
                {:target normalized-target})
+
+      (not (cup-targetable-coordinate? state source normalized-target))
+      (cup-target-out-of-range state source normalized-target normalized-target)
 
       (seq (core/enemy-pieces-at-coordinate state player-id row col))
       (core/failure :wasteland-occupied-by-enemy

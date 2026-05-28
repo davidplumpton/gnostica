@@ -1283,18 +1283,23 @@
         source-db (app-state/select-move-source db :play-hand-card)
         card-db (app-state/select-move-hand-card source-db "cups2")
         piece-db (app-state/select-move-piece card-db :rose-striker)
-        wasteland-db (app-state/select-move-wasteland-target piece-db 0 3)
+        invalid-wasteland-db (app-state/select-move-wasteland-target piece-db 0 3)
+        wasteland-db (app-state/select-move-wasteland-target piece-db 3 2)
         one-point-db (app-state/select-move-one-point-card wasteland-db "coins2")
         confirmed-db (app-state/confirm-move one-point-db)
         zones (app-state/card-zones confirmed-db)
         created-cell (last (app-state/board confirmed-db))]
-    (is (= 12 (count (app-state/move-target-wasteland-options piece-db))))
+    (is (= [{:kind :wasteland :row 3 :col 2 :id "wasteland-3-2"}]
+           (mapv #(select-keys % [:kind :row :col :id])
+                 (app-state/move-target-wasteland-options piece-db))))
+    (is (= :invalid-wasteland-target
+           (get-in invalid-wasteland-db [:move-selection :error :code])))
     (is (= :one-point-card (:stage (app-state/move-selection wasteland-db))))
     (is (= {:hand-card-id "cups2"
             :piece-id :rose-striker
             :target-wasteland {:kind :wasteland
-                               :row 0
-                               :col 3}}
+                               :row 3
+                               :col 2}}
            (app-state/move-params wasteland-db)))
     (is (some #{"coins2"}
               (mapv :id (app-state/move-one-point-card-options wasteland-db))))
@@ -1306,8 +1311,8 @@
 	                     :piece-id :rose-striker}
 	            :cup-variant :cup
 	            :target {:kind :wasteland
-	                     :row 0
-	                     :col 3}
+	                     :row 3
+	                     :col 2}
 	            :territory-card-source :hand
 	            :one-point-card-id "coins2"}
 	           (app-state/move-command one-point-db)))
@@ -1317,8 +1322,8 @@
     (is (= 4 (count (:hand zones))))
     (is (not (some #{"cups2" "coins2"} (map :id (:hand zones)))))
     (is (= {:index 9
-            :row 0
-            :col 3
+            :row 3
+            :col 2
             :orientation :landscape
             :face :up
             :card (cards/card-by-id "coins2")}
@@ -1494,7 +1499,7 @@
                          (app-state/select-move-source :play-hand-card)
                          (app-state/select-move-hand-card "wheeloffortune")
                          (app-state/select-move-piece :rose-striker)
-                         (app-state/select-move-wasteland-target 0 3))
+                         (app-state/select-move-wasteland-target 3 2))
         draw-source-db (app-state/select-move-territory-card-source
                         wasteland-db
                         :draw-pile-top)
@@ -1512,8 +1517,8 @@
                      :piece-id :rose-striker}
             :cup-variant :wheel-cup
             :target {:kind :wasteland
-                     :row 0
-                     :col 3}
+                     :row 3
+                     :col 2}
             :territory-card-source :draw-pile-top}
            (app-state/move-command draw-source-db)))
     (is (:ok? (get-in confirmed-db [:move-selection :last-result])))
@@ -1848,7 +1853,7 @@
                          (app-state/select-move-hand-card "sun")
                          (app-state/select-move-piece :rose-striker)
                          (app-state/select-move-power :sun)
-                         (app-state/select-move-wasteland-target 0 3))
+                         (app-state/select-move-wasteland-target 3 2))
         mode-db (app-state/select-move-sun-disc-mode wasteland-db :created-territory)
         replacement-db (app-state/select-move-replacement-card mode-db "cupsking")
         confirmed-db (app-state/confirm-move replacement-db)
@@ -1865,15 +1870,15 @@
                      :card-id "sun"
                      :piece-id :rose-striker}
             :cup {:target {:kind :wasteland
-                           :row 0
-                           :col 3}}
+                           :row 3
+                           :col 2}}
             :disc {:target {:kind :created-territory}
                    :replacement-card-source :hand
                    :replacement-card-id "cupsking"}}
            (app-state/move-command replacement-db)))
     (is (:ok? (get-in confirmed-db [:move-selection :last-result])))
-    (is (= {:row 0
-            :col 3}
+    (is (= {:row 3
+            :col 2}
            (select-keys created-cell [:row :col])))
     (is (= "cupsking" (get-in created-cell [:card :id])))
     (is (= ["sun"] (mapv :id (:discard-pile zones))))

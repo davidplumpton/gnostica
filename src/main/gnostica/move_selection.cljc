@@ -968,7 +968,13 @@
 (defn- empty-wasteland-target? [db {:keys [row col]}]
   (empty? (pieces-at-coordinate db row col)))
 
-(declare valid-wasteland-target?)
+(declare valid-wasteland-target? enemy-pieces-at-coordinate)
+
+(defn- cup-target-wasteland? [db params {:keys [row col] :as space}]
+  (let [minion (piece-by-id db (:piece-id params))]
+    (and space
+         (= [row col] (minion-target-coordinate db minion))
+         (empty? (enemy-pieces-at-coordinate db row col)))))
 
 (defn- enemy-pieces-at-coordinate [db row col]
   (let [player-id (current-player-id db)]
@@ -1045,6 +1051,10 @@
     (cond
       (= :place-initial-small source)
       (filterv #(empty-wasteland-target? db %) spaces)
+
+      (or (cup-move? db source params)
+          (sun-move? db source params))
+      (filterv #(cup-target-wasteland? db params %) spaces)
 
       (hermit-move? db source params)
       (cond
