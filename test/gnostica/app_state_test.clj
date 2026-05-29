@@ -985,6 +985,35 @@
             :target-board-index 9}
            (app-state/move-params target-db)))))
 
+(deftest territory-view-uses-board-index-after-gaps-and-appends
+  (let [deck-order (deck-with-cards-at {0 "coins2"
+                                        (board-card-position test-player-specs 3) "cups2"
+                                        (board-card-position test-player-specs 5) "swords2"})
+        db (app-state/initialize {:player-specs test-player-specs
+                                  :game-options {:deck-order deck-order}
+                                  :demo-board-pieces [rose-rod-minion]})
+        gapped-db (remove-board-cell db 4)
+        gap-selected-db (app-state/select-board-card gapped-db 5)
+        create-result (game-state/apply-cup-move
+                       (app-state/game gapped-db)
+                       {:player-id :rose
+                        :source {:kind :territory
+                                 :board-index 3
+                                 :piece-id :rose-rod-minion}
+                        :target {:kind :wasteland
+                                 :row 1
+                                 :col 1}
+                        :one-point-card-id "coins2"})
+        created-db (assoc gapped-db :game (:state create-result))
+        created-selected-db (app-state/select-board-card created-db 9)]
+    (is (:ok? create-result))
+    (is (= "swords2"
+           (get-in (app-state/territory-view gap-selected-db)
+                   [:cell :card :id])))
+    (is (= "coins2"
+           (get-in (app-state/territory-view created-selected-db)
+                   [:cell :card :id])))))
+
 (deftest rod-territory-source-can-move-the-acting-minion
   (let [deck-order (deck-with-card-at (board-card-position test-player-specs 0)
                                       "wands2")

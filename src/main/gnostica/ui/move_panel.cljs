@@ -1,5 +1,6 @@
 (ns gnostica.ui.move-panel
   (:require [gnostica.app.events :as events]
+            [gnostica.board-layout :as layout]
             [gnostica.pieces :as pieces]
             [gnostica.ui.common :as ui]
             [re-frame.core :as rf]))
@@ -253,7 +254,7 @@
   [target-kind-choices "Sword move" events/select-move-sword-target-kind options selected-kind])
 
 (defn- piece-choice-label [board piece]
-  (let [cell (get board (:space-index piece))]
+  (let [cell (layout/cell-by-index board (:space-index piece))]
     (str (ui/piece-summary piece)
          " on "
          (cond

@@ -491,10 +491,8 @@ select-move-rod-mode
 
 (rf/reg-sub
  selected-board-cell
- :<- [board]
- :<- [selected-board-index]
- (fn [[cells selected-index] _]
-   (get cells selected-index)))
+ (fn [db _]
+   (app-state/selected-board-cell db)))
 
 (rf/reg-sub
  selected-board-pieces
