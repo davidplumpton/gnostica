@@ -106,6 +106,10 @@
   (some #(when (= board-index (:index %)) %)
         (app-state/board db)))
 
+(defn- move-control-group-summary [db]
+  (mapv #(select-keys % [:type :power :action-power])
+        (:control-groups (app-state/move-panel-view db))))
+
 (defn- remove-board-cell [db board-index]
   (let [cell (board-cell-by-index db board-index)]
     (cond-> (update-in db [:game :board]
@@ -636,6 +640,126 @@
     (is (:enabled? (source-option db :orient-piece)))
     (is (:enabled? (source-option db :draw-cards)))
     (is (not (:enabled? (source-option db :place-initial-small))))))
+
+(deftest move-panel-view-control-groups-track-staged-powers
+  (let [composite-db (app-state/initialize
+                      {:player-specs test-player-specs
+                       :game-options {:deck-order (deck-starting-with ["empress"])}
+                       :demo-board-pieces [rose-hand-piece]})
+        composite-orient-db (-> composite-db
+                                (app-state/select-move-source :play-hand-card)
+                                (app-state/select-move-hand-card "empress")
+                                (app-state/select-move-piece :rose-striker)
+                                (app-state/select-move-power :empress))
+        composite-cup-db (app-state/set-move-minion-orientation
+                          composite-orient-db
+                          :east)
+        moon-db (app-state/initialize
+                 {:player-specs test-player-specs
+                  :game-options {:deck-order (deck-starting-with ["moon"])}
+                  :demo-board-pieces [rose-rod-minion indigo-rod-target]})
+        moon-rod-db (-> moon-db
+                        (app-state/select-move-source :play-hand-card)
+                        (app-state/select-move-hand-card "moon")
+                        (app-state/select-move-piece :rose-rod-minion)
+                        (app-state/select-move-power :moon))
+        moon-sword-db (-> moon-rod-db
+                          (app-state/select-move-rod-mode :move-minion)
+                          (app-state/set-move-distance 1)
+                          (app-state/set-move-orientation :up))
+        sun-db (-> (app-state/initialize
+                    {:player-specs test-player-specs
+                     :game-options {:deck-order (deck-starting-with ["sun"])}
+                     :demo-board-pieces [rose-hand-cup-enemy-piece]})
+                   (app-state/select-move-source :play-hand-card)
+                   (app-state/select-move-hand-card "sun")
+                   (app-state/select-move-piece :rose-striker)
+                   (app-state/select-move-power :sun))
+        world-db (app-state/initialize
+                  {:player-specs test-player-specs
+                   :game-options {:deck-order
+                                  (deck-with-cards-at
+                                   {0 "world"
+                                    (board-card-position test-player-specs 3) "empress"})}
+                   :demo-board-pieces [(assoc rose-source-piece
+                                              :orientation :north)]})
+        world-copy-db (-> world-db
+                          (app-state/select-move-source :play-hand-card)
+                          (app-state/select-move-hand-card "world")
+                          (app-state/select-move-piece :rose-scout))
+        world-copied-power-db (app-state/select-move-world-copy world-copy-db 3)
+        world-orient-db (app-state/select-move-power world-copied-power-db :empress)
+        world-cup-db (app-state/set-move-minion-orientation world-orient-db :east)]
+    (is (= [{:type :hand-card}
+            {:type :piece}
+            {:type :power}
+            {:type :minion-orientation
+             :power :empress
+             :action-power :orient-minion}]
+           (move-control-group-summary composite-orient-db)))
+    (is (= [{:type :hand-card}
+            {:type :piece}
+            {:type :power}
+            {:type :cup
+             :power :empress
+             :action-power :cup}]
+           (move-control-group-summary composite-cup-db)))
+    (is (= [{:type :hand-card}
+            {:type :piece}
+            {:type :power}
+            {:type :rod
+             :power :moon
+             :action-power :rod}]
+           (move-control-group-summary moon-rod-db)))
+    (is (= [{:type :hand-card}
+            {:type :piece}
+            {:type :power}
+            {:type :sword
+             :power :moon
+             :action-power :sword}]
+           (move-control-group-summary moon-sword-db)))
+    (is (= [{:type :hand-card}
+            {:type :piece}
+            {:type :power}
+            {:type :sun
+             :power :sun}]
+           (move-control-group-summary sun-db)))
+    (is (= [{:type :hand-card}
+            {:type :piece}
+            {:type :power}
+            {:type :world-copy
+             :power :world}]
+           (move-control-group-summary world-copy-db)))
+    (is (= [{:type :hand-card}
+            {:type :piece}
+            {:type :power}
+            {:type :world-copy
+             :power :world}
+            {:type :world-copied-power
+             :power :world}]
+           (move-control-group-summary world-copied-power-db)))
+    (is (= [{:type :hand-card}
+            {:type :piece}
+            {:type :power}
+            {:type :world-copy
+             :power :world}
+            {:type :world-copied-power
+             :power :world}
+            {:type :minion-orientation
+             :power :empress
+             :action-power :orient-minion}]
+           (move-control-group-summary world-orient-db)))
+    (is (= [{:type :hand-card}
+            {:type :piece}
+            {:type :power}
+            {:type :world-copy
+             :power :world}
+            {:type :world-copied-power
+             :power :world}
+            {:type :cup
+             :power :empress
+             :action-power :cup}]
+           (move-control-group-summary world-cup-db)))))
 
 (deftest no-piece-player-with-hand-room-must-place-initial-small
   (let [initial-db (app-state/initialize {:player-specs test-player-specs

@@ -749,237 +749,8 @@
                     (:hermit-destination-wasteland params)))
        [orientation-choices orientation-options (:orientation params)])]))
 
-(defn- composite-active-action-power [power params]
-  (case power
-    :empress (if (zero? (count (:major-actions params))) :orient-minion :cup)
-    :emperor (if (zero? (count (:major-actions params))) :orient-minion :rod)
-    :lovers (if (zero? (count (:major-actions params))) :rod :cup)
-    :chariot :rod
-    :hanged-man (if (zero? (count (:major-actions params))) :rod :trade-hand)
-    :temperance :cup
-    nil))
-
-(defn- sword-major-active-action-power [power params]
-  (case power
-    :justice (if (zero? (count (:major-actions params))) :trade-hand :sword)
-    :death :sword
-    :tower (if (zero? (count (:major-actions params))) :orient-minion :sword)
-    :moon (if (zero? (count (:major-actions params))) :rod :sword)
-    nil))
-
-(defn- composite-major-controls
-  [power params board rod-mode-options target-piece-options target-board-options
-   target-wasteland-options distance-options territory-card-source-options
-   one-point-card-options orientation-options orientation-required?]
-  (case (composite-active-action-power power params)
-    :orient-minion
-    [orientation-choices "Minion orientation"
-     events/set-move-minion-orientation
-     orientation-options
-     (:minion-orientation params)]
-
-    :rod
-    [rod-move-controls params
-     board
-     rod-mode-options
-     target-piece-options
-     target-board-options
-     distance-options
-     orientation-options
-     orientation-required?]
-
-    :cup
-    [cup-move-controls params
-     board
-     target-piece-options
-     target-board-options
-     target-wasteland-options
-     territory-card-source-options
-     one-point-card-options
-     orientation-options]
-
-    :trade-hand
-    [target-piece-choices board target-piece-options (:target-piece-id params)]
-
-    nil))
-
-(defn- sword-major-controls
-  [power params board rod-mode-options sword-action-count-options sword-target-kind-options
-   target-piece-options target-board-options distance-options replacement-source-options
-   replacement-card-options orientation-options orientation-required? sword-orientation-available?
-   damage-options]
-  [:<>
-   (when (= :death power)
-     [sword-action-count-choices sword-action-count-options (:sword-action-count params)])
-   (when (or (not= :death power)
-             (:sword-action-count params))
-     (case (sword-major-active-action-power power params)
-       :trade-hand
-       [target-piece-choices board target-piece-options (:target-piece-id params)]
-
-       :orient-minion
-       [orientation-choices "Minion orientation"
-        events/set-move-minion-orientation
-        orientation-options
-        (:minion-orientation params)]
-
-       :rod
-       [rod-move-controls params
-        board
-        rod-mode-options
-        target-piece-options
-        target-board-options
-        distance-options
-        orientation-options
-        orientation-required?]
-
-       :sword
-       [sword-move-controls params
-        board
-        sword-target-kind-options
-        target-piece-options
-        target-board-options
-        replacement-source-options
-        replacement-card-options
-        orientation-options
-        sword-orientation-available?
-        damage-options]
-
-       nil))])
-
-(defn- world-move-controls
-  [params board world-copy-options copied-power-options copied-power
-   rod-mode-options disc-action-count-options sword-action-count-options
-   devil-action-count-options
-   sun-disc-mode-options fool-reveal-count-options
-   high-priestess-redraw-count-options high-priestess-redraw-options
-   judgement-card-options judgement-card-maximum
-   disc-minion-orientation-required?
-   disc-target-kind-options sword-target-kind-options target-piece-options
-   target-board-options target-wasteland-options territory-card-source-options
-   one-point-card-options replacement-card-options orientation-options
-   orientation-required? disc-orientation-available? sun-disc-orientation-available?
-   sword-orientation-available? distance-options damage-options]
-  [:<>
-   [world-copy-choices world-copy-options (:copied-board-index params)]
-   (when (:copied-board-index params)
-     [power-choices copied-power-options copied-power])
-   (when copied-power
-     (case copied-power
-       :rod [rod-move-controls params
-             board
-             rod-mode-options
-             target-piece-options
-             target-board-options
-             distance-options
-             orientation-options
-             orientation-required?]
-       :cup [cup-move-controls params
-             board
-             target-piece-options
-             target-board-options
-             target-wasteland-options
-             territory-card-source-options
-             one-point-card-options
-             orientation-options]
-       :disc [disc-move-controls params
-              board
-              disc-action-count-options
-              disc-minion-orientation-required?
-              disc-target-kind-options
-              target-piece-options
-              target-board-options
-              territory-card-source-options
-              replacement-card-options
-              orientation-options
-              disc-orientation-available?]
-       :sun [sun-move-controls params
-             board
-             sun-disc-mode-options
-             target-piece-options
-             target-board-options
-             target-wasteland-options
-             one-point-card-options
-             replacement-card-options
-             orientation-options
-             sun-disc-orientation-available?]
-       :sword [sword-move-controls params
-               board
-               sword-target-kind-options
-               target-piece-options
-               target-board-options
-               territory-card-source-options
-               replacement-card-options
-               orientation-options
-               sword-orientation-available?
-               damage-options]
-       :fool [fool-reveal-count-choices
-              fool-reveal-count-options
-              (:fool-reveal-count params)]
-       :high-priestess [:<>
-                        [high-priestess-redraw-count-choices
-                         high-priestess-redraw-count-options
-                         (:high-priestess-redraw-count params)]
-                        [high-priestess-redraw-controls
-                         high-priestess-redraw-options]]
-       :judgement [judgement-card-choices
-                   judgement-card-options
-                   (:judgement-card-ids params)
-                   judgement-card-maximum]
-       :hierophant [piece-orientation-major-controls
-                    "Replacement orientation"
-                    params
-                    board
-                    target-piece-options
-                    orientation-options]
-       :hermit [hermit-move-controls params
-                board
-                target-piece-options
-                target-board-options
-                target-wasteland-options
-                orientation-options
-                orientation-required?]
-       :devil [devil-move-controls
-               params
-               board
-               devil-action-count-options
-               target-piece-options
-               orientation-options]
-       (:empress :emperor :lovers :chariot :hanged-man :temperance)
-       [composite-major-controls
-        copied-power
-        params
-        board
-        rod-mode-options
-        target-piece-options
-        target-board-options
-        target-wasteland-options
-        distance-options
-        territory-card-source-options
-        one-point-card-options
-        orientation-options
-        orientation-required?]
-       (:justice :death :tower :moon)
-       [sword-major-controls
-        copied-power
-        params
-        board
-        rod-mode-options
-        sword-action-count-options
-        sword-target-kind-options
-        target-piece-options
-        target-board-options
-        distance-options
-        territory-card-source-options
-        replacement-card-options
-        orientation-options
-        orientation-required?
-        sword-orientation-available?
-        damage-options]
-       nil))])
-
-(defn- move-active-controls [selection controls]
-  (let [{:keys [source params]} selection
+(defn- render-control-group [{:keys [type]} selection controls]
+  (let [{:keys [params]} selection
         {:keys [board power power-options rod-mode-options piece-options
                 world-copy-options world-copied-power-options world-copied-power
                 disc-action-count-options sword-action-count-options devil-action-count-options
@@ -996,338 +767,160 @@
                 disc-orientation-available? sun-disc-orientation-available?
                 sword-orientation-available?
                 distance-options damage-options draw-options]} controls]
-    (case source
-      :activate-territory
-      [:<>
-       [board-choice-grid "Source territory" source-board-options (:source-board-index params)]
-       (when (:source-board-index params)
-         [piece-choices board piece-options (:piece-id params)])
-       (when (:piece-id params)
-         [:<>
-          [power-choices power-options power]
-          (case power
-            :rod [rod-move-controls params
-                  board
-                  rod-mode-options
-                  target-piece-options
-                  target-board-options
-                  distance-options
-                  orientation-options
-                  orientation-required?]
-            :cup [cup-move-controls params
-                  board
-                  target-piece-options
-                  target-board-options
-                  target-wasteland-options
-                  territory-card-source-options
-                  one-point-card-options
-                  orientation-options]
-            :disc [disc-move-controls params
-                   board
-                   disc-action-count-options
-                   disc-minion-orientation-required?
-                   disc-target-kind-options
-                   target-piece-options
-                   target-board-options
-                   territory-card-source-options
-                   replacement-card-options
-                   orientation-options
-                   disc-orientation-available?]
-            :sun [sun-move-controls params
-                  board
-                  sun-disc-mode-options
-                  target-piece-options
-                  target-board-options
-                  target-wasteland-options
-                  one-point-card-options
-                  replacement-card-options
-                  orientation-options
-                  sun-disc-orientation-available?]
-            :sword [sword-move-controls params
-                    board
-                    sword-target-kind-options
-                    target-piece-options
-                    target-board-options
-                    territory-card-source-options
-                    replacement-card-options
-                    orientation-options
-                    sword-orientation-available?
-                    damage-options]
-            :fool [fool-reveal-count-choices
-                   fool-reveal-count-options
-                   (:fool-reveal-count params)]
-            :high-priestess [:<>
-                             [high-priestess-redraw-count-choices
-                              high-priestess-redraw-count-options
-                              (:high-priestess-redraw-count params)]
-                             [high-priestess-redraw-controls
-                              high-priestess-redraw-options]]
-            :judgement [judgement-card-choices
-                        judgement-card-options
-                        (:judgement-card-ids params)
-                        judgement-card-maximum]
-            :hierophant [piece-orientation-major-controls
-                         "Replacement orientation"
-                         params
-                         board
-                         target-piece-options
-                         orientation-options]
-            :hermit [hermit-move-controls params
-                     board
-                     target-piece-options
-                     target-board-options
-                     target-wasteland-options
-                     orientation-options
-                     orientation-required?]
-            :devil [devil-move-controls
-                    params
-                    board
-                    devil-action-count-options
-                    target-piece-options
-                    orientation-options]
-            :world [world-move-controls
-                    params
-                    board
-                    world-copy-options
-                    world-copied-power-options
-                    world-copied-power
-                    rod-mode-options
-                    disc-action-count-options
-                    sword-action-count-options
-                    devil-action-count-options
-                    sun-disc-mode-options
-                    fool-reveal-count-options
-                    high-priestess-redraw-count-options
-                    high-priestess-redraw-options
-                    judgement-card-options
-                    judgement-card-maximum
-                    disc-minion-orientation-required?
-                    disc-target-kind-options
-                    sword-target-kind-options
-                    target-piece-options
-                    target-board-options
-                    target-wasteland-options
-                    territory-card-source-options
-                    one-point-card-options
-                    replacement-card-options
-                    orientation-options
-                    orientation-required?
-                    disc-orientation-available?
-                    sun-disc-orientation-available?
-                    sword-orientation-available?
-                    distance-options
-                    damage-options]
-            (:empress :emperor :lovers :chariot :hanged-man :temperance)
-            [composite-major-controls
-             power
-             params
-             board
-             rod-mode-options
-             target-piece-options
-             target-board-options
-             target-wasteland-options
-             distance-options
-             territory-card-source-options
-             one-point-card-options
-             orientation-options
-             orientation-required?]
-            (:justice :death :tower :moon)
-            [sword-major-controls
-             power
-             params
-             board
-             rod-mode-options
-             sword-action-count-options
-             sword-target-kind-options
-             target-piece-options
-             target-board-options
-             distance-options
-             territory-card-source-options
-             replacement-card-options
-             orientation-options
-             orientation-required?
-             sword-orientation-available?
-             damage-options]
-            nil)])]
+    (case type
+      :source-board
+      [board-choice-grid "Source territory" source-board-options (:source-board-index params)]
 
-      :play-hand-card
-      [:<>
-       [hand-card-choices hand-options (:hand-card-id params)]
-       (when (:hand-card-id params)
-         [piece-choices board piece-options (:piece-id params)])
-       (when (:piece-id params)
-         [:<>
-          [power-choices power-options power]
-          (case power
-            :rod [rod-move-controls params
-                  board
-                  rod-mode-options
-                  target-piece-options
-                  target-board-options
-                  distance-options
-                  orientation-options
-                  orientation-required?]
-            :cup [cup-move-controls params
-                  board
-                  target-piece-options
-                  target-board-options
-                  target-wasteland-options
-                  territory-card-source-options
-                  one-point-card-options
-                  orientation-options]
-            :disc [disc-move-controls params
-                   board
-                   disc-action-count-options
-                   disc-minion-orientation-required?
-                   disc-target-kind-options
-                   target-piece-options
-                   target-board-options
-                   territory-card-source-options
-                   replacement-card-options
-                   orientation-options
-                   disc-orientation-available?]
-            :sun [sun-move-controls params
-                  board
-                  sun-disc-mode-options
-                  target-piece-options
-                  target-board-options
-                  target-wasteland-options
-                  one-point-card-options
-                  replacement-card-options
-                  orientation-options
-                  sun-disc-orientation-available?]
-            :sword [sword-move-controls params
-                    board
-                    sword-target-kind-options
-                    target-piece-options
-                    target-board-options
-                    territory-card-source-options
-                    replacement-card-options
-                    orientation-options
-                    sword-orientation-available?
-                    damage-options]
-            :fool [fool-reveal-count-choices
-                   fool-reveal-count-options
-                   (:fool-reveal-count params)]
-            :high-priestess [:<>
-                             [high-priestess-redraw-count-choices
-                              high-priestess-redraw-count-options
-                              (:high-priestess-redraw-count params)]
-                             [high-priestess-redraw-controls
-                              high-priestess-redraw-options]]
-            :judgement [judgement-card-choices
-                        judgement-card-options
-                        (:judgement-card-ids params)
-                        judgement-card-maximum]
-            :hierophant [piece-orientation-major-controls
-                         "Replacement orientation"
-                         params
-                         board
-                         target-piece-options
-                         orientation-options]
-            :hermit [hermit-move-controls params
-                     board
-                     target-piece-options
-                     target-board-options
-                     target-wasteland-options
-                     orientation-options
-                     orientation-required?]
-            :devil [devil-move-controls
-                    params
-                    board
-                    devil-action-count-options
-                    target-piece-options
-                    orientation-options]
-            :world [world-move-controls
-                    params
-                    board
-                    world-copy-options
-                    world-copied-power-options
-                    world-copied-power
-                    rod-mode-options
-                    disc-action-count-options
-                    sword-action-count-options
-                    devil-action-count-options
-                    sun-disc-mode-options
-                    fool-reveal-count-options
-                    high-priestess-redraw-count-options
-                    high-priestess-redraw-options
-                    judgement-card-options
-                    judgement-card-maximum
-                    disc-minion-orientation-required?
-                    disc-target-kind-options
-                    sword-target-kind-options
-                    target-piece-options
-                    target-board-options
-                    target-wasteland-options
-                    territory-card-source-options
-                    one-point-card-options
-                    replacement-card-options
-                    orientation-options
-                    orientation-required?
-                    disc-orientation-available?
-                    sun-disc-orientation-available?
-                    sword-orientation-available?
-                    distance-options
-                    damage-options]
-            (:empress :emperor :lovers :chariot :hanged-man :temperance)
-            [composite-major-controls
-             power
-             params
-             board
-             rod-mode-options
-             target-piece-options
-             target-board-options
-             target-wasteland-options
-             distance-options
-             territory-card-source-options
-             one-point-card-options
-             orientation-options
-             orientation-required?]
-            (:justice :death :tower :moon)
-            [sword-major-controls
-             power
-             params
-             board
-             rod-mode-options
-             sword-action-count-options
-             sword-target-kind-options
-             target-piece-options
-             target-board-options
-             distance-options
-             territory-card-source-options
-             replacement-card-options
-             orientation-options
-             orientation-required?
-             sword-orientation-available?
-             damage-options]
-            nil)])]
+      :hand-card
+      [hand-card-choices hand-options (:hand-card-id params)]
 
-      :draw-cards
-      [:<>
-       [discard-card-choices discard-card-options (:discard-card-ids params)]
-       [draw-count-choices draw-options (:draw-count params)]]
+      :piece
+      [piece-choices board piece-options (:piece-id params)]
 
-      :orient-piece
-      [:<>
-       [piece-choices board piece-options (:piece-id params)]
-       (when (:piece-id params)
-         [orientation-choices orientation-options (:orientation params)])]
+      :power
+      [power-choices power-options power]
 
-      :place-initial-small
-      [:<>
-       [target-choice-grid target-board-options
-        target-wasteland-options
-        (:target-board-index params)
-        (:target-wasteland params)]
-       (when (or (:target-board-index params)
-                 (:target-wasteland params))
-         [orientation-choices orientation-options (:orientation params)])]
+      :world-copy
+      [world-copy-choices world-copy-options (:copied-board-index params)]
+
+      :world-copied-power
+      [power-choices world-copied-power-options world-copied-power]
+
+      :rod
+      [rod-move-controls params
+       board
+       rod-mode-options
+       target-piece-options
+       target-board-options
+       distance-options
+       orientation-options
+       orientation-required?]
+
+      :cup
+      [cup-move-controls params
+       board
+       target-piece-options
+       target-board-options
+       target-wasteland-options
+       territory-card-source-options
+       one-point-card-options
+       orientation-options]
+
+      :disc
+      [disc-move-controls params
+       board
+       disc-action-count-options
+       disc-minion-orientation-required?
+       disc-target-kind-options
+       target-piece-options
+       target-board-options
+       territory-card-source-options
+       replacement-card-options
+       orientation-options
+       disc-orientation-available?]
+
+      :sun
+      [sun-move-controls params
+       board
+       sun-disc-mode-options
+       target-piece-options
+       target-board-options
+       target-wasteland-options
+       one-point-card-options
+       replacement-card-options
+       orientation-options
+       sun-disc-orientation-available?]
+
+      :sword
+      [sword-move-controls params
+       board
+       sword-target-kind-options
+       target-piece-options
+       target-board-options
+       territory-card-source-options
+       replacement-card-options
+       orientation-options
+       sword-orientation-available?
+       damage-options]
+
+      :fool-reveal-count
+      [fool-reveal-count-choices
+       fool-reveal-count-options
+       (:fool-reveal-count params)]
+
+      :high-priestess-redraw-count
+      [high-priestess-redraw-count-choices
+       high-priestess-redraw-count-options
+       (:high-priestess-redraw-count params)]
+
+      :high-priestess-redraws
+      [high-priestess-redraw-controls high-priestess-redraw-options]
+
+      :judgement-card-selection
+      [judgement-card-choices
+       judgement-card-options
+       (:judgement-card-ids params)
+       judgement-card-maximum]
+
+      :piece-orientation-major
+      [piece-orientation-major-controls
+       "Replacement orientation"
+       params
+       board
+       target-piece-options
+       orientation-options]
+
+      :hermit
+      [hermit-move-controls params
+       board
+       target-piece-options
+       target-board-options
+       target-wasteland-options
+       orientation-options
+       orientation-required?]
+
+      :devil
+      [devil-move-controls
+       params
+       board
+       devil-action-count-options
+       target-piece-options
+       orientation-options]
+
+      :target-piece
+      [target-piece-choices board target-piece-options (:target-piece-id params)]
+
+      :minion-orientation
+      [orientation-choices "Minion orientation"
+       events/set-move-minion-orientation
+       orientation-options
+       (:minion-orientation params)]
+
+      :discard-cards
+      [discard-card-choices discard-card-options (:discard-card-ids params)]
+
+      :draw-count
+      [draw-count-choices draw-options (:draw-count params)]
+
+      :orientation
+      [orientation-choices orientation-options (:orientation params)]
+
+      :target-space
+      [target-choice-grid target-board-options
+       target-wasteland-options
+       (:target-board-index params)
+       (:target-wasteland params)]
 
       nil)))
 
+(defn- move-active-controls [selection controls control-groups]
+  [:<>
+   (for [[index group] (map-indexed vector control-groups)]
+     ^{:key (str index "-" (:type group) "-" (:power group) "-" (:action-power group))}
+     [render-control-group group selection controls])])
+
 (defn move-panel []
-  (let [{:keys [current-player selection source-options prompt ready? controls]}
+  (let [{:keys [current-player selection source-options prompt ready? controls control-groups]}
         @(rf/subscribe [events/move-panel-view])
         {:keys [source error]} selection]
     [:section.move-panel
@@ -1347,7 +940,7 @@
      [move-source-picker source-options source]
      [:p.move-panel__prompt prompt]
      (when source
-       [move-active-controls selection controls])
+       [move-active-controls selection controls control-groups])
      (when error
        [:p.move-error
         {:role "alert"}

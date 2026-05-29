@@ -1837,6 +1837,126 @@
       (judgement-card-maximum db source params)
       0)))
 
+(declare power-control-groups)
+
+(defn- control-group
+  ([type]
+   {:type type})
+  ([type attrs]
+   (assoc attrs :type type)))
+
+(defn- power-control-group [power type]
+  (control-group type {:power power}))
+
+(defn- major-action-control-group [power action-power type]
+  (control-group type {:power power
+                       :action-power action-power}))
+
+(defn- composite-major-control-groups [db source-id params]
+  (let [power (active-power db source-id params)
+        action-power (active-composite-action-power db source-id params)]
+    (case action-power
+      :orient-minion [(major-action-control-group power action-power :minion-orientation)]
+      :rod [(major-action-control-group power action-power :rod)]
+      :cup [(major-action-control-group power action-power :cup)]
+      :trade-hand [(major-action-control-group power action-power :target-piece)]
+      [])))
+
+(defn- sword-major-control-groups [db source-id params]
+  (let [power (active-power db source-id params)
+        action-power (active-sword-major-action-power db source-id params)]
+    (vec
+     (concat
+      (when (= :death power)
+        [(power-control-group power :sword-action-count)])
+      (when (or (not= :death power)
+                (:sword-action-count params))
+        (case action-power
+          :trade-hand [(major-action-control-group power action-power :target-piece)]
+          :orient-minion [(major-action-control-group power action-power :minion-orientation)]
+          :rod [(major-action-control-group power action-power :rod)]
+          :sword [(major-action-control-group power action-power :sword)]
+          []))))))
+
+(defn- world-control-groups [db source-id params]
+  (vec
+   (concat
+    [(power-control-group :world :world-copy)]
+    (when (some? (:copied-board-index params))
+      [(power-control-group :world :world-copied-power)])
+    (when-let [copied-power (selected-world-copied-power db source-id params)]
+      (power-control-groups db source-id params copied-power)))))
+
+(defn- power-control-groups [db source-id params power]
+  (case power
+    :rod [(power-control-group power :rod)]
+    :cup [(power-control-group power :cup)]
+    :disc [(power-control-group power :disc)]
+    :sun [(power-control-group power :sun)]
+    :sword [(power-control-group power :sword)]
+    :fool [(power-control-group power :fool-reveal-count)]
+    :high-priestess [(power-control-group power :high-priestess-redraw-count)
+                     (power-control-group power :high-priestess-redraws)]
+    :judgement [(power-control-group power :judgement-card-selection)]
+    :hierophant [(power-control-group power :piece-orientation-major)]
+    :hermit [(power-control-group power :hermit)]
+    :devil [(power-control-group power :devil)]
+    :world (world-control-groups db source-id params)
+    (:empress :emperor :lovers :chariot :hanged-man :temperance)
+    (composite-major-control-groups db source-id params)
+    (:justice :death :tower :moon)
+    (sword-major-control-groups db source-id params)
+    []))
+
+(defn- gameplay-control-groups [db source-id params]
+  (let [power (selected-power db source-id params)]
+    (vec
+     (concat
+      [(control-group :power)]
+      (power-control-groups db source-id params power)))))
+
+(defn move-control-groups [db]
+  (let [{:keys [source params]} (move-selection db)]
+    (case source
+      :activate-territory
+      (vec
+       (concat
+        [(control-group :source-board)]
+        (when (some? (:source-board-index params))
+          [(control-group :piece)])
+        (when (:piece-id params)
+          (gameplay-control-groups db source params))))
+
+      :play-hand-card
+      (vec
+       (concat
+        [(control-group :hand-card)]
+        (when (:hand-card-id params)
+          [(control-group :piece)])
+        (when (:piece-id params)
+          (gameplay-control-groups db source params))))
+
+      :draw-cards
+      [(control-group :discard-cards)
+       (control-group :draw-count)]
+
+      :orient-piece
+      (vec
+       (concat
+        [(control-group :piece)]
+        (when (:piece-id params)
+          [(control-group :orientation)])))
+
+      :place-initial-small
+      (vec
+       (concat
+        [(control-group :target-space)]
+        (when (or (some? (:target-board-index params))
+                  (:target-wasteland params))
+          [(control-group :orientation)])))
+
+      [])))
+
 (defn move-disc-minion-orientation-required? [db]
   (let [{:keys [source params]} (move-selection db)]
     (star-disc-source? db source params)))

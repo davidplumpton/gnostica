@@ -681,6 +681,7 @@
 (def move-source-options move-selection/move-source-options)
 (def move-selection move-selection/move-selection)
 (def move-params move-selection/move-params)
+(def move-control-groups move-selection/move-control-groups)
 (def move-power-options move-selection/move-power-options)
 (def move-power move-selection/move-power)
 (def move-world-copy-options move-selection/move-world-copy-options)
@@ -787,7 +788,7 @@
 (def move-command move-selection/move-command)
 
 (defn move-panel-view-model
-  [{:keys [current-player selection source-options prompt ready?
+  [{:keys [current-player selection source-options prompt ready? control-groups
            board power power-options rod-mode-options disc-action-count-options
            world-copy-options world-copied-power-options world-copied-power
            sword-action-count-options devil-action-count-options
@@ -807,6 +808,7 @@
    :source-options source-options
    :prompt prompt
    :ready? ready?
+   :control-groups control-groups
    :controls {:board board
               :power power
               :power-options power-options
@@ -852,6 +854,7 @@
     :source-options (move-source-options db)
     :prompt (move-prompt db)
     :ready? (move-ready? db)
+    :control-groups (move-control-groups db)
     :board (board db)
     :power (move-power db)
     :power-options (move-power-options db)
