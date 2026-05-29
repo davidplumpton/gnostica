@@ -626,7 +626,7 @@
 
 (defn board-view-model
   [{:keys [cells board-pieces selected-index card-icon-mode texture-errors
-           renderer-error three-runtime-status]}]
+           renderer-error three-runtime-status legal-targets]}]
   (let [wastelands (layout/wasteland-spaces cells)
         runtime-status (normalize-three-runtime-status three-runtime-status)]
     {:cells cells
@@ -636,6 +636,7 @@
      :wastelands wastelands
      :space-bounds (layout/space-bounds (concat cells wastelands))
      :selected-index selected-index
+     :legal-targets legal-targets
      :card-icon-mode card-icon-mode
      :texture-errors texture-errors
      :renderer-error renderer-error
@@ -653,22 +654,25 @@
    {:cells (board db)
     :board-pieces (board-pieces db)
     :selected-index (selected-board-index db)
+    :legal-targets (move-selection/move-legal-targets db)
     :card-icon-mode (card-icon-mode db)
     :texture-errors (:three-texture-errors db)
     :renderer-error (:three-renderer-error db)
     :three-runtime-status (three-runtime-status db)}))
 
 (defn card-zones-view-model
-  [{:keys [current-player card-icon-mode zones]}]
+  [{:keys [current-player card-icon-mode zones legal-targets]}]
   {:current-player current-player
    :card-icon-mode card-icon-mode
-   :zones zones})
+   :zones zones
+   :legal-targets legal-targets})
 
 (defn card-zones-view [db]
   (card-zones-view-model
    {:current-player (current-player db)
     :card-icon-mode (card-icon-mode db)
-    :zones (card-zones db)}))
+    :zones (card-zones db)
+    :legal-targets (move-selection/move-legal-targets db)}))
 
 (defn territory-view-model
   [{:keys [cell selected-pieces]}]
@@ -709,6 +713,7 @@
 (def move-disc-minion-orientation-required? move-selection/move-disc-minion-orientation-required?)
 (def move-disc-target-kind-options move-selection/move-disc-target-kind-options)
 (def move-sword-target-kind-options move-selection/move-sword-target-kind-options)
+(def move-legal-targets move-selection/move-legal-targets)
 (def move-distance-options move-selection/move-distance-options)
 (def move-damage-options move-selection/move-damage-options)
 (def move-target-piece-options move-selection/move-target-piece-options)
@@ -834,7 +839,8 @@
            territory-card-source-options one-point-card-options replacement-card-options
            orientation-options orientation-required? disc-orientation-available?
            sun-disc-orientation-available?
-           sword-orientation-available? distance-options damage-options draw-options]}]
+           sword-orientation-available? distance-options damage-options draw-options
+           legal-targets]}]
   {:current-player current-player
    :selection selection
    :source-options source-options
@@ -869,6 +875,7 @@
               :source-board-options source-board-options
               :target-board-options target-board-options
               :target-wasteland-options target-wasteland-options
+              :legal-targets legal-targets
               :territory-card-source-options territory-card-source-options
               :one-point-card-options one-point-card-options
               :replacement-card-options replacement-card-options
@@ -917,6 +924,7 @@
     :source-board-options (move-source-board-options db)
     :target-board-options (move-target-board-options db)
     :target-wasteland-options (move-target-wasteland-options db)
+    :legal-targets (move-legal-targets db)
     :territory-card-source-options (move-territory-card-source-options db)
     :one-point-card-options (move-one-point-card-options db)
     :replacement-card-options (move-replacement-card-options db)

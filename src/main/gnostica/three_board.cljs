@@ -35,8 +35,10 @@
     :component-did-mount lifecycle/mount!
     :component-did-update
     (fn [this old-argv _ _]
-      (let [[_ old-cells old-pieces old-selected-index old-card-icon-mode] old-argv
-            [_ new-cells new-pieces new-selected-index new-card-icon-mode] (r/argv this)]
+      (let [[_ old-cells old-pieces old-selected-index old-card-icon-mode
+             _old-texture-errors old-legal-targets] old-argv
+            [_ new-cells new-pieces new-selected-index new-card-icon-mode
+             _new-texture-errors new-legal-targets] (r/argv this)]
         (cond
           (or (not= old-cells new-cells)
               (not= old-pieces new-pieces))
@@ -45,11 +47,12 @@
           (not= old-card-icon-mode new-card-icon-mode)
           (lifecycle/mount! this (controls/capture-view-state this))
 
-          (not= old-selected-index new-selected-index)
-          (lifecycle/set-selection! this new-selected-index))))
+          (or (not= old-selected-index new-selected-index)
+              (not= old-legal-targets new-legal-targets))
+          (lifecycle/set-selection! this new-selected-index new-legal-targets))))
     :component-will-unmount lifecycle/dispose!
     :reagent-render
-    (fn [_cells _pieces _selected-index card-icon-mode texture-errors _callbacks]
+    (fn [_cells _pieces _selected-index card-icon-mode texture-errors legal-targets _callbacks]
       (let [component (r/current-component)
             state (r/state component)
             cells-by-index (layout/cells-by-index _cells)
@@ -86,6 +89,8 @@
           :data-card-texture-max-icon-count (:max-card-icon-count texture-metadata)
           :data-card-texture-icon-stack-fits (:icon-stack-fits? texture-metadata)
           :data-wasteland-count (count (layout/wasteland-spaces _cells))
+          :data-legal-target-count (count (filter :enabled?
+                                                  (:territories legal-targets)))
           :data-visible-piece-count (scene-graph/visible-piece-count _cells _pieces)
           :data-piece-edge-outline-count (or (:piece-edge-outline-count state) 0)
           :data-antialias-requested resources/renderer-antialias-requested?

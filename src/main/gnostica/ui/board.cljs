@@ -22,6 +22,28 @@
   {"width" (board-stage-length min-col max-col)
    "height" (board-stage-length min-row max-row)})
 
+(defn- target-status-class [{:keys [active? status]}]
+  (when active?
+    (case status
+      :legal " is-legal-target"
+      :disabled " is-disabled-target"
+      "")))
+
+(defn- target-reason [descriptor]
+  (or (:reason descriptor)
+      (get-in descriptor [:error :message])))
+
+(defn- territory-targets-by-index [legal-targets]
+  (into {}
+        (map (juxt :board-index identity))
+        (:territories legal-targets)))
+
+(defn- wasteland-targets-by-coordinate [legal-targets]
+  (into {}
+        (map (fn [{:keys [row col] :as descriptor}]
+               [[row col] descriptor]))
+        (:wastelands legal-targets)))
+
 (defn- board-space-style [{:keys [min-row min-col]} {:keys [row col orientation]}]
   (let [relative-row (- row min-row)
         relative-col (- col min-col)]
@@ -60,13 +82,18 @@
 (defn- pieces-label [board-pieces]
   (apply str (interpose "; " (map ui/piece-summary board-pieces))))
 
-(defn- board-wasteland [bounds {:keys [id orientation] :as space} board-pieces]
+(defn- board-wasteland [bounds {:keys [id orientation] :as space} board-pieces descriptor]
   ^{:key id}
   [:div.board-wasteland
    {:class (str "is-" (name orientation)
-                (when (seq board-pieces) " has-pieces"))
+                (when (seq board-pieces) " has-pieces")
+                (target-status-class descriptor)
+                (when (:selected? descriptor) " is-selected-target"))
     :style (board-space-style bounds space)
     :data-piece-count (count board-pieces)
+    :data-move-target-status (some-> (:status descriptor) name)
+    :data-move-target-role (some-> (:role descriptor) name)
+    :title (target-reason descriptor)
     :role (when (seq board-pieces) "img")
     :aria-label (when (seq board-pieces)
                   (str (ui/wasteland-label space)
@@ -75,15 +102,21 @@
     :aria-hidden (when-not (seq board-pieces) "true")}
    (board-piece-markers board-pieces)])
 
-(defn board-card [bounds {:keys [index row col orientation card] :as cell} selected? board-pieces card-icon-mode]
+(defn board-card [bounds {:keys [index row col orientation card] :as cell}
+                  selected? board-pieces card-icon-mode descriptor]
   (let [{:keys [title]} card]
     [:button.board-card
      {:type "button"
       :class (str "is-" (name orientation)
                   " is-row-" row
                   " is-col-" col
-                  (when selected? " is-selected"))
+                  (when selected? " is-selected")
+                  (target-status-class descriptor)
+                  (when (:selected? descriptor) " is-selected-target"))
       :style (board-space-style bounds cell)
+      :data-move-target-status (some-> (:status descriptor) name)
+      :data-move-target-role (some-> (:role descriptor) name)
+      :title (target-reason descriptor)
       :aria-label (str title
                        ", "
                        (ui/orientation-label orientation)
@@ -103,7 +136,7 @@
 (defn board-stage []
   (let [{:keys [cells board-pieces pieces-by-space wastelands space-bounds
                 selected-index card-icon-mode texture-errors three-revision
-                three-renderer-available? three-renderer-message]}
+                three-renderer-available? three-renderer-message legal-targets]}
         @(rf/subscribe [events/board-view])]
     [:section.board-area
      {:data-three-revision (or three-revision "unavailable")}
@@ -119,6 +152,7 @@
         selected-index
         card-icon-mode
         texture-errors
+        legal-targets
         {:on-card-select #(rf/dispatch [events/select-board-card %])
          :on-clear-texture-errors #(rf/dispatch [events/clear-three-texture-errors])
          :on-renderer-error #(rf/dispatch [events/three-renderer-error %])
@@ -128,23 +162,27 @@
        [:div.board-fallback
         [:p.board-3d-status.is-error
          three-renderer-message]
-        [:div.board-stage
-         {:role "group"
-          :aria-label "Gnostica board"
-          :data-wasteland-count (count wastelands)
-          :data-table-surface-color three-board/table-surface-css-color
-         :data-table-clear-color three-board/table-clear-css-color
-          :style (board-stage-style space-bounds)}
-         (for [space wastelands]
-           (board-wasteland
-            space-bounds
-            space
-            (get pieces-by-space (pieces/wasteland-space (:row space) (:col space)))))
-         (for [cell cells]
-           ^{:key (:index cell)}
-           [board-card
-            space-bounds
-            cell
-            (= selected-index (:index cell))
-            (get pieces-by-space (pieces/territory-space (:index cell)))
-            card-icon-mode])]])]))
+        (let [territory-targets (territory-targets-by-index legal-targets)
+              wasteland-targets (wasteland-targets-by-coordinate legal-targets)]
+          [:div.board-stage
+           {:role "group"
+            :aria-label "Gnostica board"
+            :data-wasteland-count (count wastelands)
+            :data-table-surface-color three-board/table-surface-css-color
+            :data-table-clear-color three-board/table-clear-css-color
+            :style (board-stage-style space-bounds)}
+           (for [space wastelands]
+             (board-wasteland
+              space-bounds
+              space
+              (get pieces-by-space (pieces/wasteland-space (:row space) (:col space)))
+              (get wasteland-targets [(:row space) (:col space)])))
+           (for [cell cells]
+             ^{:key (:index cell)}
+             [board-card
+              space-bounds
+              cell
+              (= selected-index (:index cell))
+              (get pieces-by-space (pieces/territory-space (:index cell)))
+              card-icon-mode
+              (get territory-targets (:index cell))])])])]))

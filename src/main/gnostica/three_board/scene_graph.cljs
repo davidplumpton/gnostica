@@ -261,6 +261,8 @@
                             (+ layout/card-short layout/selected-card-padding)
                             (+ layout/card-long layout/selected-card-padding))
         selection-material (js/THREE.MeshBasicMaterial. #js {:color 0x9ff7e7
+                                                             :transparent true
+                                                             :opacity 0.82
                                                              :side js/THREE.DoubleSide})
         selection-mesh (js/THREE.Mesh. selection-geometry selection-material)
         geometry (js/THREE.PlaneGeometry. layout/card-short layout/card-long)

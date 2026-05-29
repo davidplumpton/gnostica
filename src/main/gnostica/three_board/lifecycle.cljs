@@ -11,13 +11,54 @@
     (when (not= (get state key) value)
       (r/replace-state this (assoc state key value)))))
 
-(defn set-selection! [this selected-index]
+(defn- territory-targets-by-index [legal-targets]
+  (into {}
+        (map (juxt :board-index identity))
+        (:territories legal-targets)))
+
+(defn- target-mesh-style [selected-index legal-targets index]
+  (let [descriptor (get (territory-targets-by-index legal-targets) index)]
+    (cond
+      (= index selected-index)
+      {:visible? true
+       :color 0x9ff7e7
+       :opacity 0.82}
+
+      (and (:active? descriptor)
+           (:enabled? descriptor))
+      {:visible? true
+       :color 0xffe08a
+       :opacity 0.68}
+
+      (and (:active? descriptor)
+           (not (:enabled? descriptor)))
+      {:visible? true
+       :color 0xff8a7a
+       :opacity 0.28}
+
+      :else
+      {:visible? false
+       :color 0x9ff7e7
+       :opacity 0.82})))
+
+(defn set-selection!
+  ([this selected-index]
+   (set-selection! this selected-index nil))
+  ([this selected-index legal-targets]
   (let [{:keys [active? render! selection-meshes]} (r/state this)]
     (when (and active? @active? selection-meshes)
       (doseq [[index mesh] selection-meshes]
-        (set! (.-visible mesh) (= index selected-index)))
+        (let [{:keys [visible? color opacity]} (target-mesh-style selected-index
+                                                                   legal-targets
+                                                                   index)
+              ^js material (.-material ^js mesh)]
+          (set! (.-visible ^js mesh) visible?)
+          (.set (.-color material) color)
+          (set! (.-opacity material) opacity)
+          (set! (.-transparent material) (< opacity 1))
+          (set! (.-needsUpdate material) true)))
       (when render!
-        (render!)))))
+        (render!))))))
 
 (defn dispose! [this]
   (resources/dispose-board! (r/state this))
@@ -28,7 +69,7 @@
    (mount! this nil))
   ([this preserved-view]
    (dispose! this)
-   (let [[_ cells board-pieces selected-index card-icon-mode _texture-errors callbacks] (r/argv this)]
+   (let [[_ cells board-pieces selected-index card-icon-mode _texture-errors legal-targets callbacks] (r/argv this)]
      (resources/invoke-callback callbacks :on-clear-texture-errors)
      (when (runtime/available?)
        (when-let [mount-node (.-boardMountNode ^js this)]
@@ -97,4 +138,4 @@
                                                  :keyboard-pan-bounds (controls/keyboard-pan-bounds cells)}
                                                 pointer-listeners
                                                 (controls/camera-view-metadata camera controls)))
-                   (set-selection! this selected-index)))))))))))
+                   (set-selection! this selected-index legal-targets)))))))))))

@@ -584,6 +584,47 @@
   (when (rod-move? db source-id params)
     (cards/rod-variant (active-card db source-id params))))
 
+(defn- rod-base-command [db source-id params]
+  (when (and (rod-move? db source-id params)
+             (current-player-id db)
+             (:piece-id params))
+    (cond-> {:player-id (current-player-id db)
+             :source (source-command source-id params)}
+      (selected-rod-variant db source-id params)
+      (assoc :rod-variant (selected-rod-variant db source-id params)))))
+
+(defn- rod-command-resolves? [db source-id params command]
+  (boolean
+   (and (game db)
+        command
+        (:ok? (game-state/resolve-rod-command (game db) command)))))
+
+(defn- rod-piece-target? [db source-id params piece]
+  (and piece
+       (= :push-piece (:rod-mode params))
+       (rod-command-resolves?
+        db
+        source-id
+        params
+        (assoc (rod-base-command db source-id params)
+               :mode :push-piece
+               :target {:kind :piece
+                        :piece-id (:id piece)}
+               :distance 1))))
+
+(defn- rod-territory-target? [db source-id params cell]
+  (and cell
+       (= :push-territory (:rod-mode params))
+       (rod-command-resolves?
+        db
+        source-id
+        params
+        (assoc (rod-base-command db source-id params)
+               :mode :push-territory
+               :target {:kind :territory
+                        :board-index (:index cell)}
+               :distance 1))))
+
 (defn- disc-move? [db source-id params]
   (= :disc (active-power db source-id params)))
 
@@ -2028,7 +2069,10 @@
         params (move-params db)]
     (cond
       (rod-move? db source params)
-      (board-pieces db)
+      (if (= :push-piece (:rod-mode params))
+        (filterv #(rod-piece-target? db source params %)
+                 (board-pieces db))
+        [])
 
       (= :piece (selected-sun-disc-mode db source params))
       (filterv #(sun-disc-piece-target? db source params %)
@@ -3336,6 +3380,28 @@
 
             (and has-source?
                  has-piece?
+                 (rod-move? db source params)
+                 (= :push-territory (:rod-mode params))
+                 (rod-territory-target? db source params cell))
+            (update-move-selection-success db update :params set-territory-target index)
+
+            (and has-source?
+                 has-piece?
+                 (rod-move? db source params)
+                 (= :push-territory (:rod-mode params)))
+            (update-move-selection db assoc
+                                   :error
+                                   (move-error :invalid-rod-target
+                                               "Choose a Rod-targetable territory."
+                                               {:board-index index}))
+
+            (and has-source?
+                 has-piece?
+                 (rod-move? db source params))
+            db
+
+            (and has-source?
+                 has-piece?
                  (or (and (disc-move? db source params)
                           (not= :territory (:disc-target-kind params)))
                      (and (sword-move? db source params)
@@ -3376,8 +3442,8 @@
                                                "Choose a territory with one of the current player's pieces."
                                                {:board-index index}))))
 
-        :play-hand-card
-        (cond
+      :play-hand-card
+      (cond
           (= :world-copy (:stage (move-selection db)))
           (select-move-world-copy db index)
 
@@ -3422,6 +3488,22 @@
                                  (move-error :invalid-sword-target
                                              "Choose a Sword-targetable territory."
                                              {:board-index index}))
+
+          (and (rod-move? db source params)
+               (= :push-territory (:rod-mode params))
+               (rod-territory-target? db source params cell))
+          (update-move-selection-success db update :params set-territory-target index)
+
+          (and (rod-move? db source params)
+               (= :push-territory (:rod-mode params)))
+          (update-move-selection db assoc
+                                 :error
+                                 (move-error :invalid-rod-target
+                                             "Choose a Rod-targetable territory."
+                                             {:board-index index}))
+
+          (rod-move? db source params)
+          db
 
           (and (or (cup-move? db source params)
                    (sun-move? db source params))
@@ -3903,8 +3985,16 @@
                                          "Choose a piece on the board."
                                          {:piece-id piece-id}))
 
-      (rod-move? db source params)
+      (and (rod-move? db source params)
+           selectable-piece?)
       (update-move-selection-success db update :params set-target-piece (:id piece))
+
+      (rod-move? db source params)
+      (update-move-selection db assoc
+                             :error
+                             (move-error :invalid-target-piece
+                                         "Choose a Rod-targetable piece."
+                                         {:piece-id piece-id}))
 
       (and (= :piece (selected-sun-disc-mode db source params))
            selectable-piece?)
@@ -4258,6 +4348,11 @@
       (filterv #(sword-territory-target? db source params %)
                (board db))
 
+      (and (rod-move? db source params)
+           (= :push-territory (:rod-mode params)))
+      (filterv #(rod-territory-target? db source params %)
+               (board db))
+
       (hermit-move? db source params)
       (cond
         (hermit-piece-target-selected? params)
@@ -4330,6 +4425,466 @@
           {:id orientation
            :label (pieces/orientation-label orientation)})
         [:up :north :east :south :west]))
+
+(defn- target-status [active? enabled?]
+  (cond
+    enabled? :legal
+    active? :disabled
+    :else :idle))
+
+(defn- descriptor-error [code message data]
+  {:code code
+   :message message
+   :data data})
+
+(defn- selected-territory-indexes [params]
+  (set (keep params
+             [:source-board-index
+              :copied-board-index
+              :target-board-index
+              :sun-disc-target-board-index
+              :hermit-destination-board-index])))
+
+(defn- selected-wasteland? [params {:keys [row col]}]
+  (boolean
+   (some (fn [key]
+           (let [space (get params key)]
+             (and (= row (:row space))
+                  (= col (:col space)))))
+         [:target-wasteland :hermit-destination-wasteland])))
+
+(defn- selected-piece-ids [params]
+  (set (keep params
+             [:piece-id :target-piece-id :sun-disc-target-piece-id])))
+
+(defn- current-target-role [stage]
+  (case stage
+    :source-territory :source
+    :hand-card :source
+    :piece :minion
+    :world-copy :copy
+    :hermit-destination :destination
+    :one-point-card :territory-card
+    :replacement-card :replacement-card
+    :target-piece :target
+    :target :target
+    :draw-count :draw
+    :orientation :orientation
+    :idle))
+
+(defn- territory-disabled-error [db stage]
+  (let [{:keys [source params]} (move-selection db)]
+    (case stage
+      :source-territory
+      (descriptor-error :invalid-source-territory
+                        "Choose a territory with one of the current player's pieces."
+                        {:source source})
+
+      :world-copy
+      (descriptor-error :invalid-world-copy
+                        "Choose a non-World major territory for World to copy."
+                        {:source source})
+
+      :hermit-destination
+      (descriptor-error :invalid-hermit-destination
+                        "Choose an eligible Hermit destination territory."
+                        {:source source})
+
+      :target
+      (cond
+        (= :place-initial-small source)
+        (descriptor-error :target-space-occupied
+                          "Choose an empty territory or wasteland."
+                          {:source source})
+
+        (rod-move? db source params)
+        (descriptor-error :invalid-rod-target
+                          "Choose a Rod-targetable territory."
+                          {:source source
+                           :rod-mode (:rod-mode params)})
+
+        (disc-move? db source params)
+        (descriptor-error :invalid-disc-target
+                          "Choose a Disc-targetable territory."
+                          {:source source
+                           :disc-target-kind (:disc-target-kind params)})
+
+        (sword-move? db source params)
+        (descriptor-error :invalid-sword-target
+                          "Choose a Sword-targetable territory."
+                          {:source source
+                           :sword-target-kind (:sword-target-kind params)})
+
+        (or (cup-move? db source params)
+            (sun-move? db source params))
+        (descriptor-error :invalid-cup-target
+                          "Choose a Cup-targetable territory."
+                          {:source source})
+
+        :else
+        (descriptor-error :invalid-target-territory
+                          "Choose an available target territory."
+                          {:source source}))
+
+      nil)))
+
+(defn- territory-descriptor-context [db]
+  (let [{:keys [stage]} (move-selection db)]
+    (case stage
+      :source-territory
+      {:active? true
+       :role :source
+       :options (move-source-board-options db)
+       :disabled-error (territory-disabled-error db stage)}
+
+      :world-copy
+      {:active? true
+       :role :copy
+       :options (move-world-copy-options db)
+       :disabled-error (territory-disabled-error db stage)}
+
+      :target
+      {:active? true
+       :role :target
+       :options (move-target-board-options db)
+       :disabled-error (territory-disabled-error db stage)}
+
+      :hermit-destination
+      {:active? true
+       :role :destination
+       :options (move-target-board-options db)
+       :disabled-error (territory-disabled-error db stage)}
+
+      nil)))
+
+(defn- territory-descriptors [db]
+  (let [{:keys [params]} (move-selection db)
+        {:keys [active? role options disabled-error]} (or (territory-descriptor-context db)
+                                                          {})
+        legal-indexes (set (map :index options))
+        selected-indexes (selected-territory-indexes params)]
+    (mapv (fn [{:keys [index row col orientation card] :as cell}]
+            (let [enabled? (contains? legal-indexes index)
+                  status (target-status active? enabled?)]
+              (cond-> {:kind :territory
+                       :role role
+                       :board-index index
+                       :space-key (pieces/territory-space index)
+                       :row row
+                       :col col
+                       :orientation orientation
+                       :card-id (:id card)
+                       :label (:title card)
+                       :cell cell
+                       :active? (true? active?)
+                       :enabled? enabled?
+                       :status status
+                       :selected? (contains? selected-indexes index)}
+                (and active? (not enabled?) disabled-error)
+                (assoc :error (assoc-in disabled-error [:data :board-index] index)
+                       :reason (:message disabled-error)))))
+          (board db))))
+
+(defn- wasteland-disabled-error [db stage]
+  (let [{:keys [source params]} (move-selection db)]
+    (case stage
+      :target
+      (if (= :place-initial-small source)
+        (descriptor-error :target-space-occupied
+                          "Choose an empty territory or wasteland."
+                          {:source source})
+        (descriptor-error :invalid-wasteland-target
+                          "Choose a wasteland targeted by the active move."
+                          {:source source
+                           :power (active-power db source params)}))
+
+      :hermit-destination
+      (descriptor-error :invalid-hermit-destination
+                        "Choose an eligible Hermit destination wasteland."
+                        {:source source})
+
+      nil)))
+
+(defn- wasteland-descriptor-context [db]
+  (let [{:keys [stage]} (move-selection db)]
+    (case stage
+      :target
+      {:active? true
+       :role :target
+       :options (move-target-wasteland-options db)
+       :disabled-error (wasteland-disabled-error db stage)}
+
+      :hermit-destination
+      {:active? true
+       :role :destination
+       :options (move-target-wasteland-options db)
+       :disabled-error (wasteland-disabled-error db stage)}
+
+      nil)))
+
+(defn- wasteland-descriptors [db]
+  (let [{:keys [params]} (move-selection db)
+        {:keys [active? role options disabled-error]} (or (wasteland-descriptor-context db)
+                                                          {})
+        legal-coordinates (set (map (juxt :row :col) options))]
+    (mapv (fn [{:keys [row col] :as space}]
+            (let [enabled? (contains? legal-coordinates [row col])
+                  status (target-status active? enabled?)]
+              (cond-> {:kind :wasteland
+                       :role role
+                       :space-key (pieces/wasteland-space row col)
+                       :row row
+                       :col col
+                       :orientation (:orientation space)
+                       :label (:id space)
+                       :space space
+                       :active? (true? active?)
+                       :enabled? enabled?
+                       :status status
+                       :selected? (selected-wasteland? params space)}
+                (and active? (not enabled?) disabled-error)
+                (assoc :error (assoc disabled-error
+                                     :data (assoc (:data disabled-error)
+                                                  :row row
+                                                  :col col))
+                       :reason (:message disabled-error)))))
+          (layout/wasteland-spaces (board db)))))
+
+(defn- piece-disabled-error [db stage]
+  (let [{:keys [source params]} (move-selection db)]
+    (case stage
+      :piece
+      (descriptor-error :invalid-piece
+                        "Choose one of the current player's pieces."
+                        {:source source})
+
+      :target-piece
+      (cond
+        (rod-move? db source params)
+        (descriptor-error :invalid-target-piece
+                          "Choose a Rod-targetable piece."
+                          {:source source
+                           :rod-mode (:rod-mode params)})
+
+        (disc-move? db source params)
+        (descriptor-error :invalid-target-piece
+                          "Choose a Disc-targetable piece."
+                          {:source source
+                           :disc-target-kind (:disc-target-kind params)})
+
+        (sword-move? db source params)
+        (descriptor-error :invalid-target-piece
+                          "Choose a Sword-targetable piece."
+                          {:source source
+                           :sword-target-kind (:sword-target-kind params)})
+
+        (or (cup-move? db source params)
+            (sun-move? db source params))
+        (descriptor-error :invalid-target-piece
+                          "Choose an enemy piece targeted by the minion."
+                          {:source source})
+
+        :else
+        (descriptor-error :invalid-target-piece
+                          "Choose an available target piece."
+                          {:source source}))
+
+      nil)))
+
+(defn- piece-descriptor-context [db]
+  (let [{:keys [stage]} (move-selection db)]
+    (case stage
+      :piece
+      {:active? true
+       :role :minion
+       :options (move-piece-options db)
+       :disabled-error (piece-disabled-error db stage)}
+
+      :target-piece
+      {:active? true
+       :role :target
+       :options (move-target-piece-options db)
+       :disabled-error (piece-disabled-error db stage)}
+
+      nil)))
+
+(defn- piece-descriptors [db]
+  (let [{:keys [params]} (move-selection db)
+        {:keys [active? role options disabled-error]} (or (piece-descriptor-context db)
+                                                          {})
+        legal-piece-ids (set (map :id options))
+        selected-ids (selected-piece-ids params)]
+    (mapv (fn [{:keys [id player-id space-index space size orientation] :as piece}]
+            (let [enabled? (contains? legal-piece-ids id)
+                  status (target-status active? enabled?)]
+              (cond-> {:kind :piece
+                       :role role
+                       :piece-id id
+                       :player-id player-id
+                       :space-key (pieces/piece-space-key piece)
+                       :space-index space-index
+                       :space space
+                       :size size
+                       :orientation orientation
+                       :piece piece
+                       :active? (true? active?)
+                       :enabled? enabled?
+                       :status status
+                       :selected? (contains? selected-ids id)}
+                (and active? (not enabled?) disabled-error)
+                (assoc :error (assoc-in disabled-error [:data :piece-id] id)
+                       :reason (:message disabled-error)))))
+          (board-pieces db))))
+
+(defn- card-descriptor-context [db]
+  (let [{:keys [source stage]} (move-selection db)]
+    (cond
+      (= :hand-card stage)
+      {:hand {:active? true
+              :role :source
+              :options (move-hand-card-options db)
+              :disabled-error (descriptor-error :invalid-hand-card
+                                                "Choose a card from the current player's hand."
+                                                {:source source})}}
+
+      (and (= :draw-cards source)
+           (contains? #{:draw-count :confirm} stage))
+      {:hand {:active? true
+              :role :discard
+              :options (move-discard-card-options db)
+              :disabled-error nil}
+       :draw-pile {:active? true
+                   :role :draw}}
+
+      (= :one-point-card stage)
+      {:hand {:active? true
+              :role :territory-card
+              :options (move-one-point-card-options db)
+              :disabled-error (descriptor-error :invalid-one-point-card
+                                                "Choose a one-point card from the current player's hand."
+                                                {:source source})}}
+
+      (= :replacement-card stage)
+      (let [options (move-replacement-card-options db)]
+        {:hand {:active? true
+                :role :replacement-card
+                :options options
+                :disabled-error (descriptor-error :invalid-replacement-card
+                                                  "Choose an available replacement card."
+                                                  {:source source})}
+         :discard {:active? true
+                   :role :replacement-card
+                   :options options
+                   :disabled-error (descriptor-error :invalid-replacement-card
+                                                     "Choose an available replacement card."
+                                                     {:source source})}})
+
+      (= :judgement-card-selection stage)
+      {:discard {:active? true
+                 :role :judgement-card
+                 :options (move-judgement-card-options db)
+                 :disabled-error (descriptor-error :invalid-judgement-card
+                                                   "Choose a card from the discard pile."
+                                                   {:source source})}}
+
+      :else
+      {})))
+
+(defn- card-descriptors-for [cards {:keys [active? role options disabled-error]}
+                             selected-card-ids]
+  (let [legal-card-ids (set (map :id options))]
+    (mapv (fn [{:keys [id title] :as card}]
+            (let [enabled? (contains? legal-card-ids id)
+                  status (target-status active? enabled?)]
+              (cond-> {:kind :card
+                       :role role
+                       :card-id id
+                       :label title
+                       :card card
+                       :active? (true? active?)
+                       :enabled? enabled?
+                       :status status
+                       :selected? (contains? selected-card-ids id)}
+                (and active? (not enabled?) disabled-error)
+                (assoc :error (assoc-in disabled-error [:data :card-id] id)
+                       :reason (:message disabled-error)))))
+          cards)))
+
+(defn- hand-card-descriptors [db]
+  (let [{:keys [params]} (move-selection db)
+        context (get (card-descriptor-context db) :hand)
+        selected-ids (set (concat [(:hand-card-id params)
+                                   (:one-point-card-id params)
+                                   (:replacement-card-id params)]
+                                  (:discard-card-ids params)))]
+    (card-descriptors-for (current-player-hand db) context selected-ids)))
+
+(defn- discard-card-descriptors [db]
+  (let [{:keys [params]} (move-selection db)
+        context (get (card-descriptor-context db) :discard)
+        selected-ids (set (concat [(:replacement-card-id params)]
+                                  (:judgement-card-ids params)))]
+    (card-descriptors-for (discard-pile db) context selected-ids)))
+
+(defn- draw-pile-descriptor [db]
+  (let [context (get (card-descriptor-context db) :draw-pile)
+        active? (:active? context)
+        enabled? (and active? (pos? (max-draw-count db)))]
+    (cond-> {:kind :draw-pile
+             :role (:role context)
+             :active? (true? active?)
+             :enabled? (boolean enabled?)
+             :status (target-status active? enabled?)
+             :count (count (get-in db [:game :draw-pile] []))}
+      (and active? (not enabled?))
+      (assoc :reason "The current player cannot draw more cards."
+             :error (descriptor-error :draw-pile-unavailable
+                                      "The current player cannot draw more cards."
+                                      {})))))
+
+(defn- stash-piece-descriptors [db]
+  (let [{:keys [source]} (move-selection db)
+        active? (= :place-initial-small source)
+        player-id (current-player-id db)
+        count (small-stash-count db)
+        enabled? (and active? (pos? count))]
+    (cond-> []
+      active?
+      (conj (cond-> {:kind :stash-piece
+                     :role :source
+                     :player-id player-id
+                     :size :small
+                     :count count
+                     :active? true
+                     :enabled? enabled?
+                     :status (target-status active? enabled?)}
+              (not enabled?)
+              (assoc :reason "The current player has no small pieces in stash."
+                     :error (descriptor-error :stash-piece-unavailable
+                                              "The current player has no small pieces in stash."
+                                              {:player-id player-id
+                                               :size :small})))))))
+
+(defn move-legal-targets [db]
+  (let [targets {:territories (territory-descriptors db)
+                 :wastelands (wasteland-descriptors db)
+                 :pieces (piece-descriptors db)
+                 :hand-cards (hand-card-descriptors db)
+                 :discard-cards (discard-card-descriptors db)
+                 :draw-pile (draw-pile-descriptor db)
+                 :stash-pieces (stash-piece-descriptors db)}
+        active? (boolean
+                 (or (some :active? (:territories targets))
+                     (some :active? (:wastelands targets))
+                     (some :active? (:pieces targets))
+                     (some :active? (:hand-cards targets))
+                     (some :active? (:discard-cards targets))
+                     (:active? (:draw-pile targets))
+                     (some :active? (:stash-pieces targets))))]
+    (assoc targets
+           :active? active?
+           :stage (:stage (move-selection db))
+           :role (current-target-role (:stage (move-selection db))))))
 
 (defn- cup-target-command [params]
   (cond

@@ -25,7 +25,46 @@
        ", column "
        (inc col)))
 
-(defn- board-choice-grid [label cells selected-index]
+(defn- target-status-class [{:keys [active? status]}]
+  (when active?
+    (case status
+      :legal " is-legal-target"
+      :disabled " is-disabled-target"
+      "")))
+
+(defn- target-reason [descriptor]
+  (or (:reason descriptor)
+      (get-in descriptor [:error :message])))
+
+(defn- active-descriptors [descriptors]
+  (when (some :active? descriptors)
+    descriptors))
+
+(defn- territory-choice-descriptors [cells descriptors]
+  (if-let [descriptors (seq (active-descriptors descriptors))]
+    descriptors
+    (mapv (fn [cell]
+            {:cell cell
+             :board-index (:index cell)
+             :enabled? true
+             :status :legal})
+          cells)))
+
+(defn- wasteland-choice-descriptors [wastelands descriptors]
+  (if-let [descriptors (seq (active-descriptors descriptors))]
+    descriptors
+    (mapv (fn [space]
+            {:space space
+             :row (:row space)
+             :col (:col space)
+             :enabled? true
+             :status :legal})
+          wastelands)))
+
+(defn- board-choice-grid
+  ([label cells selected-index]
+   (board-choice-grid label cells selected-index nil))
+  ([label cells selected-index territory-descriptors]
   [:div.move-step
    [:div.move-step__header
     [:span label]
@@ -34,16 +73,25 @@
        (:title (:card selected-cell))
        "None")]]
    [:div.move-board-choice-grid
-    (for [cell cells]
+    (for [{:keys [cell board-index enabled?] :as descriptor}
+          (territory-choice-descriptors cells territory-descriptors)
+          :let [cell (or cell (layout/cell-by-index cells board-index))
+                selected? (= selected-index (:index cell))]]
       ^{:key (:index cell)}
       [:button.move-chip
        {:type "button"
-        :class (when (= selected-index (:index cell)) "is-selected")
-        :aria-pressed (= selected-index (:index cell))
+        :class (str (when selected? "is-selected")
+                    (target-status-class descriptor))
+        :disabled (false? enabled?)
+        :title (target-reason descriptor)
+        :aria-pressed selected?
         :on-click #(rf/dispatch [events/select-board-card (:index cell)])}
-       (board-cell-label cell)])]])
+       (board-cell-label cell)])]]))
 
-(defn- world-copy-choices [cells selected-index]
+(defn- world-copy-choices
+  ([cells selected-index]
+   (world-copy-choices cells selected-index nil))
+  ([cells selected-index territory-descriptors]
   [:div.move-step
    [:div.move-step__header
     [:span "World copy"]
@@ -51,27 +99,38 @@
      (if-let [selected-cell (some #(when (= selected-index (:index %)) %) cells)]
        (:title (:card selected-cell))
        "None")]]
-   (if (seq cells)
+   (if (seq (or cells territory-descriptors))
      [:div.move-board-choice-grid
-      (for [cell cells]
+      (for [{:keys [cell board-index enabled?] :as descriptor}
+            (territory-choice-descriptors cells territory-descriptors)
+            :let [cell (or cell (layout/cell-by-index cells board-index))
+                  selected? (= selected-index (:index cell))]]
         ^{:key (:index cell)}
         [:button.move-chip
          {:type "button"
-          :class (when (= selected-index (:index cell)) "is-selected")
-          :aria-pressed (= selected-index (:index cell))
+          :class (str (when selected? "is-selected")
+                      (target-status-class descriptor))
+          :disabled (false? enabled?)
+          :title (target-reason descriptor)
+          :aria-pressed selected?
           :on-click #(rf/dispatch [events/select-move-world-copy (:index cell)])}
          (board-cell-label cell)])]
-     [:p.move-step__empty "No major territories available."])])
+     [:p.move-step__empty "No major territories available."])]))
 
 (defn- same-wasteland? [selected-space space]
   (and selected-space
        (= (:row selected-space) (:row space))
        (= (:col selected-space) (:col space))))
 
-(defn- target-choice-grid [cells wastelands selected-index selected-wasteland]
-  [:div.move-step
-   [:div.move-step__header
-    [:span "Target"]
+(defn- target-choice-grid
+  ([cells wastelands selected-index selected-wasteland]
+   (target-choice-grid "Target" cells wastelands selected-index selected-wasteland nil))
+  ([cells wastelands selected-index selected-wasteland legal-targets]
+   (target-choice-grid "Target" cells wastelands selected-index selected-wasteland legal-targets))
+  ([label cells wastelands selected-index selected-wasteland legal-targets]
+   [:div.move-step
+    [:div.move-step__header
+     [:span label]
     [:strong
      (if-let [selected-cell (some #(when (= selected-index (:index %)) %) cells)]
        (:title (:card selected-cell))
@@ -79,22 +138,34 @@
          (ui/wasteland-label selected-wasteland)
          "None"))]]
    [:div.move-board-choice-grid
-    (for [cell cells]
+    (for [{:keys [cell board-index enabled?] :as descriptor}
+          (territory-choice-descriptors cells (:territories legal-targets))
+          :let [cell (or cell (layout/cell-by-index cells board-index))
+                selected? (= selected-index (:index cell))]]
       ^{:key (str "territory-" (:index cell))}
       [:button.move-chip
        {:type "button"
-        :class (when (= selected-index (:index cell)) "is-selected")
-        :aria-pressed (= selected-index (:index cell))
+        :class (str (when selected? "is-selected")
+                    (target-status-class descriptor))
+        :disabled (false? enabled?)
+        :title (target-reason descriptor)
+        :aria-pressed selected?
         :on-click #(rf/dispatch [events/select-board-card (:index cell)])}
        (str "Territory: " (board-cell-label cell))])
-    (for [space wastelands]
+    (for [{:keys [space row col enabled?] :as descriptor}
+          (wasteland-choice-descriptors wastelands (:wastelands legal-targets))
+          :let [space (or space {:row row :col col})
+                selected? (same-wasteland? selected-wasteland space)]]
       ^{:key (:id space)}
       [:button.move-chip
        {:type "button"
-        :class (when (same-wasteland? selected-wasteland space) "is-selected")
-        :aria-pressed (same-wasteland? selected-wasteland space)
+        :class (str (when selected? "is-selected")
+                    (target-status-class descriptor))
+        :disabled (false? enabled?)
+        :title (target-reason descriptor)
+        :aria-pressed selected?
         :on-click #(rf/dispatch [events/select-move-wasteland-target (:row space) (:col space)])}
-       (ui/wasteland-label space)])]])
+       (ui/wasteland-label space)])]]))
 
 (defn- hand-card-choices [cards selected-card-id]
   [:div.move-step
@@ -536,12 +607,13 @@
 
 (defn- cup-move-controls
   [params board target-piece-options target-board-options target-wasteland-options
-   territory-card-source-options one-point-card-options orientation-options]
+   territory-card-source-options one-point-card-options orientation-options legal-targets]
   [:<>
    [target-choice-grid target-board-options
     target-wasteland-options
     (:target-board-index params)
-    (:target-wasteland params)]
+    (:target-wasteland params)
+    legal-targets]
    [target-piece-choices board target-piece-options (:target-piece-id params)]
    (when (:target-board-index params)
      [orientation-choices orientation-options (:orientation params)])
@@ -555,7 +627,7 @@
 
 (defn- rod-move-controls
   [params board rod-mode-options target-piece-options target-board-options distance-options
-   orientation-options orientation-required?]
+   orientation-options orientation-required? legal-targets]
   [:<>
    [rod-mode-choices rod-mode-options (:rod-mode params)]
    (case (:rod-mode params)
@@ -575,7 +647,8 @@
 
      :push-territory
      [:<>
-      [board-choice-grid "Target territory" target-board-options (:target-board-index params)]
+      [board-choice-grid "Target territory" target-board-options (:target-board-index params)
+       (:territories legal-targets)]
       (when (:target-board-index params)
         [distance-choices distance-options (:distance params)])]
 
@@ -584,7 +657,7 @@
 (defn- sun-move-controls
   [params board sun-disc-mode-options target-piece-options target-board-options
    target-wasteland-options one-point-card-options replacement-card-options
-   orientation-options sun-disc-orientation-available?]
+   orientation-options sun-disc-orientation-available? legal-targets]
   (let [cup-target-ready? (or (:target-piece-id params)
                               (:target-wasteland params)
                               (and (some? (:target-board-index params))
@@ -597,7 +670,8 @@
      [target-choice-grid board
       target-wasteland-options
       (:target-board-index params)
-      (:target-wasteland params)]
+      (:target-wasteland params)
+      legal-targets]
      (when (and (not (:sun-disc-mode params))
                 (not (:target-board-index params))
                 (not (:target-wasteland params)))
@@ -632,7 +706,8 @@
        [:<>
         [board-choice-grid "Disc target territory"
          target-board-options
-         (:sun-disc-target-board-index params)]
+         (:sun-disc-target-board-index params)
+         (:territories legal-targets)]
         (when (:sun-disc-target-board-index params)
           [replacement-card-choices replacement-card-options
            (:sun-disc-replacement-card-id params)])]
@@ -643,7 +718,7 @@
   [params board disc-action-count-options disc-minion-orientation-required?
    disc-target-kind-options target-piece-options target-board-options
    replacement-source-options replacement-card-options orientation-options
-   orientation-available?]
+   orientation-available? legal-targets]
   (let [action-count-ready? (or (empty? disc-action-count-options)
                                 (:disc-action-count params))
         minion-orientation-ready? (or (not disc-minion-orientation-required?)
@@ -669,7 +744,8 @@
 
          :territory
          [:<>
-          [board-choice-grid "Target territory" target-board-options (:target-board-index params)]
+          [board-choice-grid "Target territory" target-board-options (:target-board-index params)
+           (:territories legal-targets)]
           (when (:target-board-index params)
             [territory-card-source-choices "Replacement source"
              replacement-source-options
@@ -684,7 +760,7 @@
 (defn- sword-move-controls
   [params board sword-target-kind-options target-piece-options target-board-options
    replacement-source-options replacement-card-options orientation-options
-   orientation-available? damage-options]
+   orientation-available? damage-options legal-targets]
   [:<>
    [sword-target-kind-choices sword-target-kind-options (:sword-target-kind params)]
    (case (:sword-target-kind params)
@@ -698,7 +774,8 @@
 
      :territory
      [:<>
-      [board-choice-grid "Target territory" target-board-options (:target-board-index params)]
+      [board-choice-grid "Target territory" target-board-options (:target-board-index params)
+       (:territories legal-targets)]
       (when (:target-board-index params)
         [damage-choices damage-options (:damage params)])
       (when (and (:target-board-index params)
@@ -735,7 +812,7 @@
 
 (defn- hermit-move-controls
   [params board target-piece-options target-board-options target-wasteland-options
-   orientation-options orientation-required?]
+   orientation-options orientation-required? legal-targets]
   (let [target-selected? (or (:target-piece-id params)
                              (some? (:target-board-index params)))]
     [:<>
@@ -752,14 +829,16 @@
               (:title (:card cell))
               "Selected"))]]]
        [:<>
-        [target-choice-grid "Hermit target" target-board-options [] (:target-board-index params) nil]
+        [target-choice-grid "Hermit target" target-board-options [] (:target-board-index params) nil
+         legal-targets]
         [target-piece-choices board target-piece-options (:target-piece-id params)]])
      (when target-selected?
        [target-choice-grid "Destination"
         target-board-options
         target-wasteland-options
         (:hermit-destination-board-index params)
-        (:hermit-destination-wasteland params)])
+        (:hermit-destination-wasteland params)
+        legal-targets])
      (when (and orientation-required?
                 (or (:hermit-destination-board-index params)
                     (:hermit-destination-wasteland params)))
@@ -783,10 +862,11 @@
                 replacement-card-options orientation-options orientation-required?
                 disc-orientation-available? sun-disc-orientation-available?
                 sword-orientation-available?
-                distance-options damage-options draw-options]} controls]
+                distance-options damage-options draw-options legal-targets]} controls]
     (case type
       :source-board
-      [board-choice-grid "Source territory" source-board-options (:source-board-index params)]
+      [board-choice-grid "Source territory" source-board-options (:source-board-index params)
+       (:territories legal-targets)]
 
       :hand-card
       [hand-card-choices hand-options (:hand-card-id params)]
@@ -801,7 +881,8 @@
       [major-action-count-choices major-action-count-options major-action-count]
 
       :world-copy
-      [world-copy-choices world-copy-options (:copied-board-index params)]
+      [world-copy-choices world-copy-options (:copied-board-index params)
+       (:territories legal-targets)]
 
       :world-copied-power
       [power-choices world-copied-power-options world-copied-power]
@@ -814,7 +895,8 @@
        target-board-options
        distance-options
        orientation-options
-       orientation-required?]
+       orientation-required?
+       legal-targets]
 
       :cup
       [cup-move-controls params
@@ -824,7 +906,8 @@
        target-wasteland-options
        territory-card-source-options
        one-point-card-options
-       orientation-options]
+       orientation-options
+       legal-targets]
 
       :disc
       [disc-move-controls params
@@ -837,7 +920,8 @@
        territory-card-source-options
        replacement-card-options
        orientation-options
-       disc-orientation-available?]
+       disc-orientation-available?
+       legal-targets]
 
       :sun
       [sun-move-controls params
@@ -849,7 +933,8 @@
        one-point-card-options
        replacement-card-options
        orientation-options
-       sun-disc-orientation-available?]
+       sun-disc-orientation-available?
+       legal-targets]
 
       :sword
       [sword-move-controls params
@@ -861,7 +946,8 @@
        replacement-card-options
        orientation-options
        sword-orientation-available?
-       damage-options]
+       damage-options
+       legal-targets]
 
       :fool-reveal-count
       [fool-reveal-count-choices
@@ -897,7 +983,8 @@
        target-board-options
        target-wasteland-options
        orientation-options
-       orientation-required?]
+       orientation-required?
+       legal-targets]
 
       :devil
       [devil-move-controls
@@ -929,7 +1016,8 @@
       [target-choice-grid target-board-options
        target-wasteland-options
        (:target-board-index params)
-       (:target-wasteland params)]
+       (:target-wasteland params)
+       legal-targets]
 
       nil)))
 

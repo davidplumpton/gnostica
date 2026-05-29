@@ -112,6 +112,7 @@
 (def move-disc-minion-orientation-required? :gnostica.app/move-disc-minion-orientation-required?)
 (def move-disc-target-kind-options :gnostica.app/move-disc-target-kind-options)
 (def move-sword-target-kind-options :gnostica.app/move-sword-target-kind-options)
+(def move-legal-targets :gnostica.app/move-legal-targets)
 (def move-target-piece-options :gnostica.app/move-target-piece-options)
 (def move-distance-options :gnostica.app/move-distance-options)
 (def move-damage-options :gnostica.app/move-damage-options)
@@ -701,6 +702,11 @@ move-rod-mode-options
    (app-state/move-sword-target-kind-options db)))
 
 (rf/reg-sub
+ move-legal-targets
+ (fn [db _]
+   (app-state/move-legal-targets db)))
+
+(rf/reg-sub
 move-target-piece-options
  (fn [db _]
    (app-state/move-target-piece-options db)))
@@ -804,12 +810,14 @@ move-rod-orientation-required?
  :<- [three-texture-errors]
  :<- [three-renderer-error]
  :<- [three-runtime-status]
+ :<- [move-legal-targets]
  (fn [[cells board-pieces selected-index card-icon-mode texture-errors
-       renderer-error runtime-status] _]
+       renderer-error runtime-status legal-targets] _]
    (app-state/board-view-model
     {:cells cells
      :board-pieces board-pieces
      :selected-index selected-index
+     :legal-targets legal-targets
      :card-icon-mode card-icon-mode
      :texture-errors texture-errors
      :renderer-error renderer-error
@@ -820,11 +828,13 @@ move-rod-orientation-required?
  :<- [current-player]
  :<- [card-icon-mode]
  :<- [card-zones]
- (fn [[current-player card-icon-mode zones] _]
+ :<- [move-legal-targets]
+ (fn [[current-player card-icon-mode zones legal-targets] _]
    (app-state/card-zones-view-model
     {:current-player current-player
      :card-icon-mode card-icon-mode
-     :zones zones})))
+     :zones zones
+     :legal-targets legal-targets})))
 
 (rf/reg-sub
  territory-view
@@ -880,6 +890,7 @@ move-rod-orientation-required?
  :<- [move-distance-options]
  :<- [move-damage-options]
  :<- [draw-count-options]
+ :<- [move-legal-targets]
 (fn [[current-player selection source-options prompt ready? control-groups board power
        power-options world-copy-options world-copied-power-options world-copied-power
        rod-mode-options disc-action-count-options
@@ -894,7 +905,7 @@ move-rod-orientation-required?
        one-point-card-options replacement-card-options orientation-options orientation-required?
        disc-orientation-available? sun-disc-orientation-available?
        sword-orientation-available?
-       distance-options damage-options draw-options] _]
+       distance-options damage-options draw-options legal-targets] _]
    (app-state/move-panel-view-model
     {:current-player current-player
      :selection selection
@@ -928,6 +939,7 @@ move-rod-orientation-required?
      :source-board-options source-board-options
      :target-board-options target-board-options
      :target-wasteland-options target-wasteland-options
+     :legal-targets legal-targets
      :territory-card-source-options territory-card-source-options
      :one-point-card-options one-point-card-options
      :replacement-card-options replacement-card-options

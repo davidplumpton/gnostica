@@ -106,6 +106,18 @@
   (some #(when (= board-index (:index %)) %)
         (app-state/board db)))
 
+(defn- territory-target [targets board-index]
+  (some #(when (= board-index (:board-index %)) %)
+        (:territories targets)))
+
+(defn- piece-target [targets piece-id]
+  (some #(when (= piece-id (:piece-id %)) %)
+        (:pieces targets)))
+
+(defn- hand-card-target [targets card-id]
+  (some #(when (= card-id (:card-id %)) %)
+        (:hand-cards targets)))
+
 (defn- move-control-group-summary [db]
   (mapv #(select-keys % [:type :power :action-power])
         (:control-groups (app-state/move-panel-view db))))
@@ -573,6 +585,126 @@
     (is (false? (:three-renderer-available? view)))
     (is (= "Three.js WebGL rendering is unavailable; using the CSS board. No WebGL"
            (:three-renderer-message view)))))
+
+(deftest legal-target-descriptors-track-gapped-and-appended-board-indexes
+  (let [deck-order (deck-with-cards-at {0 "coins2"
+                                        (board-card-position test-player-specs 3) "cups2"})
+        db (app-state/initialize {:player-specs test-player-specs
+                                  :game-options {:deck-order deck-order}
+                                  :demo-board-pieces [rose-rod-minion]})
+        gapped-db (remove-board-cell db 4)
+        create-result (game-state/apply-cup-move
+                       (app-state/game gapped-db)
+                       {:player-id :rose
+                        :source {:kind :territory
+                                 :board-index 3
+                                 :piece-id :rose-rod-minion}
+                        :target {:kind :wasteland
+                                 :row 1
+                                 :col 1}
+                        :one-point-card-id "coins2"})
+        created-db (assoc gapped-db :game (:state create-result))
+        source-db (-> created-db
+                      (app-state/select-board-card 3)
+                      (app-state/select-move-source :activate-territory)
+                      (app-state/select-move-piece :rose-rod-minion))
+        targets (app-state/move-legal-targets source-db)
+        board-targets (:legal-targets (app-state/board-view source-db))
+        card-zone-targets (:legal-targets (app-state/card-zones-view source-db))]
+    (is (:ok? create-result))
+    (is (= :target (:stage (app-state/move-selection source-db))))
+    (is (= [0 1 2 3 5 6 7 8 9]
+           (mapv :board-index (:territories targets))))
+    (is (nil? (territory-target targets 4)))
+    (is (= :legal (:status (territory-target targets 9))))
+    (is (= :disabled (:status (territory-target targets 3))))
+    (is (= :invalid-cup-target
+           (get-in (territory-target targets 3) [:error :code])))
+    (is (= targets board-targets))
+    (is (= targets card-zone-targets))))
+
+(deftest legal-target-descriptors-cover-orient-and-initial-placement
+  (let [piece-db (-> (app-state/initialize {:player-specs test-player-specs
+                                            :game-options {:shuffle-fn identity}
+                                            :demo-board-pieces [rose-source-piece]})
+                     (app-state/select-move-source :orient-piece))
+        piece-targets (app-state/move-legal-targets piece-db)
+        initial-db (-> (app-state/initialize {:player-specs test-player-specs
+                                              :game-options {:shuffle-fn identity}})
+                       (assoc :selected-board-index 99)
+                       (app-state/select-move-source :place-initial-small))
+        initial-targets (app-state/move-legal-targets initial-db)
+        hand-db (-> (app-state/initialize
+                     {:player-specs test-player-specs
+                      :game-options {:deck-order (deck-starting-with ["cups2"])}
+                      :demo-board-pieces [rose-source-piece]})
+                    (app-state/select-move-source :play-hand-card))
+        hand-targets (app-state/move-legal-targets hand-db)]
+    (is (= :piece (:stage (app-state/move-selection piece-db))))
+    (is (= :legal (:status (piece-target piece-targets :rose-scout))))
+    (is (= :minion (:role (piece-target piece-targets :rose-scout))))
+    (is (= :target (:stage (app-state/move-selection initial-db))))
+    (is (= 9 (count (filter :enabled? (:territories initial-targets)))))
+    (is (= 12 (count (filter :enabled? (:wastelands initial-targets)))))
+    (is (= [{:kind :stash-piece
+             :role :source
+             :player-id :rose
+             :size :small
+             :count 5
+             :active? true
+             :enabled? true
+             :status :legal}]
+           (:stash-pieces initial-targets)))
+    (is (= :legal (:status (hand-card-target hand-targets "cups2"))))
+    (is (= :source (:role (hand-card-target hand-targets "cups2"))))
+    (is (= hand-targets
+           (:legal-targets (app-state/card-zones-view hand-db))))))
+
+(deftest legal-target-descriptors-cover-rod-disc-and-sword-targets
+  (let [rod-db (-> (app-state/initialize
+                    {:player-specs test-player-specs
+                     :game-options {:deck-order (deck-with-card-at
+                                                 (board-card-position test-player-specs 0)
+                                                 "wands2")}
+                     :demo-board-pieces [rose-source-piece]})
+                   (app-state/select-move-source :activate-territory)
+                   (app-state/select-move-piece :rose-scout)
+                   (app-state/select-move-rod-mode :push-territory))
+        disc-db (-> (app-state/initialize
+                     {:player-specs test-player-specs
+                      :game-options {:deck-order (deck-with-cards-at
+                                                  {0 "coins2"
+                                                   1 "cupsking"
+                                                   (board-card-position test-player-specs 4) "cups2"})}
+                      :demo-board-pieces [rose-rod-minion]})
+                    (app-state/select-move-source :play-hand-card)
+                    (app-state/select-move-hand-card "coins2")
+                    (app-state/select-move-piece :rose-rod-minion)
+                    (app-state/select-move-disc-target-kind :territory))
+        sword-db (-> (app-state/initialize
+                      {:player-specs test-player-specs
+                       :game-options {:deck-order (deck-with-cards-at
+                                                   {0 "swords2"
+                                                    1 "cups2"
+                                                    (board-card-position test-player-specs 4) "cupsking"})}
+                       :demo-board-pieces [rose-rod-minion]})
+                     (app-state/select-move-source :play-hand-card)
+                     (app-state/select-move-hand-card "swords2")
+                     (app-state/select-move-piece :rose-rod-minion)
+                     (app-state/select-move-sword-target-kind :territory))]
+    (is (= [1] (mapv :index (app-state/move-target-board-options rod-db))))
+    (is (= :legal (:status (territory-target (app-state/move-legal-targets rod-db) 1))))
+    (is (= :disabled (:status (territory-target (app-state/move-legal-targets rod-db) 8))))
+    (is (= [4] (mapv :index (app-state/move-target-board-options disc-db))))
+    (is (= :legal (:status (territory-target (app-state/move-legal-targets disc-db) 4))))
+    (is (= :invalid-disc-target
+           (get-in (territory-target (app-state/move-legal-targets disc-db) 0)
+                   [:error :code])))
+    (is (= [4] (mapv :index (app-state/move-target-board-options sword-db))))
+    (is (= :legal (:status (territory-target (app-state/move-legal-targets sword-db) 4))))
+    (is (= :invalid-sword-target
+           (get-in (territory-target (app-state/move-legal-targets sword-db) 0)
+                   [:error :code])))))
 
 (deftest board-view-model-uses-stored-three-runtime-status
   (let [runtime-status {:ok? true
