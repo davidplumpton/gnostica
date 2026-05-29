@@ -24,20 +24,74 @@
 (defn- descriptor-for-card [descriptors card]
   (get (descriptors-by-card-id descriptors) (:id card)))
 
+(defn- gesture-input-string [input]
+  (pr-str input))
+
+(defn- hand-card-source-input [card]
+  {:source {:kind :hand-card
+            :card-id (:id card)}})
+
+(defn- draw-pile-source-input []
+  {:source {:kind :draw-pile}})
+
+(defn- card-action-event [card descriptor]
+  (case (:role descriptor)
+    :discard [events/toggle-move-discard-card (:id card)]
+    :territory-card [events/select-move-one-point-card (:id card)]
+    :replacement-card [events/select-move-replacement-card (:id card)]
+    [events/start-gesture-intent (hand-card-source-input card)]))
+
+(defn- discard-card-action-event [card descriptor]
+  (case (:role descriptor)
+    :judgement-card [events/toggle-move-judgement-card (:id card)]
+    :replacement-card [events/select-move-replacement-card (:id card)]
+    nil))
+
+(defn- draggable-source? [descriptor]
+  (not (contains? #{:discard :territory-card :replacement-card}
+                  (:role descriptor))))
+
+(defn- activation-key? [event]
+  (contains? #{"Enter" " "} (.-key event)))
+
+(defn- dispatch-on-activation-key [event dispatch-value]
+  (when (activation-key? event)
+    (.preventDefault event)
+    (rf/dispatch dispatch-value)))
+
 (defn- hand-card [card card-icon-mode descriptor]
   ^{:key (:id card)}
   [:article.hand-card
    {:class (str (when (card-ui/card-icon-summary card) "has-gnostica-icons")
                 (target-status-class descriptor))
-    :title (target-reason descriptor)}
+    :role "button"
+    :tabIndex 0
+    :title (target-reason descriptor)
+    :aria-pressed (true? (:selected? descriptor))
+    :draggable (if (draggable-source? descriptor) "true" "false")
+    :on-click #(rf/dispatch (card-action-event card descriptor))
+    :on-key-down #(dispatch-on-activation-key %
+                                              (card-action-event card descriptor))
+    :on-drag-start (fn [event]
+                     (when (draggable-source? descriptor)
+                       (let [input (hand-card-source-input card)]
+                         (some-> (.-dataTransfer event)
+                                 (.setData "application/gnostica-gesture"
+                                           (gesture-input-string input)))
+                         (some-> (.-dataTransfer event)
+                                 (.setData "text/plain"
+                                           (:title card)))
+                         (rf/dispatch [events/start-gesture-intent input]))))}
    [card-ui/card-face card "hand-card__face" (:title card) card-icon-mode {:focusable? true}]
    [:h3.hand-card__title (:title card)]])
 
 (defn- draw-deck-zone [draw-count descriptor]
-  [:article.card-pile-zone
+  [:button.card-pile-zone
    {:class (target-status-class descriptor)
+    :type "button"
     :title (target-reason descriptor)
-    :aria-label (str "Draw deck, " (ui/card-count-label draw-count) " remaining")}
+    :aria-label (str "Draw deck, " (ui/card-count-label draw-count) " remaining")
+    :on-click #(rf/dispatch [events/start-gesture-intent (draw-pile-source-input)])}
    [:div.card-pile-zone__preview.is-deck
     {:aria-hidden "true"}
     [:span]]
@@ -46,17 +100,22 @@
     [:p.card-pile-zone__detail (str (ui/card-count-label draw-count) " remaining")]]])
 
 (defn- discard-pile-zone [discard-count top-card card-icon-mode descriptor]
-  [:article.card-pile-zone
+  [:button.card-pile-zone
    {:class (target-status-class descriptor)
+    :type "button"
     :title (target-reason descriptor)
-    :aria-label (str "Discard pile, " (ui/card-count-label discard-count))}
+    :aria-label (str "Discard pile, " (ui/card-count-label discard-count))
+    :disabled (nil? (and top-card
+                         (discard-card-action-event top-card descriptor)))
+    :on-click #(when-let [event (and top-card
+                                      (discard-card-action-event top-card descriptor))]
+                 (rf/dispatch event))}
    (if top-card
      [card-ui/card-face
       top-card
       "card-pile-zone__preview"
       (str "Top discard: " (:title top-card))
-      card-icon-mode
-      {:focusable? true}]
+      card-icon-mode]
      [:div.card-pile-zone__preview.is-empty
       {:aria-hidden "true"}])
    [:div.card-pile-zone__body

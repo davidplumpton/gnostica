@@ -869,6 +869,39 @@
     (is (false? (:ready? tray)))
     (is (game-schema/valid-game? (app-state/game rejected-db)))))
 
+(deftest gesture-intent-arms-direct-territory-and-draw-sources
+  (let [territory-db (app-state/initialize
+                      {:player-specs test-player-specs
+                       :game-options {:deck-order
+                                      (deck-with-card-at
+                                       (board-card-position test-player-specs 3)
+                                       "cups2")}
+                       :demo-board-pieces [rose-rod-minion]})
+        territory-gesture-db (app-state/start-gesture-intent
+                              territory-db
+                              {:source {:kind :territory
+                                        :board-index 3}})
+        draw-gesture-db (app-state/start-gesture-intent
+                         territory-db
+                         {:source {:kind :draw-pile}})
+        draw-targets (app-state/move-legal-targets draw-gesture-db)]
+    (is (= :activate-territory
+           (get-in territory-gesture-db [:gesture-intent :move-source])))
+    (is (= {:source-board-index 3}
+           (app-state/move-params territory-gesture-db)))
+    (is (= :piece
+           (:stage (app-state/move-selection territory-gesture-db))))
+    (is (= :rose-rod-minion
+           (:id (first (app-state/move-piece-options territory-gesture-db)))))
+    (is (= :draw-cards
+           (get-in draw-gesture-db [:gesture-intent :move-source])))
+    (is (= :draw-count
+           (:stage (app-state/move-selection draw-gesture-db))))
+    (is (= :draw
+           (get-in draw-targets [:draw-pile :role])))
+    (is (every? #(= :discard (:role %))
+                (:hand-cards draw-targets)))))
+
 (deftest gesture-intent-cancellation-and-detailed-entry-preserve-selection
   (let [db (app-state/initialize
             {:player-specs test-player-specs

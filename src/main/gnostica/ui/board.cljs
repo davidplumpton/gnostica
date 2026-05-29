@@ -1,5 +1,6 @@
 (ns gnostica.ui.board
-  (:require [gnostica.app.events :as events]
+  (:require [cljs.reader :as reader]
+            [gnostica.app.events :as events]
             [gnostica.pieces :as pieces]
             [gnostica.three-board :as three-board]
             [gnostica.ui.card :as card-ui]
@@ -32,6 +33,40 @@
 (defn- target-reason [descriptor]
   (or (:reason descriptor)
       (get-in descriptor [:error :message])))
+
+(defn- gesture-input-string [input]
+  (pr-str input))
+
+(defn- territory-source-input [cell]
+  {:source {:kind :territory
+            :board-index (:index cell)}})
+
+(defn- gesture-input-from-event [event]
+  (let [payload (some-> (.-dataTransfer event)
+                        (.getData "application/gnostica-gesture"))]
+    (when (seq payload)
+      (try
+        (reader/read-string payload)
+        (catch :default _
+          nil)))))
+
+(defn- gesture-drag-event? [event]
+  (when-let [data-transfer (.-dataTransfer event)]
+    (boolean
+     (some #(= "application/gnostica-gesture" %)
+           (array-seq (.-types data-transfer))))))
+
+(defn- on-drag-over-gesture [event]
+  (when (gesture-drag-event? event)
+    (.preventDefault event)
+    (when-let [data-transfer (.-dataTransfer event)]
+      (set! (.-dropEffect data-transfer) "move"))))
+
+(defn- on-drop-gesture [event target]
+  (when-let [input (gesture-input-from-event event)]
+    (.preventDefault event)
+    (.stopPropagation event)
+    (rf/dispatch [events/start-gesture-intent (assoc input :target target)])))
 
 (defn- territory-targets-by-index [legal-targets]
   (into {}
@@ -99,7 +134,11 @@
                   (str (ui/wasteland-label space)
                        ", pieces: "
                        (pieces-label board-pieces)))
-    :aria-hidden (when-not (seq board-pieces) "true")}
+    :aria-hidden (when-not (seq board-pieces) "true")
+    :on-drag-over on-drag-over-gesture
+    :on-drop #(on-drop-gesture % {:kind :wasteland
+                                  :row (:row space)
+                                  :col (:col space)})}
    (board-piece-markers board-pieces)])
 
 (defn board-card [bounds {:keys [index row col orientation card] :as cell}
@@ -116,6 +155,7 @@
       :style (board-space-style bounds cell)
       :data-move-target-status (some-> (:status descriptor) name)
       :data-move-target-role (some-> (:role descriptor) name)
+      :draggable "true"
       :title (target-reason descriptor)
       :aria-label (str title
                        ", "
@@ -129,7 +169,21 @@
                        (when (seq board-pieces)
                          (str ", pieces: "
                               (pieces-label board-pieces))))
-      :on-click #(rf/dispatch [events/select-board-card index])}
+      :on-click #(rf/dispatch [events/select-board-card index])
+      :on-double-click #(rf/dispatch [events/start-gesture-intent
+                                      (territory-source-input cell)])
+      :on-drag-start (fn [event]
+                       (let [input (territory-source-input cell)]
+                         (some-> (.-dataTransfer event)
+                                 (.setData "application/gnostica-gesture"
+                                           (gesture-input-string input)))
+                         (some-> (.-dataTransfer event)
+                                 (.setData "text/plain"
+                                           title))
+                         (rf/dispatch [events/start-gesture-intent input])))
+      :on-drag-over on-drag-over-gesture
+      :on-drop #(on-drop-gesture % {:kind :territory
+                                    :board-index index})}
      [card-ui/card-face card "board-card__face" card-icon-mode]
      (board-piece-markers board-pieces)]))
 

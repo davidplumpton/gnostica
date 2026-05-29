@@ -23,6 +23,7 @@
 
 (defn app []
   (let [{:keys [setup-error card-icon-mode open-panels lobby?]} @(rf/subscribe [events/app-view])
+        {:keys [active?]} @(rf/subscribe [events/pending-move-tray-view])
         panel-open? #(contains? open-panels %)]
     [:<>
      [header-ui/app-header]
@@ -36,9 +37,12 @@
            [board-ui/board-stage]]
           (when (panel-open? :cards)
             [card-zones-ui/card-zones])
-          (when (or (panel-open? :move)
+          (when (or active?
+                    (panel-open? :move)
                     (panel-open? :territory))
             [:div.side-stack
+             (when active?
+               [move-panel-ui/pending-move-tray])
              (when (panel-open? :move)
                [move-panel-ui/move-panel])
              (when (panel-open? :territory)
