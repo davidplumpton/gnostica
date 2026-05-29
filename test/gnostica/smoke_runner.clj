@@ -102,9 +102,13 @@
                                      :popup-stats popup-stats})))
                   (browser/dispatch-center-click! client updated-rect)
                   (let [selection (browser/wait-for! client
-                                                     (str (:name viewport) " center-card selection")
-                                                     stats/selection-js
-                                                     stats/center-card-selected?)]
+                                                      (str (:name viewport) " center-card selection")
+                                                      stats/selection-js
+                                                      stats/center-card-selected?)
+                        move-panel (browser/wait-for! client
+                                                      (str (:name viewport) " move-panel hand-card controls")
+                                                      stats/move-panel-hand-card-step-js
+                                                      stats/move-panel-hand-card-step-ready?)]
                     {:viewport (:name viewport)
                      :stats initial-stats
                      :keyboard-stats keyboard-stats
@@ -113,7 +117,8 @@
                      :icon-help icon-help
                      :popup-stats popup-stats
                      :pixel-stats pixel-stats
-                     :selection selection})))))))
+                     :selection selection
+                     :move-panel move-panel})))))))
       (catch Exception error
         (throw (ex-info (str "3D board smoke failed in the " (:name viewport) " viewport.")
                         {:viewport viewport

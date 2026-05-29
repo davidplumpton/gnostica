@@ -2,10 +2,13 @@
 *.db
 *.db-shm
 *.db-wal
+embeddeddolt/
 
 # Lock files
 *.lock
+LOCK
 
 # Temporary
 last-touched
+.local_version
 *.tmp

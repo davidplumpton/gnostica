@@ -304,6 +304,35 @@
      };
    })()")
 
+(def move-panel-hand-card-step-js
+  "(() => {
+     const text = (node) => node ? node.textContent.trim() : '';
+     const moveToggle = document.querySelector('.panel-toggle[aria-controls=\"move-panel\"]');
+     if (!document.querySelector('.move-panel') && moveToggle) {
+       moveToggle.click();
+     }
+     const sourceButtons = Array.from(document.querySelectorAll('.move-source-option'));
+     const handSource = sourceButtons.find((button) => button.textContent.includes('Play hand card'));
+     if (handSource && handSource.getAttribute('aria-pressed') !== 'true') {
+       handSource.click();
+     }
+     const panel = document.querySelector('.move-panel');
+     const selectedSource = document.querySelector('.move-source-option[aria-pressed=\"true\"]');
+     const steps = Array.from(document.querySelectorAll('.move-panel .move-step'));
+     const stepLabels = steps.map((step) => text(step.querySelector('.move-step__header span')));
+     const handStep = steps.find((step) => text(step.querySelector('.move-step__header span')) === 'Hand card');
+     return {
+       panelOpen: Boolean(panel),
+       panelActive: panel ? panel.classList.contains('is-active') : false,
+       selectedSourceLabel: text(selectedSource ? selectedSource.querySelector('.move-source-option__label') : null),
+       prompt: text(document.querySelector('.move-panel__prompt')),
+       stepCount: steps.length,
+       stepLabels,
+       handCardStep: Boolean(handStep),
+       handCardChoiceCount: handStep ? handStep.querySelectorAll('.move-chip').length : 0
+     };
+   })()")
+
 (def mismatched-three-js
   "window.THREE = {REVISION: '999', OrbitControls: function OrbitControls() {}};")
 
@@ -598,6 +627,13 @@
 
 (defn center-card-selected? [selection]
   (str/includes? (or (get selection "panelText") "") "Row 2, Column 2"))
+
+(defn move-panel-hand-card-step-ready? [stats]
+  (and (true? (get stats "panelOpen"))
+       (true? (get stats "panelActive"))
+       (= "Play hand card" (get stats "selectedSourceLabel"))
+       (true? (get stats "handCardStep"))
+       (= 6 (long (or (get stats "handCardChoiceCount") -1)))))
 
 (defn focus-three-board! [client]
   (when-not (true? (browser/evaluate! client

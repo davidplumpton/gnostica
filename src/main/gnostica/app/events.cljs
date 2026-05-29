@@ -80,6 +80,7 @@
 (def move-source-options :gnostica.app/move-source-options)
 (def move-prompt :gnostica.app/move-prompt)
 (def move-ready? :gnostica.app/move-ready?)
+(def move-control-groups :gnostica.app/move-control-groups)
 (def move-piece-options :gnostica.app/move-piece-options)
 (def move-hand-card-options :gnostica.app/move-hand-card-options)
 (def move-source-board-options :gnostica.app/move-source-board-options)
@@ -529,6 +530,11 @@ select-move-rod-mode
    (app-state/move-ready? db)))
 
 (rf/reg-sub
+ move-control-groups
+ (fn [db _]
+   (app-state/move-control-groups db)))
+
+(rf/reg-sub
  move-piece-options
  (fn [db _]
    (app-state/move-piece-options db)))
@@ -814,6 +820,7 @@ move-rod-orientation-required?
  :<- [move-source-options]
  :<- [move-prompt]
  :<- [move-ready?]
+ :<- [move-control-groups]
  :<- [board]
  :<- [move-power]
  :<- [move-power-options]
@@ -851,7 +858,7 @@ move-rod-orientation-required?
  :<- [move-distance-options]
  :<- [move-damage-options]
  :<- [draw-count-options]
-(fn [[current-player selection source-options prompt ready? board power
+(fn [[current-player selection source-options prompt ready? control-groups board power
        power-options world-copy-options world-copied-power-options world-copied-power
        rod-mode-options disc-action-count-options
        sword-action-count-options devil-action-count-options
@@ -872,6 +879,7 @@ move-rod-orientation-required?
      :source-options source-options
      :prompt prompt
      :ready? ready?
+     :control-groups control-groups
      :board board
      :power power
      :power-options power-options
