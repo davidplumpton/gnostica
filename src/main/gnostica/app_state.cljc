@@ -588,7 +588,12 @@
 
 (defn can-announce-challenge? [db]
   (if-let [player-id (current-player-id db)]
-    (game-state/can-announce-challenge? (game db) player-id)
+    (boolean (game-state/can-announce-challenge? (game db) player-id))
+    false))
+
+(defn can-end-turn? [db]
+  (if-let [player-id (current-player-id db)]
+    (game-state/can-end-turn? (game db) player-id)
     false))
 
 (defn current-player-hand [db]
@@ -904,15 +909,13 @@
 
 (defn header-view-model
   [{:keys [current-player card-icon-mode open-panels lobby?
-           game-status can-announce-challenge?]}]
+           game-status can-end-turn? can-announce-challenge?]}]
   {:current-player current-player
    :card-icon-mode card-icon-mode
    :open-panels (normalize-open-panels open-panels)
    :lobby? (true? lobby?)
    :game-status game-status
-   :can-end-turn? (boolean (and current-player
-                                (not lobby?)
-                                (not (:finished? game-status))))
+   :can-end-turn? (boolean can-end-turn?)
    :can-announce-challenge? (boolean can-announce-challenge?)})
 
 (defn header-view [db]
@@ -922,6 +925,7 @@
     :open-panels (open-panels db)
     :lobby? (lobby-active? db)
     :game-status (game-status db)
+    :can-end-turn? (can-end-turn? db)
     :can-announce-challenge? (can-announce-challenge? db)}))
 
 (defn lobby-view [db]

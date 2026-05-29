@@ -626,6 +626,35 @@
            (:winner resolved-state)))
     (is (game-schema/valid-game? resolved-state))))
 
+(deftest no-piece-player-must-place-initial-small-before-ending-turn
+  (let [state (deterministic-game)
+        ended (game-state/end-turn state {:player-id :rose})
+        challenged (game-state/end-turn state {:player-id :rose
+                                               :announce-challenge? true})
+        placed (game-state/apply-initial-placement
+                state
+                {:player-id :rose
+                 :target {:kind :territory
+                          :board-index 0}
+                 :orientation :north})
+        ended-after-placement (game-state/end-turn (:state placed)
+                                                   {:player-id :rose})]
+    (is (= :initial-placement-required
+           (get-in ended [:error :code])))
+    (is (= :end-turn
+           (get-in ended [:error :data :action])))
+    (is (= "A player with no pieces must place their initial small piece before ending the turn."
+           (get-in ended [:error :message])))
+    (is (= :initial-placement-required
+           (get-in challenged [:error :code])))
+    (is (false? (game-state/can-end-turn? state :rose)))
+    (is (not (game-state/can-announce-challenge? state :rose)))
+    (is (:ok? placed))
+    (is (:ok? ended-after-placement))
+    (is (= :indigo
+           (get-in ended-after-placement [:state :turn :current-player-id])))
+    (is (game-schema/valid-game? (:state ended-after-placement)))))
+
 (deftest focused-transition-namespaces-match-public-facade
   (let [draw-state (state-with-pieces [rose-target-minion])
         draw-card (first (get-in draw-state [:players-by-id :rose :hand]))
@@ -1398,7 +1427,7 @@
                      :space-index 4
                      :size :small
                      :orientation :north}
-        state (state-with-pieces [enemy-piece])
+        state (state-with-pieces [rose-target-minion enemy-piece])
         result (game-state/apply-orient-move
                 state
                 {:player-id :rose
@@ -1408,8 +1437,8 @@
            (get-in result [:error :code])))
     (is (false? (:ok? result)))
     (is (not (contains? result :state)))
-    (is (= [enemy-piece]
-           (get-in state [:pieces :on-board])))))
+    (is (= enemy-piece
+           (piece-by-id state :indigo-minion)))))
 
 (deftest initial-placement-can-place-small_piece_on_empty_territory_or_wasteland
   (let [territory-state (deterministic-game)

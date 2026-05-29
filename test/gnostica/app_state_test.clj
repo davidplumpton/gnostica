@@ -804,11 +804,19 @@
                (update-in [:game :discard-pile] conj discarded-card))
         draw-option (source-option db :draw-cards)
         initial-option (source-option db :place-initial-small)
+        header-view (app-state/header-view db)
+        ended-db (app-state/end-turn db)
         source-db (app-state/select-move-source db :draw-cards)]
     (is (not (:enabled? draw-option)))
     (is (= "A player with no pieces must place their initial small piece instead of drawing cards."
            (:reason draw-option)))
     (is (:enabled? initial-option))
+    (is (false? (:can-end-turn? header-view)))
+    (is (false? (:can-announce-challenge? header-view)))
+    (is (= :initial-placement-required
+           (get-in ended-db [:turn-result :error :code])))
+    (is (= :rose
+           (get-in ended-db [:game :turn :current-player-id])))
     (is (= "Place first piece" (:label initial-option)))
     (is (re-find #"Special rule" (:summary initial-option)))
     (is (= :move-source-unavailable

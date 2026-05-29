@@ -81,6 +81,9 @@
 (defn can-announce-challenge? [state player-id]
   (core/can-announce-challenge? state player-id))
 
+(defn can-end-turn? [state player-id]
+  (core/can-end-turn? state player-id))
+
 (defn challenge-unavailable-reason [state player-id]
   (core/challenge-unavailable-reason state player-id))
 

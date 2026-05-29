@@ -943,6 +943,26 @@
 (defn player-eliminated? [state player-id]
   (true? (get-in state [:players-by-id player-id :eliminated?])))
 
+(defn- initial-placement-required-result [player-id action]
+  (failure :initial-placement-required
+           (case action
+             :draw-cards
+             "A player with no pieces must place their initial small piece instead of drawing cards."
+
+             :end-turn
+             "A player with no pieces must place their initial small piece before ending the turn."
+
+             :announce-challenge
+             "A player with no pieces must place their initial small piece before announcing a challenge."
+
+             "A player with no pieces must place their initial small piece before taking another turn action.")
+           {:player-id player-id
+            :action action}))
+
+(defn- initial-placement-required? [state player-id action]
+  (and (not= :place-initial-small action)
+       (empty? (player-pieces state player-id))))
+
 (defn turn-action-unavailable-result [state player-id action]
   (cond
     (nil? (get-in state [:players-by-id player-id]))
@@ -969,12 +989,8 @@
              {:player-id player-id
               :action action})
 
-    (and (= :draw-cards action)
-         (empty? (player-pieces state player-id)))
-    (failure :initial-placement-required
-             "A player with no pieces must place their initial small piece instead of drawing cards."
-             {:player-id player-id
-              :action action})))
+    (initial-placement-required? state player-id action)
+    (initial-placement-required-result player-id action)))
 
 (defn- unresolved-challenge? [challenge]
   (= :announced (:status challenge)))
@@ -987,11 +1003,13 @@
         (:players state)))
 
 (defn can-announce-challenge? [state player-id]
-  (and (some? (get-in state [:players-by-id player-id]))
-       (current-player-id? state player-id)
-       (not (finished? state))
-       (not (player-eliminated? state player-id))
-       (nil? (active-challenge-player-id state))))
+  (boolean
+   (and (some? (get-in state [:players-by-id player-id]))
+        (current-player-id? state player-id)
+        (not (finished? state))
+        (not (player-eliminated? state player-id))
+        (seq (player-pieces state player-id))
+        (nil? (active-challenge-player-id state)))))
 
 (defn challenge-unavailable-reason [state player-id]
   (let [active-challenger-id (active-challenge-player-id state)]
@@ -1008,11 +1026,17 @@
       (player-eliminated? state player-id)
       "Eliminated players cannot announce a challenge."
 
+      (initial-placement-required? state player-id :announce-challenge)
+      "A player with no pieces must place their initial small piece before announcing a challenge."
+
       (= active-challenger-id player-id)
       "This player already has an unresolved challenge."
 
       active-challenger-id
       "Another player has an unresolved challenge.")))
+
+(defn can-end-turn? [state player-id]
+  (nil? (turn-action-unavailable-result state player-id :end-turn)))
 
 (defn announce-challenge [state {:keys [player-id]}]
   (let [state (with-current-scores state)]
@@ -1273,6 +1297,9 @@
       (failure :player-eliminated
                "Eliminated players cannot take turns."
                {:player-id player-id})
+
+      (initial-placement-required? state player-id :end-turn)
+      (initial-placement-required-result player-id :end-turn)
 
       (unresolved-challenge? (:challenge player))
       (resolve-challenge state player-id)
