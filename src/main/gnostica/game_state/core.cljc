@@ -918,6 +918,39 @@
 (defn player-eliminated? [state player-id]
   (true? (get-in state [:players-by-id player-id :eliminated?])))
 
+(defn turn-action-unavailable-result [state player-id action]
+  (cond
+    (nil? (get-in state [:players-by-id player-id]))
+    (failure :unknown-player
+             "Turn actions require a participating player."
+             {:player-id player-id})
+
+    (not (current-player-id? state player-id))
+    (failure :not-current-player
+             "Only the current player can take a turn action."
+             {:player-id player-id
+              :current-player-id (get-in state [:turn :current-player-id])
+              :action action})
+
+    (finished? state)
+    (failure :game-finished
+             "The game is already finished."
+             {:winner (:winner state)
+              :action action})
+
+    (player-eliminated? state player-id)
+    (failure :player-eliminated
+             "Eliminated players cannot take turn actions."
+             {:player-id player-id
+              :action action})
+
+    (and (= :draw-cards action)
+         (empty? (player-pieces state player-id)))
+    (failure :initial-placement-required
+             "A player with no pieces must place their initial small piece instead of drawing cards."
+             {:player-id player-id
+              :action action})))
+
 (defn- unresolved-challenge? [challenge]
   (= :announced (:status challenge)))
 

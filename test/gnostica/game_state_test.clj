@@ -189,6 +189,16 @@
            :players players
            :players-by-id (into {} (map (juxt :id identity) players)))))
 
+(defn- set-player-eliminated [state player-id eliminated?]
+  (let [players (mapv (fn [player]
+                        (if (= player-id (:id player))
+                          (assoc player :eliminated? eliminated?)
+                          player))
+                      (:players state))]
+    (assoc state
+           :players players
+           :players-by-id (into {} (map (juxt :id identity) players)))))
+
 (defn- remove-card-id [cards card-id]
   (vec (remove #(= card-id (:id %)) cards)))
 
@@ -617,7 +627,7 @@
     (is (game-schema/valid-game? resolved-state))))
 
 (deftest focused-transition-namespaces-match-public-facade
-  (let [draw-state (deterministic-game)
+  (let [draw-state (state-with-pieces [rose-target-minion])
         draw-card (first (get-in draw-state [:players-by-id :rose :hand]))
         draw-command {:player-id :rose
                       :discard-card-ids [(:id draw-card)]
@@ -770,7 +780,7 @@
            (game-state-world/apply-world-move world-state world-command)))))
 
 (deftest draw-move-discards-selected-cards-and-draws-to-hand
-  (let [initial-state (deterministic-game)
+  (let [initial-state (state-with-pieces [rose-target-minion])
         original-hand (get-in initial-state [:players-by-id :rose :hand])
         discarded-cards (take 2 original-hand)
         drawn-cards (take 2 (:draw-pile initial-state))
@@ -799,7 +809,7 @@
     (is (game-schema/valid-game? state))))
 
 (deftest draw-move-reshuffles-discard-pile-when-draw-pile-is-exhausted
-  (let [base-state (deterministic-game)
+  (let [base-state (state-with-pieces [rose-target-minion])
         original-hand (get-in base-state [:players-by-id :rose :hand])
         discarded-hand-cards (take 2 original-hand)
         shortened-hand (vec (drop 2 original-hand))
@@ -835,7 +845,7 @@
     (is (game-schema/valid-game? state))))
 
 (deftest draw-move-rejects-invalid-counts-and-discard-cards
-  (let [state (deterministic-game)
+  (let [state (state-with-pieces [rose-target-minion])
         first-card-id (first (player-hand-ids state :rose))
         too-many-result (game-state/apply-draw-move
                          state
@@ -861,6 +871,41 @@
            (get-in missing-result [:error :code])))
     (is (false? (:ok? too-many-result)))
     (is (not (contains? too-many-result :state)))))
+
+(deftest turn-action-facades-reject-illegal-turn-state
+  (let [active-state (state-with-pieces [rose-target-minion])
+        finished-result (game-state/apply-orient-move
+                         (assoc active-state :phase game-state/finished-phase)
+                         {:player-id :rose
+                          :piece-id :rose-target-minion
+                          :orientation :west})
+        eliminated-result (game-state/apply-orient-move
+                           (set-player-eliminated active-state :rose true)
+                           {:player-id :rose
+                            :piece-id :rose-target-minion
+                            :orientation :west})
+        non-current-result (game-state/apply-orient-move
+                            active-state
+                            {:player-id :indigo
+                             :piece-id :rose-target-minion
+                             :orientation :west})
+        no-piece-draw-result (game-state/apply-draw-move
+                              (deterministic-game)
+                              {:player-id :rose
+                               :draw-count 0
+                               :shuffle-fn identity})]
+    (is (= :game-finished
+           (get-in finished-result [:error :code])))
+    (is (= :player-eliminated
+           (get-in eliminated-result [:error :code])))
+    (is (= :not-current-player
+           (get-in non-current-result [:error :code])))
+    (is (= :initial-placement-required
+           (get-in no-piece-draw-result [:error :code])))
+    (is (false? (:ok? finished-result)))
+    (is (false? (:ok? eliminated-result)))
+    (is (false? (:ok? non-current-result)))
+    (is (false? (:ok? no-piece-draw-result)))))
 
 (deftest high-priestess-applies-two-redraw-passes-after-paying-hand-source
   (let [initial-state (-> (:state (game-state/create-game

@@ -280,6 +280,17 @@
          (filter #(= player-id (:player-id %)))
          vec)))
 
+(defn- game-turn-key [state]
+  (select-keys (:turn state)
+               [:current-player-id :current-player-index :round]))
+
+(defn turn-action-consumed? [db]
+  (let [record (:turn-action db)]
+    (boolean
+     (and (true? (:consumed? record))
+          (= (:turn-key record)
+             (game-turn-key (game db)))))))
+
 (defn- piece-coordinate [db piece]
   (if-let [{:keys [row col]} (:space piece)]
     [row col]
@@ -1476,13 +1487,24 @@
   (let [player (current-player db)
         owned-pieces (current-player-pieces db)
         hand (current-player-hand db)
-        max-draw (max-potential-draw-count db)]
+        max-draw (max-potential-draw-count db)
+        turn-action-result (when player
+                             (game-state/turn-action-unavailable-result
+                              (game db)
+                              (:id player)
+                              source-id))]
     (cond
       (nil? player)
       "No current player is available."
 
       (game-state/finished? (game db))
       "The game is finished."
+
+      (turn-action-consumed? db)
+      "The current player has already taken a turn action."
+
+      turn-action-result
+      (get-in turn-action-result [:error :message])
 
       (= :activate-territory source-id)
       (when-not (seq owned-pieces)
@@ -4202,10 +4224,16 @@
                           "Move selection is complete, but this gameplay rule transition is not implemented yet."
                           {:command command}))))
 
+(defn- consumed-turn-action [db state]
+  {:consumed? true
+   :turn-key (game-turn-key state)
+   :source (move-source db)})
+
 (defn- apply-confirmed-move-result [db result]
   (if (:ok? result)
     (assoc db
            :game (:state result)
+           :turn-action (consumed-turn-action db (:state result))
            :move-selection (assoc (empty-move-selection)
                                   :last-result result))
     (assoc db :move-selection

@@ -649,7 +649,7 @@
         initial-option (source-option db :place-initial-small)
         source-db (app-state/select-move-source db :draw-cards)]
     (is (not (:enabled? draw-option)))
-    (is (= "The current player has no pieces on the board."
+    (is (= "A player with no pieces must place their initial small piece instead of drawing cards."
            (:reason draw-option)))
     (is (:enabled? initial-option))
     (is (= "Place first piece" (:label initial-option)))
@@ -674,6 +674,11 @@
         empty-draw-db (assoc-in db [:game :draw-pile] [])
         source-db (app-state/select-move-source db :draw-cards)
         confirmed-db (app-state/confirm-move source-db)
+        blocked-confirm-db (app-state/confirm-move
+                            (assoc confirmed-db
+                                   :move-selection
+                                   (app-state/move-selection source-db)))
+        ended-db (app-state/end-turn confirmed-db)
         zones (app-state/card-zones confirmed-db)]
     (is (:enabled? (source-option db :draw-cards)))
     (is (= 1 (app-state/max-draw-count empty-draw-db)))
@@ -687,6 +692,17 @@
             :draw-count 1}
            (app-state/move-command source-db)))
     (is (:ok? (get-in confirmed-db [:move-selection :last-result])))
+    (is (app-state/turn-action-consumed? confirmed-db))
+    (is (every? (comp not :enabled?)
+                (app-state/move-source-options confirmed-db)))
+    (is (= #{"The current player has already taken a turn action."}
+           (set (map :reason (app-state/move-source-options confirmed-db)))))
+    (is (= :rejected (:stage (app-state/move-selection blocked-confirm-db))))
+    (is (= :move-source-unavailable
+           (get-in blocked-confirm-db [:move-selection :error :code])))
+    (is (= "The current player has already taken a turn action."
+           (get-in blocked-confirm-db [:move-selection :error :message])))
+    (is (false? (app-state/turn-action-consumed? ended-db)))
     (is (= (mapv :id (conj shortened-hand draw-card))
            (mapv :id (:hand zones))))
     (is (= [(:id discarded-card)]

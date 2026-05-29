@@ -243,10 +243,11 @@
     (if (:ok? result)
       (-> db
           (assoc :game (state-with-demo-board-pieces (:state result) opts))
+          (dissoc :turn-action)
           (dissoc :setup-error :lobby))
       (-> db
           (assoc :setup-error (:error result))
-          (dissoc :game)))))
+          (dissoc :game :turn-action)))))
 
 (defn initialize
   ([] (initialize {}))
@@ -674,6 +675,7 @@
     :selected-pieces (selected-board-pieces db)}))
 
 (def move-target-wasteland-options move-selection/move-target-wasteland-options)
+(def turn-action-consumed? move-selection/turn-action-consumed?)
 (def max-draw-count move-selection/max-draw-count)
 (def draw-count-options move-selection/draw-count-options)
 (def move-source-options move-selection/move-source-options)
@@ -721,11 +723,12 @@
 
 (defn- apply-end-turn-result [db result]
   (if (:ok? result)
-    (assoc db
-           :game (:state result)
-           :turn-result result
-           :move-selection (assoc (empty-move-selection)
-                                  :last-result result))
+    (-> db
+        (assoc :game (:state result)
+               :turn-result result
+               :move-selection (assoc (empty-move-selection)
+                                      :last-result result))
+        (dissoc :turn-action))
     (assoc db :turn-result result)))
 
 (defn end-turn

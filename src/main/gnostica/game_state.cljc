@@ -31,6 +31,29 @@
 (defn failure [code message data]
   (core/failure code message data))
 
+(defn turn-action-unavailable-result [state player-id action]
+  (core/turn-action-unavailable-result state player-id action))
+
+(defn- command-turn-action [command default-action]
+  (case (get-in command [:source :kind])
+    :hand-card :play-hand-card
+    :territory :activate-territory
+    default-action))
+
+(defn- apply-turn-action [state command action f]
+  (if-let [result (when (map? command)
+                    (turn-action-unavailable-result state
+                                                    (:player-id command)
+                                                    action))]
+    result
+    (f state command)))
+
+(defn- apply-source-turn-action [state command f]
+  (apply-turn-action state
+                     command
+                     (command-turn-action command :activate-territory)
+                     f))
+
 (defn valid-player-count? [player-specs]
   (core/valid-player-count? player-specs))
 
@@ -87,7 +110,7 @@
 
 (def cup-territory-card-sources cup/cup-territory-card-sources)
 (defn apply-cup-move [state command]
-  (cup/apply-cup-move state command))
+  (apply-source-turn-action state command cup/apply-cup-move))
 
 (def rod-modes rod/rod-modes)
 (def rod-direction-offsets rod/rod-direction-offsets)
@@ -98,7 +121,7 @@
   (rod/resolve-rod-command state command))
 
 (defn apply-rod-move [state command]
-  (rod/apply-rod-move state command))
+  (apply-source-turn-action state command rod/apply-rod-move))
 
 (def disc-territory-card-sources disc/disc-territory-card-sources)
 (def disc-direction-offsets disc/disc-direction-offsets)
@@ -112,10 +135,10 @@
    (disc/resolve-disc-command state command source-opts)))
 
 (defn apply-disc-move [state command]
-  (disc/apply-disc-move state command))
+  (apply-source-turn-action state command disc/apply-disc-move))
 
 (defn apply-sun-move [state command]
-  (disc/apply-sun-move state command))
+  (apply-source-turn-action state command disc/apply-sun-move))
 
 (def sword-territory-card-sources sword/sword-territory-card-sources)
 (def sword-direction-offsets sword/sword-direction-offsets)
@@ -129,58 +152,58 @@
    (sword/resolve-sword-command state command source-opts)))
 
 (defn apply-sword-move [state command]
-  (sword/apply-sword-move state command))
+  (apply-source-turn-action state command sword/apply-sword-move))
 
 (defn apply-moon-move [state command]
-  (sword/apply-moon-move state command))
+  (apply-source-turn-action state command sword/apply-moon-move))
 
 (defn apply-draw-move [state command]
-  (draw/apply-draw-move state command))
+  (apply-turn-action state command :draw-cards draw/apply-draw-move))
 
 (defn apply-fool-move [state command]
-  (draw/apply-fool-move state command))
+  (apply-source-turn-action state command draw/apply-fool-move))
 
 (defn apply-high-priestess-move [state command]
-  (draw/apply-high-priestess-move state command))
+  (apply-source-turn-action state command draw/apply-high-priestess-move))
 
 (defn apply-judgement-move [state command]
-  (draw/apply-judgement-move state command))
+  (apply-source-turn-action state command draw/apply-judgement-move))
 
 (defn target-coordinate [coordinate orientation]
   (manipulation/target-coordinate coordinate orientation))
 
 (defn apply-hierophant-move [state command]
-  (manipulation/apply-hierophant-move state command))
+  (apply-source-turn-action state command manipulation/apply-hierophant-move))
 
 (defn apply-hermit-move [state command]
-  (manipulation/apply-hermit-move state command))
+  (apply-source-turn-action state command manipulation/apply-hermit-move))
 
 (defn apply-devil-move [state command]
-  (manipulation/apply-devil-move state command))
+  (apply-source-turn-action state command manipulation/apply-devil-move))
 
 (defn apply-empress-move [state command]
-  (composite/apply-empress-move state command))
+  (apply-source-turn-action state command composite/apply-empress-move))
 
 (defn apply-emperor-move [state command]
-  (composite/apply-emperor-move state command))
+  (apply-source-turn-action state command composite/apply-emperor-move))
 
 (defn apply-lovers-move [state command]
-  (composite/apply-lovers-move state command))
+  (apply-source-turn-action state command composite/apply-lovers-move))
 
 (defn apply-chariot-move [state command]
-  (composite/apply-chariot-move state command))
+  (apply-source-turn-action state command composite/apply-chariot-move))
 
 (defn apply-hanged-man-move [state command]
-  (composite/apply-hanged-man-move state command))
+  (apply-source-turn-action state command composite/apply-hanged-man-move))
 
 (defn apply-temperance-move [state command]
-  (composite/apply-temperance-move state command))
+  (apply-source-turn-action state command composite/apply-temperance-move))
 
 (defn world-major-territories [state]
   (world/world-major-territories state))
 
 (defn apply-world-move [state command]
-  (world/apply-world-move state command))
+  (apply-source-turn-action state command world/apply-world-move))
 
 (defn resolve-major-source [state command]
   (major/resolve-major-source state command))
@@ -198,7 +221,10 @@
   (major/apply-major-sequence state command spec))
 
 (defn apply-orient-move [state command]
-  (placement/apply-orient-move state command))
+  (apply-turn-action state command :orient-piece placement/apply-orient-move))
 
 (defn apply-initial-placement [state command]
-  (placement/apply-initial-placement state command))
+  (apply-turn-action state
+                     command
+                     :place-initial-small
+                     placement/apply-initial-placement))
