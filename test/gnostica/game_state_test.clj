@@ -112,7 +112,7 @@
    :player-id :rose
    :space-index 3
    :size :small
-   :orientation :north})
+   :orientation :east})
 
 (def rose-cup-wasteland-minion
   (assoc rose-cup-minion :orientation :west))
@@ -1532,6 +1532,37 @@
            (get-in result [:error :data :expected-coordinate])))
     (is (= {:row 0 :col 3}
            (get-in result [:error :data :target-coordinate])))))
+
+(deftest cup-move-rejects-out-of-range-territory-and-enemy-piece-targets
+  (let [north-minion (assoc rose-cup-minion :orientation :north)
+        state (state-with-pieces [north-minion indigo-cup-target])
+        territory-result (game-state/apply-cup-move
+                          state
+                          {:player-id :rose
+                           :source {:kind :territory
+                                    :board-index 3
+                                    :piece-id :rose-cup-minion}
+                           :target {:kind :territory
+                                    :board-index 4}
+                           :orientation :east})
+        enemy-result (game-state/apply-cup-move
+                      state
+                      {:player-id :rose
+                       :source {:kind :territory
+                                :board-index 3
+                                :piece-id :rose-cup-minion}
+                       :target {:kind :piece
+                                :piece-id :indigo-cup-target}})]
+    (is (= :cup-target-out-of-range
+           (get-in territory-result [:error :code])))
+    (is (= :cup-target-out-of-range
+           (get-in enemy-result [:error :code])))
+    (is (= {:row 0 :col 0}
+           (get-in territory-result [:error :data :expected-coordinate])))
+    (is (= {:row 1 :col 1}
+           (get-in enemy-result [:error :data :target-coordinate])))
+    (is (not (contains? territory-result :state)))
+    (is (not (contains? enemy-result :state)))))
 
 (deftest cup-move-rejects-invalid-command-shapes-and_sources
   (let [non-cup-source (assoc rose-cup-minion
@@ -3211,11 +3242,11 @@
                                               :card-id "temperance"}
                                      :cup-actions [{:piece-id :rose-cup-minion
                                                     :target {:kind :territory
-                                                             :board-index 0}
+                                                             :board-index 4}
                                                     :orientation :north}
                                                    {:piece-id :rose-cup-minion
                                                     :target {:kind :territory
-                                                             :board-index 1}
+                                                             :board-index 4}
                                                     :orientation :east}]})
         first-piece (piece-by-id state :rose-small-1)
         second-piece (piece-by-id state :rose-small-2)]
@@ -3226,13 +3257,13 @@
     (is (= ["temperance"] (mapv :id (:discard-pile state))))
     (is (= {:id :rose-small-1
             :player-id :rose
-            :space-index 0
+            :space-index 4
             :size :small
             :orientation :north}
            first-piece))
     (is (= {:id :rose-small-2
             :player-id :rose
-            :space-index 1
+            :space-index 4
             :size :small
             :orientation :east}
            second-piece))

@@ -49,6 +49,16 @@
    :size :small
    :orientation :north})
 
+(def rose-hand-cup-territory-piece
+  (assoc rose-hand-piece
+         :space-index 6
+         :orientation :north))
+
+(def rose-hand-cup-enemy-piece
+  (assoc rose-hand-piece
+         :space-index 3
+         :orientation :east))
+
 (defn- deck-starting-with [card-ids]
   (let [front-ids (set card-ids)]
     (vec
@@ -893,7 +903,7 @@
                                   :demo-board-pieces [rose-source-piece]})
         source-db (app-state/select-move-source db :activate-territory)
         piece-db (app-state/select-move-piece source-db :rose-scout)
-        target-db (app-state/select-board-card piece-db 4)
+        target-db (app-state/select-board-card piece-db 1)
         oriented-db (app-state/set-move-orientation target-db :east)
         confirmed-db (app-state/confirm-move oriented-db)
         created-piece (piece-by-id confirmed-db :rose-small-1)]
@@ -907,12 +917,12 @@
     (is (= :orientation (:stage (app-state/move-selection target-db))))
     (is (= {:source-board-index 0
             :piece-id :rose-scout
-            :target-board-index 4}
+            :target-board-index 1}
            (app-state/move-params target-db)))
     (is (= :confirm (:stage (app-state/move-selection oriented-db))))
     (is (= {:id :rose-small-1
             :player-id :rose
-            :space-index 4
+            :space-index 1
             :size :small
             :orientation :east}
            created-piece))
@@ -925,7 +935,7 @@
 (deftest playing-a-hand-card-stages-card_piece_and_target
   (let [db (app-state/initialize {:player-specs test-player-specs
                                   :game-options {:deck-order (deck-starting-with ["cups2"])}
-                                  :demo-board-pieces [rose-hand-piece]})
+                                  :demo-board-pieces [rose-hand-cup-territory-piece]})
         card-id "cups2"
         source-db (app-state/select-move-source db :play-hand-card)
         card-db (app-state/select-move-hand-card source-db card-id)
@@ -1162,7 +1172,7 @@
 (deftest playing-a-cup-hand-card-confirms-through-game-state
   (let [db (app-state/initialize {:player-specs test-player-specs
                                   :game-options {:deck-order (deck-starting-with ["cups2"])}
-                                  :demo-board-pieces [rose-hand-piece]})
+                                  :demo-board-pieces [rose-hand-cup-territory-piece]})
         confirmed-db (-> db
                          (app-state/select-move-source :play-hand-card)
                          (app-state/select-move-hand-card "cups2")
@@ -1188,7 +1198,7 @@
 (deftest playing-a-cup-hand-card-can-create-an-enemy-piece
   (let [db (app-state/initialize {:player-specs test-player-specs
                                   :game-options {:deck-order (deck-starting-with ["cups2"])}
-                                  :demo-board-pieces [rose-hand-piece
+                                  :demo-board-pieces [rose-hand-cup-enemy-piece
                                                       indigo-rod-target]})
         piece-db (-> db
                      (app-state/select-move-source :play-hand-card)
@@ -1225,6 +1235,36 @@
     (is (= 3 (get-in confirmed-db [:game :pieces :stashes :indigo :small])))
     (is (= 3 (get-in confirmed-db [:game :players-by-id :indigo :stash :small])))
     (is (game-schema/valid-game? (app-state/game confirmed-db)))))
+
+(deftest cup-browser-targets-are-limited-to-the-minion-target-space
+  (let [far-enemy {:id :indigo-far-cup-target
+                   :player-id :indigo
+                   :space-index 8
+                   :size :small
+                   :orientation :north}
+        db (app-state/initialize {:player-specs test-player-specs
+                                  :game-options {:deck-order (deck-starting-with ["cups2"])}
+                                  :demo-board-pieces [rose-hand-cup-enemy-piece
+                                                      indigo-rod-target
+                                                      far-enemy]})
+        piece-db (-> db
+                     (app-state/select-move-source :play-hand-card)
+                     (app-state/select-move-hand-card "cups2")
+                     (app-state/select-move-piece :rose-striker))
+        invalid-board-db (app-state/select-board-card piece-db 8)
+        invalid-piece-db (app-state/select-move-target-piece
+                          piece-db
+                          :indigo-far-cup-target)]
+    (is (= [4]
+           (mapv :index (app-state/move-target-board-options piece-db))))
+    (is (= [:indigo-rod-target]
+           (mapv :id (app-state/move-target-piece-options piece-db))))
+    (is (= :invalid-cup-target
+           (get-in invalid-board-db [:move-selection :error :code])))
+    (is (= :invalid-target-piece
+           (get-in invalid-piece-db [:move-selection :error :code])))
+    (is (= :target (:stage (app-state/move-selection invalid-board-db))))
+    (is (= :target (:stage (app-state/move-selection invalid-piece-db))))))
 
 (deftest hierophant-hand-card-can_replace_a_target_piece_from_move_panel
   (let [rose-major-minion {:id :rose-major-minion
@@ -1336,26 +1376,26 @@
             {:player-specs test-player-specs
              :game-options {:deck-order deck-order}
              :demo-board-pieces [rose-source-piece
-                                 indigo-rod-target
+                                 (assoc indigo-rod-target :space-index 1)
                                  {:id :rose-target-small
                                   :player-id :rose
-                                  :space-index 4
+                                  :space-index 1
                                   :size :small
                                   :orientation :north}
                                  {:id :indigo-target-large
                                   :player-id :indigo
-                                  :space-index 4
+                                  :space-index 1
                                   :size :large
                                   :orientation :west}]})
         oriented-db (-> db
                         (app-state/select-move-source :activate-territory)
                         (app-state/select-move-piece :rose-scout)
                         (app-state/select-move-power :cup)
-                        (app-state/select-board-card 4)
+                        (app-state/select-board-card 1)
                         (app-state/set-move-orientation :up))
         confirmed-db (app-state/confirm-move oriented-db)
         target-piece-ids (->> (app-state/board-pieces confirmed-db)
-                              (filter #(= 4 (:space-index %)))
+                              (filter #(= 1 (:space-index %)))
                               (mapv :id))]
     (is (= :cup (app-state/move-power oriented-db)))
     (is (= {:player-id :rose
@@ -1364,7 +1404,7 @@
                      :piece-id :rose-scout}
             :cup-variant :cup-unbounded
             :target {:kind :territory
-                     :board-index 4}
+                     :board-index 1}
             :orientation :up}
            (app-state/move-command oriented-db)))
     (is (:ok? (get-in confirmed-db [:move-selection :last-result])))
@@ -1381,16 +1421,16 @@
         db (app-state/initialize
             {:player-specs test-player-specs
              :game-options {:deck-order deck-order}
-             :demo-board-pieces [rose-source-piece
-                                 indigo-rod-target
+             :demo-board-pieces [(assoc rose-source-piece :orientation :north)
+                                 (assoc indigo-rod-target :space-index 1)
                                  {:id :rose-target-small
                                   :player-id :rose
-                                  :space-index 4
+                                  :space-index 1
                                   :size :small
                                   :orientation :north}
                                  {:id :indigo-target-large
                                   :player-id :indigo
-                                  :space-index 4
+                                  :space-index 1
                                   :size :large
                                   :orientation :west}]})
         orient-db (-> db
@@ -1398,12 +1438,12 @@
                       (app-state/select-move-piece :rose-scout)
                       (app-state/select-move-power :empress)
                       (app-state/set-move-minion-orientation :east))
-        target-db (app-state/select-board-card orient-db 4)
+        target-db (app-state/select-board-card orient-db 1)
         ready-db (app-state/set-move-orientation target-db :up)
         confirmed-db (app-state/confirm-move ready-db)
         source-piece (piece-by-id confirmed-db :rose-scout)
         target-piece-ids (->> (app-state/board-pieces confirmed-db)
-                              (filter #(= 4 (:space-index %)))
+                              (filter #(= 1 (:space-index %)))
                               (mapv :id))]
     (is (= :target (:stage (app-state/move-selection orient-db))))
     (is (= [{:power :orient-minion
@@ -1420,7 +1460,7 @@
                       {:power :cup
                        :piece-id :rose-scout
                        :target {:kind :territory
-                                :board-index 4}
+                                :board-index 1}
                        :orientation :up}]}
            (app-state/move-command ready-db)))
     (is (:ok? (get-in confirmed-db [:move-selection :last-result])))
@@ -1489,6 +1529,37 @@
     (is (= ["lovers"] (mapv :id (:discard-pile zones))))
     (is (not (some #{"lovers"} (map :id (:hand zones)))))
     (is (game-schema/valid-game? (app-state/game confirmed-db)))))
+
+(deftest temperance-hand-card-filters-each-cup-action-to-the-target-space
+  (let [db (app-state/initialize
+            {:player-specs test-player-specs
+             :game-options {:deck-order (deck-starting-with ["temperance"])}
+             :demo-board-pieces [rose-hand-cup-enemy-piece]})
+        first-db (-> db
+                     (app-state/select-move-source :play-hand-card)
+                     (app-state/select-move-hand-card "temperance")
+                     (app-state/select-move-piece :rose-striker)
+                     (app-state/select-move-power :temperance))
+        invalid-first-db (app-state/select-board-card first-db 8)
+        second-db (-> first-db
+                      (app-state/select-board-card 4)
+                      (app-state/set-move-orientation :north))
+        invalid-second-db (app-state/select-board-card second-db 8)]
+    (is (= [4]
+           (mapv :index (app-state/move-target-board-options first-db))))
+    (is (= :invalid-cup-target
+           (get-in invalid-first-db [:move-selection :error :code])))
+    (is (= [{:power :cup
+             :piece-id :rose-striker
+             :target {:kind :territory
+                      :board-index 4}
+             :orientation :north}]
+           (get-in second-db [:move-selection :params :major-actions])))
+    (is (= [4]
+           (mapv :index (app-state/move-target-board-options second-db))))
+    (is (= :invalid-cup-target
+           (get-in invalid-second-db [:move-selection :error :code])))
+    (is (= :target (:stage (app-state/move-selection invalid-second-db))))))
 
 (deftest wheel-cup-hand-card-can-use_top_draw_pile_for_wasteland_territory
   (let [db (app-state/initialize {:player-specs test-player-specs
@@ -1801,7 +1872,7 @@
 (deftest sun-hand-card-can_stage_created_piece_shortcut
   (let [db (app-state/initialize {:player-specs test-player-specs
                                   :game-options {:deck-order (deck-starting-with ["sun"])}
-                                  :demo-board-pieces [rose-hand-piece]})
+                                  :demo-board-pieces [rose-hand-cup-territory-piece]})
         power-db (-> db
                      (app-state/select-move-source :play-hand-card)
                      (app-state/select-move-hand-card "sun")
@@ -1888,7 +1959,7 @@
 (deftest sun-hand-card-can_stage_existing_piece_disc_reorientation
   (let [db (app-state/initialize {:player-specs test-player-specs
                                   :game-options {:deck-order (deck-starting-with ["sun"])}
-                                  :demo-board-pieces [rose-hand-piece
+                                  :demo-board-pieces [rose-hand-cup-enemy-piece
                                                       rose-rod-target
                                                       indigo-rod-target]})
         cup-db (-> db
@@ -1919,7 +1990,7 @@
     (is (:ok? (get-in confirmed-db [:move-selection :last-result])))
     (is (= {:id :rose-large-1
             :player-id :rose
-            :space-index 8
+            :space-index 3
             :size :large
             :orientation :west}
            grown-piece))
@@ -2278,7 +2349,8 @@
                                         (board-card-position test-player-specs 3) "empress"})
         db (app-state/initialize {:player-specs test-player-specs
                                   :game-options {:deck-order deck-order}
-                                  :demo-board-pieces [rose-source-piece]})
+                                  :demo-board-pieces [(assoc rose-source-piece
+                                                             :orientation :north)]})
         piece-db (-> db
                      (app-state/select-move-source :play-hand-card)
                      (app-state/select-move-hand-card "world")
@@ -2286,7 +2358,7 @@
         copy-db (app-state/select-move-world-copy piece-db 3)
         power-db (app-state/select-move-power copy-db :empress)
         orient-db (app-state/set-move-minion-orientation power-db :east)
-        target-db (app-state/select-board-card orient-db 4)
+        target-db (app-state/select-board-card orient-db 1)
         ready-db (app-state/set-move-orientation target-db :up)
         confirmed-db (app-state/confirm-move ready-db)
         zones (app-state/card-zones confirmed-db)
@@ -2316,14 +2388,14 @@
                       {:power :cup
                        :piece-id :rose-scout
                        :target {:kind :territory
-                                :board-index 4}
+                                :board-index 1}
                        :orientation :up}]}
            (app-state/move-command ready-db)))
     (is (:ok? (get-in confirmed-db [:move-selection :last-result])))
     (is (= :east (:orientation source-piece)))
     (is (= {:id :rose-small-1
             :player-id :rose
-            :space-index 4
+            :space-index 1
             :size :small
             :orientation :up}
            created-piece))
@@ -2406,7 +2478,7 @@
                      (app-state/select-move-piece :rose-scout))
         copy-db (app-state/select-move-world-copy piece-db 3)
         power-db (app-state/select-move-power copy-db :cup)
-        target-db (app-state/select-board-card power-db 4)
+        target-db (app-state/select-board-card power-db 1)
         ready-db (app-state/set-move-orientation target-db :east)
         confirmed-db (app-state/confirm-move ready-db)
         created-piece (piece-by-id confirmed-db :rose-small-1)]
@@ -2421,14 +2493,14 @@
             :copied-board-index 3
             :copied-power :cup
             :target {:kind :territory
-                     :board-index 4}
+                     :board-index 1}
             :orientation :east
             :cup-variant :wild-suits}
            (app-state/move-command ready-db)))
     (is (:ok? (get-in confirmed-db [:move-selection :last-result])))
     (is (= {:id :rose-small-1
             :player-id :rose
-            :space-index 4
+            :space-index 1
             :size :small
             :orientation :east}
            created-piece))

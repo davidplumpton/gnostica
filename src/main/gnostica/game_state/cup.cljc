@@ -211,6 +211,14 @@
                     "Cup small-piece targets must reference an existing board cell."
                     {:board-index (:board-index target)})
 
+      (not (cup-targetable-coordinate? state
+                                       source
+                                       (select-keys target-cell [:row :col])))
+      (cup-target-out-of-range state
+                               source
+                               target
+                               (select-keys target-cell [:row :col]))
+
       (not (contains? pieces/legal-orientations orientation))
       (core/failure :invalid-orientation
                     "Cup small-piece placement requires a legal orientation."
@@ -293,6 +301,14 @@
                {:piece-id (:id target-piece)
                 :space-index (:space-index target-piece)
                 :space (:space target-piece)})
+
+      (not (cup-targetable-coordinate? state
+                                       source
+                                       (select-keys target-cell [:row :col])))
+      (cup-target-out-of-range state
+                               source
+                               target
+                               (select-keys target-cell [:row :col]))
 
       (and (not (cup-unbounded? source))
            (<= pieces/max-pieces-per-space (count target-space-pieces)))

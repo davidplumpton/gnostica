@@ -951,14 +951,63 @@
          (int? damage)
          (< damage target-pips))))
 
-(defn- cup-target-piece? [db piece]
-  (and piece
-       (not (current-player-piece? db piece))
-       (valid-board-index? db (:space-index piece))))
+(defn- apply-composite-preview [state power command]
+  (case power
+    :empress (game-state/apply-empress-move state command)
+    :emperor (game-state/apply-emperor-move state command)
+    :lovers (game-state/apply-lovers-move state command)
+    :chariot (game-state/apply-chariot-move state command)
+    :hanged-man (game-state/apply-hanged-man-move state command)
+    :temperance (game-state/apply-temperance-move state command)
+    nil))
+
+(defn- cup-target-state [db source-id params]
+  (let [state (game db)
+        actions (completed-major-actions params)]
+    (if (and state
+             (seq actions)
+             (composite-action-power? db source-id params :cup))
+      (let [command (cond-> {:player-id (current-player-id db)
+                             :source (source-command source-id params)
+                             :actions actions}
+                      (world-move? db source-id params)
+                      (assoc :copied-board-index (:copied-board-index params)))
+            result (if (world-move? db source-id params)
+                     (game-state/apply-world-move state command)
+                     (apply-composite-preview state
+                                              (active-power db source-id params)
+                                              command))]
+        (if (:ok? result)
+          (:state result)
+          state))
+      state)))
+
+(defn- cup-target-db [db source-id params]
+  (if-let [state (cup-target-state db source-id params)]
+    (assoc db :game state)
+    db))
+
+(defn- cup-target-piece? [db source-id params piece]
+  (let [target-db (cup-target-db db source-id params)
+        target-piece (piece-by-id target-db (:id piece))
+        minion (piece-by-id target-db (:piece-id params))]
+    (and target-piece
+         (not (current-player-piece? target-db target-piece))
+         (valid-board-index? target-db (:space-index target-piece))
+         (targetable-piece? target-db minion target-piece))))
+
+(defn- cup-target-territory? [db source-id params cell]
+  (let [target-db (cup-target-db db source-id params)
+        target-cell (board-cell-by-index target-db (:index cell))
+        minion (piece-by-id target-db (:piece-id params))]
+    (and target-cell
+         (targetable-territory? target-db minion target-cell))))
 
 (defn- cup-target-piece [db params]
-  (let [piece (piece-by-id db (:target-piece-id params))]
-    (when (cup-target-piece? db piece)
+  (let [source (get-in db [:move-selection :source])
+        piece (piece-by-id (cup-target-db db source params)
+                           (:target-piece-id params))]
+    (when (cup-target-piece? db source params piece)
       piece)))
 
 (defn- empty-board-target? [db index]
@@ -970,11 +1019,12 @@
 
 (declare valid-wasteland-target? enemy-pieces-at-coordinate)
 
-(defn- cup-target-wasteland? [db params {:keys [row col] :as space}]
-  (let [minion (piece-by-id db (:piece-id params))]
+(defn- cup-target-wasteland? [db source-id params {:keys [row col] :as space}]
+  (let [target-db (cup-target-db db source-id params)
+        minion (piece-by-id target-db (:piece-id params))]
     (and space
-         (= [row col] (minion-target-coordinate db minion))
-         (empty? (enemy-pieces-at-coordinate db row col)))))
+         (= [row col] (minion-target-coordinate target-db minion))
+         (empty? (enemy-pieces-at-coordinate target-db row col)))))
 
 (defn- enemy-pieces-at-coordinate [db row col]
   (let [player-id (current-player-id db)]
@@ -1047,14 +1097,18 @@
 (defn move-target-wasteland-options [db]
   (let [source (get-in db [:move-selection :source])
         params (get-in db [:move-selection :params])
-        spaces (layout/wasteland-spaces (board db))]
+        target-db (if (or (cup-move? db source params)
+                          (sun-move? db source params))
+                    (cup-target-db db source params)
+                    db)
+        spaces (layout/wasteland-spaces (board target-db))]
     (cond
       (= :place-initial-small source)
       (filterv #(empty-wasteland-target? db %) spaces)
 
       (or (cup-move? db source params)
           (sun-move? db source params))
-      (filterv #(cup-target-wasteland? db params %) spaces)
+      (filterv #(cup-target-wasteland? db source params %) spaces)
 
       (hermit-move? db source params)
       (cond
@@ -1089,7 +1143,9 @@
     (or (empty-board-target? db (:target-board-index params))
         (valid-wasteland-target? db (:target-wasteland params)))
 
-    (or (valid-board-index? db (:target-board-index params))
+    (or (some? (some #(when (= (:target-board-index params) (:index %)) %)
+                     (filterv #(cup-target-territory? db source-id params %)
+                              (board (cup-target-db db source-id params)))))
         (some? (cup-target-piece db params))
         (valid-wasteland-target? db (:target-wasteland params)))))
 
@@ -1098,7 +1154,9 @@
     (some? (cup-target-piece db params))
     true
 
-    (valid-board-index? db (:target-board-index params))
+    (some? (some #(when (= (:target-board-index params) (:index %)) %)
+                 (filterv #(cup-target-territory? db source-id params %)
+                          (board (cup-target-db db source-id params)))))
     (contains? pieces/legal-orientations (:orientation params))
 
     (valid-wasteland-target? db (:target-wasteland params))
@@ -1582,10 +1640,14 @@
                (board-pieces db))
 
       (sun-move? db source params)
-      (filterv #(cup-target-piece? db %) (board-pieces db))
+      (let [target-db (cup-target-db db source params)]
+        (filterv #(cup-target-piece? db source params %)
+                 (board-pieces target-db)))
 
       (cup-move? db source params)
-      (filterv #(cup-target-piece? db %) (board-pieces db))
+      (let [target-db (cup-target-db db source params)]
+        (filterv #(cup-target-piece? db source params %)
+                 (board-pieces target-db)))
 
       (disc-move? db source params)
       (filterv #(disc-piece-target? db source params %)
@@ -2776,6 +2838,23 @@
 
             (and has-source?
                  has-piece?
+                 (or (cup-move? db source params)
+                     (sun-move? db source params))
+                 (cup-target-territory? db source params cell))
+            (update-move-selection-success db update :params set-territory-target index)
+
+            (and has-source?
+                 has-piece?
+                 (or (cup-move? db source params)
+                     (sun-move? db source params)))
+            (update-move-selection db assoc
+                                   :error
+                                   (move-error :invalid-cup-target
+                                               "Choose a Cup-targetable territory."
+                                               {:board-index index}))
+
+            (and has-source?
+                 has-piece?
                  (or (and (disc-move? db source params)
                           (= :territory (:disc-target-kind params))
                           (disc-territory-target? db source params cell))
@@ -2871,6 +2950,19 @@
                                  :error
                                  (move-error :invalid-sword-target
                                              "Choose a Sword-targetable territory."
+                                             {:board-index index}))
+
+          (and (or (cup-move? db source params)
+                   (sun-move? db source params))
+               (cup-target-territory? db source params cell))
+          (update-move-selection-success db update :params set-territory-target index)
+
+          (or (cup-move? db source params)
+              (sun-move? db source params))
+          (update-move-selection db assoc
+                                 :error
+                                 (move-error :invalid-cup-target
+                                             "Choose a Cup-targetable territory."
                                              {:board-index index}))
 
           :else
@@ -3337,7 +3429,7 @@
       (update-move-selection db assoc
                              :error
                              (move-error :invalid-target-piece
-                                         "Choose an enemy piece on an existing territory."
+                                         "Choose an enemy piece targeted by the minion."
                                          {:piece-id piece-id}))
 
       (and (cup-move? db source params)
@@ -3348,7 +3440,7 @@
       (update-move-selection db assoc
                              :error
                              (move-error :invalid-target-piece
-                                         "Choose an enemy piece on an existing territory."
+                                         "Choose an enemy piece targeted by the minion."
                                          {:piece-id piece-id}))
 
       (and (hierophant-move? db source params)
@@ -3649,6 +3741,12 @@
       (sun-disc-territory-target-stage? db source params)
       (filterv #(sun-disc-territory-target? db source params %)
                (board db))
+
+      (or (cup-move? db source params)
+          (sun-move? db source params))
+      (let [target-db (cup-target-db db source params)]
+        (filterv #(cup-target-territory? db source params %)
+                 (board target-db)))
 
       (and (disc-move? db source params)
            (= :territory (:disc-target-kind params)))
