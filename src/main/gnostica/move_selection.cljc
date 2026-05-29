@@ -2512,6 +2512,14 @@
             requirement))
         (move-requirements db source-id params)))
 
+(defn move-missing-fields [db]
+  (let [{:keys [source params]} (move-selection db)]
+    (if source
+      (->> (move-requirements db source params)
+           (remove #(requirement-complete? db source params %))
+           vec)
+      [:source])))
+
 (defn- stage-for-requirement [db source-id params requirement]
   (case requirement
     :source-board-index :source-territory

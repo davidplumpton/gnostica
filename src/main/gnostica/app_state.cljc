@@ -1,6 +1,7 @@
 (ns gnostica.app-state
   (:require [clojure.string :as str]
             [gnostica.board-layout :as layout]
+            [gnostica.gesture-intent :as gesture-intent]
             [gnostica.game-state :as game-state]
             [gnostica.move-selection :as move-selection]
             [gnostica.pieces :as pieces]))
@@ -235,6 +236,7 @@
    :hotkey-help-open? default-hotkey-help-open?
    :icon-help-open? default-icon-help-open?
    :move-selection (empty-move-selection)
+   :gesture-intent gesture-intent/empty-gesture-intent
    :three-runtime-status (normalize-three-runtime-status three-runtime-status)
    :three-texture-errors []})
 
@@ -718,8 +720,29 @@
 (def move-ready? move-selection/move-ready?)
 (def move-prompt move-selection/move-prompt)
 (def select-move-source move-selection/select-move-source)
-(def cancel-move move-selection/cancel-move)
 (def select-board-for-active-move move-selection/select-board-for-active-move)
+
+(defn gesture-intent [db]
+  (gesture-intent/gesture-intent db))
+
+(defn start-gesture-intent [db input]
+  (gesture-intent/start-gesture-intent db input))
+
+(defn cancel-gesture-intent [db]
+  (-> db
+      move-selection/cancel-move
+      gesture-intent/cancel-gesture-intent))
+
+(defn open-gesture-detailed-entry [db]
+  (-> db
+      gesture-intent/open-detailed-entry
+      (set-panel-open :move true)))
+
+(defn pending-move-tray-view [db]
+  (gesture-intent/pending-move-tray-view db))
+
+(defn cancel-move [db]
+  (cancel-gesture-intent db))
 
 (defn select-board-card [db index]
   (if (board-cell-by-index db index)
@@ -956,6 +979,9 @@
     :lobby? (lobby-active? db)}))
 
 (defn confirm-move
-  ([db] (move-selection/confirm-move db))
+  ([db] (confirm-move db {}))
   ([db transition-options]
-   (move-selection/confirm-move db transition-options)))
+   (let [confirmed-db (move-selection/confirm-move db transition-options)]
+     (if (true? (get-in confirmed-db [:move-selection :last-result :ok?]))
+       (gesture-intent/cancel-gesture-intent confirmed-db)
+       (gesture-intent/refresh-gesture-intent confirmed-db)))))

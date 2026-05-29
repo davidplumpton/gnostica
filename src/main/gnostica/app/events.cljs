@@ -49,6 +49,9 @@
 (def toggle-move-discard-card :gnostica.app/toggle-move-discard-card)
 (def confirm-move :gnostica.app/confirm-move)
 (def cancel-move :gnostica.app/cancel-move)
+(def start-gesture-intent :gnostica.app/start-gesture-intent)
+(def cancel-gesture-intent :gnostica.app/cancel-gesture-intent)
+(def open-gesture-detailed-entry :gnostica.app/open-gesture-detailed-entry)
 (def end-turn :gnostica.app/end-turn)
 (def announce-challenge :gnostica.app/announce-challenge)
 (def toggle-card-icon-mode :gnostica.app/toggle-card-icon-mode)
@@ -78,6 +81,8 @@
 (def selected-board-cell :gnostica.app/selected-board-cell)
 (def selected-board-pieces :gnostica.app/selected-board-pieces)
 (def move-selection :gnostica.app/move-selection)
+(def gesture-intent :gnostica.app/gesture-intent)
+(def pending-move-tray-view :gnostica.app/pending-move-tray-view)
 (def move-source-options :gnostica.app/move-source-options)
 (def move-prompt :gnostica.app/move-prompt)
 (def move-ready? :gnostica.app/move-ready?)
@@ -368,6 +373,21 @@ select-move-rod-mode
    (app-state/cancel-move db)))
 
 (rf/reg-event-db
+ start-gesture-intent
+ (fn [db [_ input]]
+   (app-state/start-gesture-intent db input)))
+
+(rf/reg-event-db
+ cancel-gesture-intent
+ (fn [db _]
+   (app-state/cancel-gesture-intent db)))
+
+(rf/reg-event-db
+ open-gesture-detailed-entry
+ (fn [db _]
+   (app-state/open-gesture-detailed-entry db)))
+
+(rf/reg-event-db
  end-turn
  (fn [db _]
    (app-state/end-turn db)))
@@ -519,6 +539,16 @@ select-move-rod-mode
  move-selection
  (fn [db _]
    (app-state/move-selection db)))
+
+(rf/reg-sub
+ gesture-intent
+ (fn [db _]
+   (app-state/gesture-intent db)))
+
+(rf/reg-sub
+ pending-move-tray-view
+ (fn [db _]
+   (app-state/pending-move-tray-view db)))
 
 (rf/reg-sub
  move-source-options

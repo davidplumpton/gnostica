@@ -674,6 +674,103 @@
     (is (:enabled? (source-option db :draw-cards)))
     (is (not (:enabled? (source-option db :place-initial-small))))))
 
+(deftest gesture-intent-stages-existing-move-selection-fields
+  (let [db (app-state/initialize
+            {:player-specs test-player-specs
+             :game-options {:deck-order (deck-starting-with ["cups2"])}
+             :demo-board-pieces [rose-hand-cup-territory-piece]})
+        original-game (app-state/game db)
+        pending-db (app-state/start-gesture-intent
+                    db
+                    {:source {:kind :hand-card
+                              :card-id "cups2"}
+                     :fields {:piece-id :rose-striker
+                              :orientation :north}
+                     :target {:kind :territory
+                              :board-index 3}})
+        tray (app-state/pending-move-tray-view pending-db)
+        command {:player-id :rose
+                 :source {:kind :hand-card
+                          :card-id "cups2"
+                          :piece-id :rose-striker}
+                 :cup-variant :cup
+                 :target {:kind :territory
+                          :board-index 3}
+                 :orientation :north}
+        confirmed-db (app-state/confirm-move pending-db)]
+    (is (= original-game (app-state/game pending-db)))
+    (is (true? (get-in pending-db [:gesture-intent :active?])))
+    (is (= {:hand-card-id "cups2"
+            :piece-id :rose-striker
+            :target-board-index 3
+            :orientation :north}
+           (app-state/move-params pending-db)))
+    (is (= :confirm (:stage (app-state/move-selection pending-db))))
+    (is (= command (app-state/move-command pending-db)))
+    (is (= command (:preview-command tray)))
+    (is (true? (:ready? tray)))
+    (is (:ok? (get-in confirmed-db [:move-selection :last-result])))
+    (is (false? (get-in confirmed-db [:gesture-intent :active?])))
+    (is (not= original-game (app-state/game confirmed-db)))
+    (is (game-schema/valid-game? (app-state/game confirmed-db)))))
+
+(deftest gesture-intent-rejections-do-not-mutate-game
+  (let [db (app-state/initialize
+            {:player-specs test-player-specs
+             :game-options {:deck-order (deck-starting-with ["cups2"])}
+             :demo-board-pieces [rose-hand-cup-territory-piece]})
+        rejected-db (app-state/start-gesture-intent
+                     db
+                     {:source {:kind :hand-card
+                               :card-id "cups2"}
+                      :fields {:piece-id :rose-striker
+                               :orientation :north}
+                      :target {:kind :territory
+                               :board-index 8}})
+        tray (app-state/pending-move-tray-view rejected-db)]
+    (is (= (app-state/game db)
+           (app-state/game rejected-db)))
+    (is (= :invalid-cup-target
+           (get-in rejected-db [:gesture-intent :error :code])))
+    (is (= :invalid-cup-target
+           (get-in tray [:error :code])))
+    (is (false? (:ready? tray)))
+    (is (game-schema/valid-game? (app-state/game rejected-db)))))
+
+(deftest gesture-intent-cancellation-and-detailed-entry-preserve-selection
+  (let [db (app-state/initialize
+            {:player-specs test-player-specs
+             :game-options {:deck-order (deck-starting-with ["cups2"])}
+             :demo-board-pieces [rose-hand-cup-territory-piece]})
+        pending-db (app-state/start-gesture-intent
+                    db
+                    {:source {:kind :hand-card
+                              :card-id "cups2"}
+                     :fields {:piece-id :rose-striker}
+                     :target {:kind :territory
+                              :board-index 3}})
+        detailed-db (app-state/open-gesture-detailed-entry pending-db)
+        completed-db (app-state/set-move-orientation detailed-db :east)
+        cancelled-db (app-state/cancel-move pending-db)]
+    (is (= :orientation (:stage (app-state/move-selection pending-db))))
+    (is (= [:target-resolution]
+           (:missing-fields (app-state/pending-move-tray-view pending-db))))
+    (is (seq (get-in (app-state/pending-move-tray-view pending-db)
+                     [:alternatives 0 :options])))
+    (is (true? (app-state/panel-open? detailed-db :move)))
+    (is (true? (get-in detailed-db [:gesture-intent :detailed?])))
+    (is (= {:hand-card-id "cups2"
+            :piece-id :rose-striker
+            :target-board-index 3}
+           (app-state/move-params detailed-db)))
+    (is (= :confirm (:stage (app-state/move-selection completed-db))))
+    (is (= :east (:orientation (app-state/move-command completed-db))))
+    (is (= (app-state/game db)
+           (app-state/game cancelled-db)))
+    (is (= (app-state/empty-move-selection)
+           (app-state/move-selection cancelled-db)))
+    (is (false? (get-in cancelled-db [:gesture-intent :active?])))))
+
 (deftest move-panel-view-control-groups-track-staged-powers
   (let [composite-db (app-state/initialize
                       {:player-specs test-player-specs
