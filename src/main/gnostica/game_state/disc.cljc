@@ -1013,6 +1013,12 @@
         cell (core/board-cell-by-index state board-index)
         orientation (or (get-in command [:disc :orientation])
                         (get-in command [:cup :orientation]))
+        target-result (when cell
+                        (cup/validate-target-coordinate
+                         state
+                         source-result
+                         target
+                         (select-keys cell [:row :col])))
         target-pieces (when cell
                         (core/pieces-at-board-index state board-index))]
     (cond
@@ -1020,6 +1026,9 @@
       (core/failure :invalid-target-territory
                "Sun piece shortcuts must target an existing territory."
                {:target target})
+
+      (not (:ok? target-result))
+      target-result
 
       (not (contains? pieces/legal-orientations orientation))
       (core/failure :invalid-orientation
@@ -1067,7 +1076,13 @@
         replacement-card-source (or (get-in command [:disc :replacement-card-source])
                                     :hand)
         replacement-card-id (get-in command [:disc :replacement-card-id])
-        source-card (:source-card source-result)]
+        source-card (:source-card source-result)
+        target-result (when normalized-target
+                        (cup/validate-target-coordinate
+                         state
+                         source-result
+                         normalized-target
+                         normalized-target))]
     (cond
       (nil? normalized-target)
       (core/failure :invalid-cup-target
@@ -1083,6 +1098,9 @@
       (core/failure :target-not-wasteland
                "Sun territory shortcuts cannot target the void."
                {:target normalized-target})
+
+      (not (:ok? target-result))
+      target-result
 
       (seq (core/enemy-pieces-at-coordinate state player-id row col))
       (core/failure :wasteland-occupied-by-enemy

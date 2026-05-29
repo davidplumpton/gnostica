@@ -52,6 +52,11 @@
                  :target-coordinate (coordinate-map target-coordinate)
                  :expected-coordinate (cup-target-coordinate state source)}))
 
+(defn validate-target-coordinate [state source target target-coordinate]
+  (if (cup-targetable-coordinate? state source target-coordinate)
+    {:ok? true}
+    (cup-target-out-of-range state source target target-coordinate)))
+
 (defn- discard-pile-card [state card-id]
   (some (fn [card]
           (when (= card-id (:id card))

@@ -3780,6 +3780,39 @@
     (is (= 3 (get-in state [:pieces :stashes :rose :medium])))
     (is (game-schema/valid-game? state))))
 
+(deftest sun-created-piece-shortcut-requires_cup_target_space
+  (let [state (:state (game-state/create-game
+                       player-specs
+                       {:deck-order (deck-starting-with ["sun"])}))
+        state (game-state/with-board-pieces
+               state
+               [(assoc rose-disc-minion
+                       :space-index 0
+                       :orientation :east)])
+        result (game-state/apply-sun-move
+                state
+                {:player-id :rose
+                 :source {:kind :hand-card
+                          :card-id "sun"
+                          :piece-id :rose-disc-minion}
+                 :cup {:target {:kind :territory
+                                :board-index 8}
+                       :orientation :north}
+                 :disc {:target {:kind :created-piece}
+                        :orientation :south}})]
+    (is (false? (:ok? result)))
+    (is (= :cup-target-out-of-range
+           (get-in result [:error :code])))
+    (is (= {:row 2
+            :col 2}
+           (get-in result [:error :data :target-coordinate])))
+    (is (= {:row 0
+            :col 1}
+           (get-in result [:error :data :expected-coordinate])))
+    (is (not (contains? result :state)))
+    (is (= ["sun"] (take 1 (player-hand-ids state :rose))))
+    (is (empty? (:discard-pile state)))))
+
 (deftest sun-move-can_skip_one_point_territory_creation
   (let [state (:state (game-state/create-game
                        player-specs
@@ -3809,6 +3842,40 @@
     (is (= ["sun"] (mapv :id (:discard-pile state))))
     (is (not (some #{"sun" "cupsking"} (player-hand-ids state :rose))))
     (is (game-schema/valid-game? state))))
+
+(deftest sun-created-territory-shortcut-requires_cup_target_space
+  (let [state (:state (game-state/create-game
+                       player-specs
+                       {:deck-order (deck-starting-with ["sun" "cupsking"])}))
+        state (game-state/with-board-pieces
+               state
+               [(assoc rose-disc-minion
+                       :space-index 0
+                       :orientation :east)])
+        result (game-state/apply-sun-move
+                state
+                {:player-id :rose
+                 :source {:kind :hand-card
+                          :card-id "sun"
+                          :piece-id :rose-disc-minion}
+                 :cup {:target {:kind :wasteland
+                                :row 3
+                                :col 2}}
+                 :disc {:target {:kind :created-territory}
+                        :replacement-card-id "cupsking"}})]
+    (is (false? (:ok? result)))
+    (is (= :cup-target-out-of-range
+           (get-in result [:error :code])))
+    (is (= {:row 3
+            :col 2}
+           (get-in result [:error :data :target-coordinate])))
+    (is (= {:row 0
+            :col 1}
+           (get-in result [:error :data :expected-coordinate])))
+    (is (not (contains? result :state)))
+    (is (every? (set (player-hand-ids state :rose))
+                ["sun" "cupsking"]))
+    (is (empty? (:discard-pile state)))))
 
 (deftest disc-move-rejects-missing-or-invalid-territory_replacements_without_mutation
   (let [deck-order (deck-with-cards-at {0 "sun"
