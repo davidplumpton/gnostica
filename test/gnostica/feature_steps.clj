@@ -171,6 +171,35 @@
    {:pattern #"^a Rod enemy-occupied landing-wasteland game$"
     :run world/create-rod-enemy-landing-territory-push-game}
 
+   {:pattern #"^a Cup territory-source game with Rose's minion at board index (\d+) facing ([a-z]+) and an Indigo target at board index (\d+) facing ([a-z]+)$"
+    :run (fn [world minion-board-index minion-orientation target-board-index target-orientation]
+           (world/create-cup-territory-source-game
+            world
+            (parse-int minion-board-index)
+            (parse-keyword minion-orientation)
+            (parse-int target-board-index)
+            (parse-keyword target-orientation)))}
+
+   {:pattern #"^a Cup hand-card wasteland game with Rose's minion at board index (\d+) facing ([a-z]+)$"
+    :run (fn [world board-index orientation]
+           (world/create-cup-hand-card-wasteland-game
+            world
+            (parse-int board-index)
+            (parse-keyword orientation)))}
+
+   {:pattern #"^a Cup full-target game$"
+    :run world/create-cup-full-target-game}
+
+   {:pattern #"^an Empress Cup full-target game$"
+    :run world/create-empress-cup-full-target-game}
+
+   {:pattern #"^a Wheel Cup draw-pile wasteland game with Rose's minion at board index (\d+) facing ([a-z]+)$"
+    :run (fn [world board-index orientation]
+           (world/create-wheel-cup-draw-pile-wasteland-game
+            world
+            (parse-int board-index)
+            (parse-keyword orientation)))}
+
    {:pattern #"^a Disc territory-source game with Rose's ([a-z]+) minion at board index (\d+) facing ([a-z]+)$"
     :run (fn [world size board-index orientation]
            (world/create-disc-territory-source-piece-game
@@ -213,6 +242,25 @@
             world
             (parse-int board-index)
             (parse-keyword orientation)))}
+
+   {:pattern #"^a Sword hand-card piece-attack game with Rose's medium minion at board index (\d+) facing ([a-z]+) and an Indigo ([a-z]+) target at board index (\d+) facing ([a-z]+)$"
+    :run (fn [world minion-board-index minion-orientation target-size target-board-index target-orientation]
+           (world/create-sword-hand-card-piece-game
+            world
+            (parse-int minion-board-index)
+            (parse-keyword minion-orientation)
+            (parse-keyword target-size)
+            (parse-int target-board-index)
+            (parse-keyword target-orientation)))}
+
+   {:pattern #"^a Sword hand-card territory-attack game$"
+    :run world/create-sword-hand-card-territory-attack-game}
+
+   {:pattern #"^a Sword territory-destruction game$"
+    :run world/create-sword-territory-destruction-game}
+
+   {:pattern #"^a Tower Sword discard-pile replacement game$"
+    :run world/create-tower-sword-discard-pile-replacement-game}
 
    {:pattern #"^a Fool hand-card reveal game$"
     :run world/create-fool-hand-card-reveal-game}
@@ -265,6 +313,34 @@
     :run (fn [world distance]
            (world/apply-rod-territory-push world (parse-int distance)))}
 
+   {:pattern #"^Rose creates a Cup piece on target board index (\d+) facing ([a-z]+)$"
+    :run (fn [world board-index orientation]
+           (world/apply-cup-territory-piece
+            world
+            (parse-int board-index)
+            (parse-keyword orientation)))}
+
+   {:pattern #"^Rose creates a Cup piece by targeting the Indigo piece$"
+    :run world/apply-cup-enemy-piece}
+
+   {:pattern #"^Rose creates a Cup territory in wasteland row (-?\d+) col (-?\d+) with hand card \"([^\"]+)\"$"
+    :run (fn [world row col card-id]
+           (world/apply-cup-wasteland-territory
+            world
+            (parse-int row)
+            (parse-int col)
+            :hand
+            card-id))}
+
+   {:pattern #"^Rose creates a Cup territory in wasteland row (-?\d+) col (-?\d+) from the draw pile$"
+    :run (fn [world row col]
+           (world/apply-cup-wasteland-territory
+            world
+            (parse-int row)
+            (parse-int col)
+            :draw-pile-top
+            nil))}
+
    {:pattern #"^Rose grows the Rose Disc piece$"
     :run (fn [world]
            (world/apply-disc-piece-growth world nil))}
@@ -295,6 +371,30 @@
 
    {:pattern #"^Rose uses Strength to grow the Rose Disc piece twice$"
     :run world/apply-strength-disc-piece-shortcut}
+
+   {:pattern #"^Rose attacks the Indigo Sword piece for (\d+) damage$"
+    :run (fn [world damage]
+           (world/apply-sword-piece-attack world (parse-int damage)))}
+
+   {:pattern #"^Rose attacks the target Sword territory for (\d+) damage with hand replacement \"([^\"]+)\"$"
+    :run (fn [world damage replacement-card-id]
+           (world/apply-sword-territory-attack
+            world
+            (parse-int damage)
+            :hand
+            replacement-card-id))}
+
+   {:pattern #"^Rose attacks the target Sword territory for (\d+) damage from discard replacement \"([^\"]+)\"$"
+    :run (fn [world damage replacement-card-id]
+           (world/apply-sword-territory-attack
+            world
+            (parse-int damage)
+            :discard-pile
+            replacement-card-id))}
+
+   {:pattern #"^Rose destroys the target Sword territory$"
+    :run (fn [world]
+           (world/apply-sword-territory-attack world 1 nil nil))}
 
    {:pattern #"^Rose uses Fool to reveal (\d+) cards without playing them$"
     :run (fn [world reveal-count]
@@ -357,6 +457,30 @@
                       :actual actual-code
                       :result result})))}
 
+   {:pattern #"^the Cup action succeeds$"
+    :run (fn [world]
+           (let [result (:last-result world)]
+             (expect world
+                     (:ok? result)
+                     :cup-action-failed
+                     "The Cup action was expected to succeed."
+                     {:error (:error result)
+                      :last-action (:last-action world)})))}
+
+   {:pattern #"^the Cup action is rejected with code :([a-z0-9-]+)$"
+    :run (fn [world expected-code]
+           (let [expected-code (parse-keyword expected-code)
+                 result (:last-result world)
+                 actual-code (get-in result [:error :code])]
+             (expect world
+                     (and (false? (:ok? result))
+                          (= expected-code actual-code))
+                     :unexpected-cup-rejection
+                     "The Cup action rejection did not match the expected error code."
+                     {:expected expected-code
+                      :actual actual-code
+                      :result result})))}
+
    {:pattern #"^the Disc action succeeds$"
     :run (fn [world]
            (let [result (:last-result world)]
@@ -378,8 +502,32 @@
                      :unexpected-disc-rejection
                      "The Disc action rejection did not match the expected error code."
                      {:expected expected-code
-                     :actual actual-code
+                      :actual actual-code
                      :result result})))}
+
+   {:pattern #"^the Sword action succeeds$"
+    :run (fn [world]
+           (let [result (:last-result world)]
+             (expect world
+                     (:ok? result)
+                     :sword-action-failed
+                     "The Sword action was expected to succeed."
+                     {:error (:error result)
+                      :last-action (:last-action world)})))}
+
+   {:pattern #"^the Sword action is rejected with code :([a-z0-9-]+)$"
+    :run (fn [world expected-code]
+           (let [expected-code (parse-keyword expected-code)
+                 result (:last-result world)
+                 actual-code (get-in result [:error :code])]
+             (expect world
+                     (and (false? (:ok? result))
+                          (= expected-code actual-code))
+                     :unexpected-sword-rejection
+                     "The Sword action rejection did not match the expected error code."
+                     {:expected expected-code
+                      :actual actual-code
+                      :result result})))}
 
    {:pattern #"^the draw-major action succeeds$"
     :run (fn [world]
@@ -546,6 +694,17 @@
                                  :orientation orientation}
                       :actual piece})))}
 
+   {:pattern #"^piece ([a-z0-9-]+) is not on the board$"
+    :run (fn [world piece-id]
+           (let [piece-id (parse-keyword piece-id)
+                 piece (world/piece-by-id world piece-id)]
+             (expect world
+                     (nil? piece)
+                     :unexpected-piece-on-board
+                     "The piece was expected to be absent from the board."
+                     {:piece-id piece-id
+                      :actual piece})))}
+
    {:pattern #"^board index (\d+) is at row (-?\d+) col (-?\d+) with orientation ([a-z]+)$"
     :run (fn [world board-index row col orientation]
            (let [board-index (parse-int board-index)
@@ -587,6 +746,20 @@
                      "The territory does not contain the expected card."
                      {:board-index board-index
                       :expected card-id
+                      :actual (get-in cell [:card :id])
+                      :cell cell})))}
+
+   {:pattern #"^board index (\d+) contains the recorded draw-pile Cup card$"
+    :run (fn [world board-index]
+           (let [board-index (parse-int board-index)
+                 expected-card-id (world/cup-draw-pile-card-id world)
+                 cell (world/board-cell-by-index world board-index)]
+             (expect world
+                     (= expected-card-id (get-in cell [:card :id]))
+                     :unexpected-territory-card
+                     "The territory does not contain the recorded Cup draw-pile card."
+                     {:board-index board-index
+                      :expected expected-card-id
                       :actual (get-in cell [:card :id])
                       :cell cell})))}
 

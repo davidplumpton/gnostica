@@ -96,6 +96,34 @@
    :size :small
    :orientation :north})
 
+(def rose-cup-minion
+  {:id :rose-cup-minion
+   :player-id :rose
+   :space-index 3
+   :size :small
+   :orientation :east})
+
+(def indigo-cup-target
+  {:id :indigo-cup-target
+   :player-id :indigo
+   :space-index 4
+   :size :medium
+   :orientation :west})
+
+(def rose-cup-full-medium
+  {:id :rose-cup-full-medium
+   :player-id :rose
+   :space-index 4
+   :size :medium
+   :orientation :up})
+
+(def rose-cup-full-small
+  {:id :rose-cup-full-small
+   :player-id :rose
+   :space-index 4
+   :size :small
+   :orientation :east})
+
 (def rose-territory-passenger
   {:id :rose-territory-passenger
    :player-id :rose
@@ -130,6 +158,36 @@
   {:id :indigo-disc-target
    :player-id :indigo
    :space-index 4
+   :size :small
+   :orientation :north})
+
+(def rose-sword-minion
+  {:id :rose-sword-minion
+   :player-id :rose
+   :space-index 3
+   :size :medium
+   :orientation :east})
+
+(def indigo-sword-target
+  {:id :indigo-sword-target
+   :player-id :indigo
+   :space-index 4
+   :size :large
+   :orientation :north})
+
+(def rose-sword-territory-guard
+  {:id :rose-sword-territory-guard
+   :player-id :rose
+   :space-index 4
+   :size :medium
+   :orientation :south})
+
+(def rose-outboard-minion
+  {:id :rose-outboard-minion
+   :player-id :rose
+   :space {:kind :wasteland
+           :row 0
+           :col -1}
    :size :small
    :orientation :north})
 
@@ -209,8 +267,14 @@
 (defn- with-rod-fixture [world fixture]
   (assoc world :rod-fixture fixture))
 
+(defn- with-cup-fixture [world fixture]
+  (assoc world :cup-fixture fixture))
+
 (defn- with-disc-fixture [world fixture]
   (assoc world :disc-fixture fixture))
+
+(defn- with-sword-fixture [world fixture]
+  (assoc world :sword-fixture fixture))
 
 (defn- with-draw-major-fixture [world fixture]
   (assoc world :draw-major-fixture fixture))
@@ -618,6 +682,161 @@
                            :piece-id :rose-rod-minion
                            :target-board-index 5}))))
 
+(defn create-cup-territory-source-game
+  [world minion-board-index minion-orientation target-board-index target-orientation]
+  (let [world (create-game-with-options
+               world
+               {:deck-order (deck-with-board-card 2 minion-board-index "cups2")})
+        minion (assoc rose-cup-minion
+                      :space-index minion-board-index
+                      :orientation minion-orientation)
+        target (assoc indigo-cup-target
+                      :space-index target-board-index
+                      :orientation target-orientation)]
+    (-> world
+        (put-pieces [minion target])
+        (with-cup-fixture {:source-kind :territory
+                           :source-board-index minion-board-index
+                           :piece-id :rose-cup-minion
+                           :target-board-index target-board-index
+                           :target-piece-id :indigo-cup-target}))))
+
+(defn create-cup-hand-card-wasteland-game [world board-index orientation]
+  (let [world (create-game-with-options
+               world
+               {:deck-order (deck-starting-with ["cups2" "coins2"])})
+        minion (assoc rose-cup-minion
+                      :space-index board-index
+                      :orientation orientation)]
+    (-> world
+        (put-pieces [minion])
+        (with-cup-fixture {:source-kind :hand-card
+                           :source-card-id "cups2"
+                           :piece-id :rose-cup-minion}))))
+
+(defn create-cup-full-target-game [world]
+  (let [world (create-game-with-options
+               world
+               {:deck-order (deck-with-board-card 2 3 "cups2")})]
+    (-> world
+        (put-pieces [rose-cup-minion
+                     rose-cup-full-medium
+                     indigo-cup-target
+                     rose-cup-full-small])
+        (with-cup-fixture {:source-kind :territory
+                           :source-board-index 3
+                           :piece-id :rose-cup-minion
+                           :target-board-index 4}))))
+
+(defn create-empress-cup-full-target-game [world]
+  (let [world (create-game-with-options
+               world
+               {:deck-order (deck-with-board-card 2 3 "empress")})]
+    (-> world
+        (put-pieces [rose-cup-minion
+                     rose-cup-full-medium
+                     indigo-cup-target
+                     rose-cup-full-small])
+        (with-cup-fixture {:source-kind :territory
+                           :source-board-index 3
+                           :source-card-id "empress"
+                           :piece-id :rose-cup-minion
+                           :target-board-index 4
+                           :cup-variant :cup-unbounded}))))
+
+(defn create-wheel-cup-draw-pile-wasteland-game [world board-index orientation]
+  (let [draw-start (board-deck-position 2 9)
+        world (create-game-with-options
+               world
+               {:deck-order (deck-with-cards-at
+                             {(board-deck-position 2 board-index) "wheeloffortune"
+                              draw-start "coins2"})})
+        draw-card (first (get-in world [:state :draw-pile]))
+        minion (assoc rose-cup-minion
+                      :space-index board-index
+                      :orientation orientation)]
+    (-> world
+        (put-pieces [minion])
+        (with-cup-fixture {:source-kind :territory
+                           :source-board-index board-index
+                           :source-card-id "wheeloffortune"
+                           :piece-id :rose-cup-minion
+                           :cup-variant :wheel-cup
+                           :draw-pile-card-id (:id draw-card)}))))
+
+(defn create-sword-hand-card-piece-game
+  [world minion-board-index minion-orientation target-size target-board-index target-orientation]
+  (let [world (create-game-with-options
+               world
+               {:deck-order (deck-starting-with ["swords2"])})
+        minion (assoc rose-sword-minion
+                      :space-index minion-board-index
+                      :orientation minion-orientation)
+        target (assoc indigo-sword-target
+                      :space-index target-board-index
+                      :size target-size
+                      :orientation target-orientation)]
+    (-> world
+        (put-pieces [minion target])
+        (with-sword-fixture {:source-kind :hand-card
+                             :source-card-id "swords2"
+                             :piece-id :rose-sword-minion
+                             :target-piece-id :indigo-sword-target}))))
+
+(defn create-sword-hand-card-territory-attack-game [world]
+  (let [world (create-game-with-options
+               world
+               {:deck-order (deck-with-cards-at
+                             {0 "swords2"
+                              1 "cups2"
+                              2 "swordsking"
+                              (board-deck-position 2 4) "cupsking"})})]
+    (-> world
+        (put-pieces [rose-sword-minion
+                     rose-sword-territory-guard])
+        (with-sword-fixture {:source-kind :hand-card
+                             :source-card-id "swords2"
+                             :piece-id :rose-sword-minion
+                             :target-board-index 4}))))
+
+(defn create-sword-territory-destruction-game [world]
+  (let [world (create-game-with-options
+               world
+               {:deck-order (deck-with-cards-at
+                             {(board-deck-position 2 0) "cups2"
+                              (board-deck-position 2 1) "swords2"})})
+        minion (assoc rose-sword-minion
+                      :space-index 1
+                      :size :small
+                      :orientation :west)
+        guard (assoc rose-sword-territory-guard :space-index 0)]
+    (-> world
+        (put-pieces [minion guard rose-outboard-minion])
+        (with-sword-fixture {:source-kind :territory
+                             :source-board-index 1
+                             :piece-id :rose-sword-minion
+                             :target-board-index 0}))))
+
+(defn create-tower-sword-discard-pile-replacement-game [world]
+  (let [draw-start (board-deck-position 2 9)
+        world (create-game-with-options
+               world
+               {:deck-order (deck-with-cards-at
+                             {(board-deck-position 2 3) "tower"
+                              (board-deck-position 2 4) "star"
+                              draw-start "cupsking"})})
+        discard-card (first (get-in world [:state :draw-pile]))]
+    (-> world
+        (update :state assoc
+                :draw-pile (vec (rest (get-in world [:state :draw-pile])))
+                :discard-pile [discard-card])
+        (put-pieces [rose-sword-minion])
+        (with-sword-fixture {:source-kind :territory
+                             :source-board-index 3
+                             :source-card-id "tower"
+                             :piece-id :rose-sword-minion
+                             :target-board-index 4}))))
+
 (defn rod-source [{:keys [source-kind source-board-index source-card-id piece-id]}]
   (case source-kind
     :territory {:kind :territory
@@ -627,7 +846,25 @@
                 :card-id source-card-id
                 :piece-id piece-id}))
 
+(defn cup-source [{:keys [source-kind source-board-index source-card-id piece-id]}]
+  (case source-kind
+    :territory {:kind :territory
+                :board-index source-board-index
+                :piece-id piece-id}
+    :hand-card {:kind :hand-card
+                :card-id source-card-id
+                :piece-id piece-id}))
+
 (defn disc-source [{:keys [source-kind source-board-index source-card-id piece-id]}]
+  (case source-kind
+    :territory {:kind :territory
+                :board-index source-board-index
+                :piece-id piece-id}
+    :hand-card {:kind :hand-card
+                :card-id source-card-id
+                :piece-id piece-id}))
+
+(defn sword-source [{:keys [source-kind source-board-index source-card-id piece-id]}]
   (case source-kind
     :territory {:kind :territory
                 :board-index source-board-index
@@ -687,6 +924,48 @@
                  :distance distance}]
     (apply-rod-command world command)))
 
+(defn apply-cup-command [world command]
+  (apply-action world :cup-move game-state/apply-cup-move command))
+
+(defn- with-cup-variant [command fixture]
+  (cond-> command
+    (:cup-variant fixture) (assoc :cup-variant (:cup-variant fixture))))
+
+(defn apply-cup-territory-piece [world target-board-index orientation]
+  (let [fixture (:cup-fixture world)
+        command (-> {:player-id :rose
+                     :source (cup-source fixture)
+                     :target {:kind :territory
+                              :board-index target-board-index}
+                     :orientation orientation}
+                    (with-cup-variant fixture))]
+    (apply-cup-command world command)))
+
+(defn apply-cup-enemy-piece [world]
+  (let [fixture (:cup-fixture world)
+        command (-> {:player-id :rose
+                     :source (cup-source fixture)
+                     :target {:kind :piece
+                              :piece-id (:target-piece-id fixture)}}
+                    (with-cup-variant fixture))]
+    (apply-cup-command world command)))
+
+(defn apply-cup-wasteland-territory
+  [world row col territory-card-source one-point-card-id]
+  (let [fixture (:cup-fixture world)
+        command (cond-> (-> {:player-id :rose
+                             :source (cup-source fixture)
+                             :target {:kind :wasteland
+                                      :row row
+                                      :col col}}
+                            (with-cup-variant fixture))
+                  territory-card-source
+                  (assoc :territory-card-source territory-card-source)
+
+                  one-point-card-id
+                  (assoc :one-point-card-id one-point-card-id))]
+    (apply-cup-command world command)))
+
 (defn apply-disc-command [world command]
   (apply-action world :disc-move game-state/apply-disc-move command))
 
@@ -720,6 +999,33 @@
                  :disc-actions [{:target target}
                                 {:target target}]}]
     (apply-disc-command world command)))
+
+(defn apply-sword-command [world command]
+  (apply-action world :sword-move game-state/apply-sword-move command))
+
+(defn apply-sword-piece-attack [world damage]
+  (let [fixture (:sword-fixture world)
+        command {:player-id :rose
+                 :source (sword-source fixture)
+                 :target {:kind :piece
+                          :piece-id (:target-piece-id fixture)}
+                 :damage damage}]
+    (apply-sword-command world command)))
+
+(defn apply-sword-territory-attack
+  [world damage replacement-card-source replacement-card-id]
+  (let [fixture (:sword-fixture world)
+        command (cond-> {:player-id :rose
+                         :source (sword-source fixture)
+                         :target {:kind :territory
+                                  :board-index (:target-board-index fixture)}
+                         :damage damage}
+                  replacement-card-source
+                  (assoc :replacement-card-source replacement-card-source)
+
+                  replacement-card-id
+                  (assoc :replacement-card-id replacement-card-id))]
+    (apply-sword-command world command)))
 
 (defn apply-draw-major-command [world command]
   (let [transition (case (get-in command [:source :card-id])
@@ -874,6 +1180,9 @@
 
 (defn discard-ids [world]
   (mapv :id (state-at world [:discard-pile])))
+
+(defn cup-draw-pile-card-id [world]
+  (get-in world [:cup-fixture :draw-pile-card-id]))
 
 (defn schema-explanation [world]
   (game-schema/explain-game (:state world)))
