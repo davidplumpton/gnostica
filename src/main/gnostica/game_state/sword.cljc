@@ -2,6 +2,7 @@
   (:require [gnostica.cards :as cards]
             [gnostica.game-state.core :as core]
             [gnostica.game-state.major :as major]
+            [gnostica.game-state.major-power :as major-power]
             [gnostica.game-state.placement :as placement]
             [gnostica.game-state.rod :as rod]
             [gnostica.pieces :as pieces]))
@@ -955,13 +956,18 @@
    (paid-sword-source-opts source-result (:power-card source-result)))
   ([source-result power-card]
    (cond-> {:source-card (:source-card source-result)
-            :source-card-already-discarded? (:discard-source-card? source-result)
+            :source-card-already-discarded? (= :hand-card
+                                               (get-in source-result
+                                                       [:source :kind]))
             :allow-major-minion? true}
      power-card
      (assoc :power-card power-card))))
 
-(defn- resolve-specific-major-source [state command card-id error-code message]
-  (let [source-result (major/resolve-major-source state command)]
+(defn- resolve-specific-major-source
+  ([state command card-id error-code message]
+   (resolve-specific-major-source state command card-id error-code message {}))
+  ([state command card-id error-code message source-opts]
+   (let [source-result (major/resolve-major-source state command source-opts)]
     (cond
       (not (:ok? source-result))
       source-result
@@ -974,7 +980,7 @@
                      :source (core/source-summary (:source source-result))})
 
       :else
-      source-result)))
+      source-result))))
 
 (defn- action-piece-id [command action]
   (or (:piece-id action)
@@ -1184,14 +1190,15 @@
 (defn- apply-death-sword-move
   ([state command]
    (apply-death-sword-move state command {}))
-  ([state command {:keys [required-card-id power-card]
+  ([state command {:keys [required-card-id power-card source-opts]
                    :or {required-card-id "death"}}]
    (let [source-result (resolve-specific-major-source
                         state
                         command
                         required-card-id
                         :death-actions-unavailable
-                        "Only Death can apply multiple Sword actions.")
+                        "Only Death can apply multiple Sword actions."
+                        source-opts)
          effective-card (or power-card (:source-card source-result))]
     (if-not (:ok? source-result)
       source-result
@@ -1485,14 +1492,15 @@
 (defn apply-moon-move-with-opts
   ([state command]
    (apply-moon-move-with-opts state command {}))
-  ([state command {:keys [required-card-id power-card]
+  ([state command {:keys [required-card-id power-card source-opts]
                    :or {required-card-id "moon"}}]
    (let [source-result (resolve-specific-major-source
                         state
                         command
                         required-card-id
                         :moon-actions-unavailable
-                        "Only Moon can apply Rod followed by Sword.")
+                        "Only Moon can apply Rod followed by Sword."
+                        source-opts)
          effective-card (or power-card (:source-card source-result))]
     (if-not (:ok? source-result)
       source-result
@@ -1594,7 +1602,8 @@
      state
      command
      {:required-card-id (or required-card-id "death")
-      :power-card (:power-card source-opts)})
+      :power-card (:power-card source-opts)
+      :source-opts source-opts})
 
     (or (contains? command :hand-trade-target)
         (contains? command :hand-trade-target-piece-id))
@@ -1609,10 +1618,27 @@
      state
      command
      {:required-card-id (or required-card-id "moon")
-      :power-card (:power-card source-opts)})
+      :power-card (:power-card source-opts)
+      :source-opts source-opts})
 
     :else
     (apply-single-sword-move state command opts))))
 
 (defn apply-sword-move [state command]
   (apply-sword-move-with-opts state command {}))
+
+(defmethod major-power/apply-card-power "justice"
+  [state command _card {:keys [source-opts]}]
+  (apply-sword-move-with-opts state command {:source-opts source-opts}))
+
+(defmethod major-power/apply-card-power "death"
+  [state command _card {:keys [source-opts]}]
+  (apply-sword-move-with-opts state command {:source-opts source-opts}))
+
+(defmethod major-power/apply-card-power "tower"
+  [state command _card {:keys [source-opts]}]
+  (apply-sword-move-with-opts state command {:source-opts source-opts}))
+
+(defmethod major-power/apply-card-power "moon"
+  [state command _card {:keys [source-opts]}]
+  (apply-sword-move-with-opts state command {:source-opts source-opts}))

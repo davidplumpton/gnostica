@@ -2,6 +2,7 @@
   (:require [gnostica.board :as board]
             [gnostica.game-state.core :as core]
             [gnostica.game-state.major :as major]
+            [gnostica.game-state.major-power :as major-power]
             [gnostica.pieces :as pieces]))
 
 (def target-direction-offsets
@@ -76,10 +77,15 @@
     :else
     (assoc command :actions [(command-action command :orient-target)])))
 
-(defn- apply-specific-major-sequence [state command spec power]
+(defn- apply-specific-major-sequence
+  ([state command spec power]
+   (apply-specific-major-sequence state command spec power {}))
+  ([state command spec power {:keys [source-opts]}]
   (major/apply-major-sequence state
                               (command-with-single-action command power)
-                              spec))
+                              (cond-> spec
+                                source-opts
+                                (assoc :source-opts source-opts)))))
 
 (defn- invalid-target-piece [target message]
   (core/failure :invalid-target-piece
@@ -314,14 +320,18 @@
             (assoc (core/success next-state [event])
                    :affected-piece-ids [(:id replacement-piece)])))))))
 
-(defn apply-hierophant-move-with-source-card-id [state command source-card-id]
-  (apply-specific-major-sequence
-   state
-   command
-   {:card-id source-card-id
-    :power-order [:convert-piece]
-    :apply-action-fn apply-hierophant-action}
-   :convert-piece))
+(defn apply-hierophant-move-with-source-card-id
+  ([state command source-card-id]
+   (apply-hierophant-move-with-source-card-id state command source-card-id {}))
+  ([state command source-card-id opts]
+   (apply-specific-major-sequence
+    state
+    command
+    {:card-id source-card-id
+     :power-order [:convert-piece]
+     :apply-action-fn apply-hierophant-action}
+    :convert-piece
+    opts)))
 
 (defn apply-hierophant-move [state command]
   (apply-hierophant-move-with-source-card-id state command "hierophant"))
@@ -567,14 +577,18 @@
                   "Hermit targets must be :piece or :territory."
                   {:target (:target action)})))
 
-(defn apply-hermit-move-with-source-card-id [state command source-card-id]
-  (apply-specific-major-sequence
-   state
-   command
-   {:card-id source-card-id
-    :power-order [:relocate]
-    :apply-action-fn apply-hermit-action}
-   :relocate))
+(defn apply-hermit-move-with-source-card-id
+  ([state command source-card-id]
+   (apply-hermit-move-with-source-card-id state command source-card-id {}))
+  ([state command source-card-id opts]
+   (apply-specific-major-sequence
+    state
+    command
+    {:card-id source-card-id
+     :power-order [:relocate]
+     :apply-action-fn apply-hermit-action}
+    :relocate
+    opts)))
 
 (defn apply-hermit-move [state command]
   (apply-hermit-move-with-source-card-id state command "hermit"))
@@ -607,13 +621,39 @@
                                             (:player-id oriented-piece))
                                      [(:id oriented-piece)]))))))
 
-(defn apply-devil-move-with-source-card-id [state command source-card-id]
+(defn apply-devil-move-with-source-card-id
+  ([state command source-card-id]
+   (apply-devil-move-with-source-card-id state command source-card-id {}))
+  ([state command source-card-id {:keys [source-opts]}]
   (major/apply-major-sequence
    state
    (command-with-orientation-actions command)
-   {:card-id source-card-id
-    :power-order [:orient-target :orient-target :orient-target]
-    :apply-action-fn apply-devil-action}))
+   (cond-> {:card-id source-card-id
+            :power-order [:orient-target :orient-target :orient-target]
+            :apply-action-fn apply-devil-action}
+     source-opts
+     (assoc :source-opts source-opts)))))
 
 (defn apply-devil-move [state command]
   (apply-devil-move-with-source-card-id state command "devil"))
+
+(defmethod major-power/apply-card-power "hierophant"
+  [state command _card {:keys [source-opts]}]
+  (apply-hierophant-move-with-source-card-id state
+                                             command
+                                             "hierophant"
+                                             {:source-opts source-opts}))
+
+(defmethod major-power/apply-card-power "hermit"
+  [state command _card {:keys [source-opts]}]
+  (apply-hermit-move-with-source-card-id state
+                                         command
+                                         "hermit"
+                                         {:source-opts source-opts}))
+
+(defmethod major-power/apply-card-power "devil"
+  [state command _card {:keys [source-opts]}]
+  (apply-devil-move-with-source-card-id state
+                                        command
+                                        "devil"
+                                        {:source-opts source-opts}))

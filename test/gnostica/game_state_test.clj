@@ -1083,6 +1083,55 @@
     (is (= (count cards/deck) (count (set (all-card-ids state)))))
     (is (game-schema/valid-game? state))))
 
+(deftest fool-revealed-card_can_play_a_full_composite_major_power
+  (let [draw-start (+ (hand-card-count (count player-specs))
+                      board/board-card-count)
+        enemy-piece {:id :indigo-fool-hanged-target
+                     :player-id :indigo
+                     :space-index 5
+                     :size :medium
+                     :orientation :north}
+        initial-state (-> (:state (game-state/create-game
+                                   player-specs
+                                   {:deck-order
+                                    (deck-with-cards-at
+                                     {0 "fool"
+                                      draw-start "hangedman"})}))
+                          (game-state/with-board-pieces
+                           [(assoc rose-rod-minion :orientation :east)
+                            enemy-piece]))
+        rose-hand-before (player-hand-ids initial-state :rose)
+        indigo-hand-before (player-hand-ids initial-state :indigo)
+        {:keys [ok? state events]} (game-state/apply-fool-move
+                                    initial-state
+                                    {:player-id :rose
+                                     :source {:kind :hand-card
+                                              :card-id "fool"}
+                                     :reveals [{:power :hangedman
+                                                :piece-id :rose-rod-minion
+                                                :play-command
+                                                {:rod {:piece-id :rose-rod-minion
+                                                       :mode :move-minion
+                                                       :distance 1}
+                                                 :hand-trade-target-piece-id
+                                                 :indigo-fool-hanged-target}}]
+                                     :shuffle-fn identity})]
+    (is ok?)
+    (is (= [:fool/card-revealed
+            :rod/minion-moved
+            :hanged-man/hands-traded]
+           (mapv :type events)))
+    (is (= 4 (:space-index (piece-by-id state :rose-rod-minion))))
+    (is (= indigo-hand-before (player-hand-ids state :rose)))
+    (is (= (vec (remove #{"fool"} rose-hand-before))
+           (player-hand-ids state :indigo)))
+    (is (= ["fool" "hangedman"] (mapv :id (:discard-pile state))))
+    (is (= (mapv :id (drop 1 (:draw-pile initial-state)))
+           (mapv :id (:draw-pile state))))
+    (is (= (count cards/deck) (count (all-card-ids state))))
+    (is (= (count cards/deck) (count (set (all-card-ids state)))))
+    (is (game-schema/valid-game? state))))
+
 (deftest hierophant-replaces_target_piece_with_current_players_same_size_piece
   (let [state (-> (:state (game-state/create-game
                            player-specs

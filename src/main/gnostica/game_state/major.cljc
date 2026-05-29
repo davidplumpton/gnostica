@@ -14,16 +14,53 @@
 (defn- source-summary [source-result]
   (core/source-summary (:source source-result)))
 
+(defn- discard-pile-card [state card-id]
+  (some (fn [card]
+          (when (= card-id (:id card))
+            card))
+        (:discard-pile state)))
+
 (defn- no-minions-failure [player-id source]
   (core/failure :no-major-minions
                 "Major arcana sources require at least one current-player minion."
                 {:player-id player-id
                  :source source}))
 
-(defn- resolve-hand-source [state player-id source]
-  (let [card (core/player-hand-card state player-id (:card-id source))
-        minions (core/player-pieces state player-id)]
+(defn- resolve-hand-source
+  ([state player-id source]
+   (resolve-hand-source state player-id source {}))
+  ([state player-id source {:keys [source-card source-card-already-discarded?]}]
+   (let [hand-card (core/player-hand-card state player-id (:card-id source))
+         discard-card (when source-card-already-discarded?
+                        (discard-pile-card state (:card-id source)))
+         card (cond
+                source-card-already-discarded? (or discard-card source-card)
+                source-card source-card
+                :else hand-card)
+         minions (core/player-pieces state player-id)]
     (cond
+      (and source-card
+           (not= (:card-id source) (:id source-card)))
+      (core/failure :invalid-hand-card
+                    "Major paid source cards must match the command source card."
+                    {:card-id (:card-id source)
+                     :source-card-id (:id source-card)})
+
+      (and source-card
+           (not source-card-already-discarded?)
+           (nil? hand-card))
+      (core/failure :invalid-hand-card
+                    "Major hand-card sources must reference a card in the player's hand."
+                    {:card-id (:card-id source)
+                     :player-id player-id})
+
+      (and source-card-already-discarded?
+           (nil? discard-card))
+      (core/failure :invalid-hand-card
+                    "Already-discarded major hand-card sources must reference a card in the discard pile."
+                    {:card-id (:card-id source)
+                     :player-id player-id})
+
       (nil? card)
       (core/failure :invalid-hand-card
                     "Major hand-card sources must reference a card in the player's hand."
@@ -45,12 +82,16 @@
        :source source
        :source-kind :hand-card
        :source-card card
-       :discard-source-card? true
-       :minion-ids (piece-ids minions)})))
+       :source-card-already-discarded? (true? source-card-already-discarded?)
+       :discard-source-card? (not source-card-already-discarded?)
+       :minion-ids (piece-ids minions)}))))
 
-(defn- resolve-territory-source [state player-id source]
+(defn- resolve-territory-source
+  ([state player-id source]
+   (resolve-territory-source state player-id source {}))
+  ([state player-id source {:keys [source-card]}]
   (let [cell (core/board-cell-by-index state (:board-index source))
-        card (:card cell)
+        card (or source-card (:card cell))
         minions (when cell
                   (owned-pieces-at-cell state player-id cell))]
     (cond
@@ -58,6 +99,14 @@
       (core/failure :invalid-source-territory
                     "Major territory sources must reference an existing board cell."
                     {:board-index (:board-index source)})
+
+      (and source-card
+           (not= (get-in cell [:card :id]) (:id source-card)))
+      (core/failure :invalid-source-territory
+                    "Major paid source cards must match the command source territory."
+                    {:board-index (:board-index source)
+                     :territory-card-id (get-in cell [:card :id])
+                     :source-card-id (:id source-card)})
 
       (not (major-card? card))
       (core/failure :source-card-not-major
@@ -75,9 +124,12 @@
        :source-kind :territory
        :source-card card
        :source-cell cell
-       :minion-ids (piece-ids minions)})))
+       :minion-ids (piece-ids minions)}))))
 
-(defn resolve-major-source [state command]
+(defn resolve-major-source
+  ([state command]
+   (resolve-major-source state command {}))
+  ([state command source-opts]
   (let [{:keys [player-id source]} command]
     (cond
       (not (map? command))
@@ -102,15 +154,15 @@
                     {:source source})
 
       (= :hand-card (:kind source))
-      (resolve-hand-source state player-id source)
+      (resolve-hand-source state player-id source source-opts)
 
       (= :territory (:kind source))
-      (resolve-territory-source state player-id source)
+      (resolve-territory-source state player-id source source-opts)
 
       :else
       (core/failure :invalid-major-source
                     "Major sources must be either :hand-card or :territory."
-                    {:source source}))))
+                    {:source source})))))
 
 (defn charge-source-once [state source-result]
   (core/apply-source-cost state
@@ -119,7 +171,7 @@
 
 (defn paid-source-opts [source-result]
   {:source-card (:source-card source-result)
-   :source-card-already-discarded? (:discard-source-card? source-result)})
+   :source-card-already-discarded? (= :hand-card (:source-kind source-result))})
 
 (defn- sequence-source-opts [source-result spec]
   (cond-> (paid-source-opts source-result)
@@ -352,7 +404,7 @@
                        (into events (:events applied)))))))))))
 
 (defn apply-major-sequence [state command spec]
-  (let [source-result (resolve-major-source state command)]
+  (let [source-result (resolve-major-source state command (:source-opts spec))]
     (if-not (:ok? source-result)
       source-result
       (let [source-card-result (validate-source-card source-result spec)

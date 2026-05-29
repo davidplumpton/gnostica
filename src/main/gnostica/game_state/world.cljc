@@ -6,6 +6,7 @@
             [gnostica.game-state.disc :as disc]
             [gnostica.game-state.draw :as draw]
             [gnostica.game-state.major :as major]
+            [gnostica.game-state.major-power :as major-power]
             [gnostica.game-state.manipulation :as manipulation]
             [gnostica.game-state.rod :as rod]
             [gnostica.game-state.sword :as sword]))
@@ -53,8 +54,11 @@
 (defn- source-summary [source-result]
   (core/source-summary (:source source-result)))
 
-(defn- resolve-world-source [state command]
-  (let [source-result (major/resolve-major-source state command)]
+(defn- resolve-world-source
+  ([state command]
+   (resolve-world-source state command {}))
+  ([state command source-opts]
+   (let [source-result (major/resolve-major-source state command source-opts)]
     (cond
       (not (:ok? source-result))
       source-result
@@ -66,7 +70,7 @@
                      :source (source-summary source-result)})
 
       :else
-      source-result)))
+      source-result))))
 
 (defn- resolve-copied-cell [state command]
   (let [board-index (copied-board-index command)
@@ -158,7 +162,12 @@
 (defn- source-opts [source-result copied-card]
   {:source-card (:source-card source-result)
    :power-card copied-card
+   :source-card-already-discarded? (:source-card-already-discarded? source-result)
    :allow-major-minion? true})
+
+(defn- delegated-source-opts [source-result]
+  {:source-card (:source-card source-result)
+   :source-card-already-discarded? (:source-card-already-discarded? source-result)})
 
 (defn- paid-source-card-id [source-result]
   (get-in source-result [:source-card :id]))
@@ -220,73 +229,85 @@
 
 (defn- apply-copied-card-power [state command source-result copied-card]
   (let [command (clean-command command)
-        source-card-id (paid-source-card-id source-result)]
+        source-card-id (paid-source-card-id source-result)
+        opts {:source-opts (delegated-source-opts source-result)}]
     (case (:id copied-card)
       "fool"
-      (draw/apply-fool-move-with-source-card-id state command source-card-id)
+      (draw/apply-fool-move-with-source-card-id state command source-card-id opts)
 
       "high-priestess"
       (draw/apply-high-priestess-move-with-source-card-id state
                                                           command
-                                                          source-card-id)
+                                                          source-card-id
+                                                          opts)
 
       "empress"
       (composite/apply-empress-move-with-source-card-id state
                                                         command
                                                         source-card-id
-                                                        copied-card)
+                                                        copied-card
+                                                        opts)
 
       "emperor"
       (composite/apply-emperor-move-with-source-card-id state
                                                         command
                                                         source-card-id
-                                                        copied-card)
+                                                        copied-card
+                                                        opts)
 
       "hierophant"
       (manipulation/apply-hierophant-move-with-source-card-id state
                                                               command
-                                                              source-card-id)
+                                                              source-card-id
+                                                              opts)
 
       "lovers"
       (composite/apply-lovers-move-with-source-card-id state
                                                        command
                                                        source-card-id
-                                                       copied-card)
+                                                       copied-card
+                                                       opts)
 
       "chariot"
       (composite/apply-chariot-move-with-source-card-id state
                                                         command
                                                         source-card-id
-                                                        copied-card)
+                                                        copied-card
+                                                        opts)
 
       "hermit"
       (manipulation/apply-hermit-move-with-source-card-id state
                                                           command
-                                                          source-card-id)
+                                                          source-card-id
+                                                          opts)
 
       "hangedman"
       (composite/apply-hanged-man-move-with-source-card-id state
                                                            command
                                                            source-card-id
-                                                           copied-card)
+                                                           copied-card
+                                                           opts)
 
       "temperance"
       (composite/apply-temperance-move-with-source-card-id state
                                                            command
                                                            source-card-id
-                                                           copied-card)
+                                                           copied-card
+                                                           opts)
 
       "devil"
       (manipulation/apply-devil-move-with-source-card-id state
                                                          command
-                                                         source-card-id)
+                                                         source-card-id
+                                                         opts)
 
       "moon"
       (sword/apply-moon-move-with-opts
        state
        command
        {:required-card-id source-card-id
-        :power-card copied-card})
+        :power-card copied-card
+        :source-opts (:source-opts opts)})
 
       "sun"
       (let [minion-result (validate-source-piece-minion source-result command)]
@@ -300,15 +321,19 @@
       "judgement"
       (draw/apply-judgement-move-with-source-card-id state
                                                      command
-                                                     source-card-id)
+                                                     source-card-id
+                                                     opts)
 
       (core/failure :world-copied-power-unavailable
                     "The copied major territory does not have an implemented World delegation."
                     {:card-id (:id copied-card)
                      :source (source-summary source-result)}))))
 
-(defn apply-world-move [state command]
-  (let [source-result (resolve-world-source state command)
+(defn apply-world-move
+  ([state command]
+   (apply-world-move state command {}))
+  ([state command {:keys [source-opts]}]
+  (let [source-result (resolve-world-source state command source-opts)
         copied-result (resolve-copied-cell state command)]
     (cond
       (not (:ok? source-result))
@@ -335,4 +360,8 @@
           (apply-copied-card-power state
                                    command
                                    source-result
-                                   copied-card))))))
+                                   copied-card)))))))
+
+(defmethod major-power/apply-card-power "world"
+  [state command _card {:keys [source-opts]}]
+  (apply-world-move state command {:source-opts source-opts}))

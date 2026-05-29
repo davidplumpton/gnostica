@@ -3,6 +3,7 @@
             [gnostica.game-state.cup :as cup]
             [gnostica.game-state.disc :as disc]
             [gnostica.game-state.major :as major]
+            [gnostica.game-state.major-power :as major-power]
             [gnostica.game-state.rod :as rod]
             [gnostica.game-state.sword :as sword]
             [gnostica.pieces :as pieces]))
@@ -134,8 +135,11 @@
 (defn- source-card-id [source-result]
   (get-in source-result [:source-card :id]))
 
-(defn- resolve-specific-major-source [state command card-id error-code message]
-  (let [source-result (major/resolve-major-source state command)]
+(defn- resolve-specific-major-source
+  ([state command card-id error-code message]
+   (resolve-specific-major-source state command card-id error-code message {}))
+  ([state command card-id error-code message source-opts]
+   (let [source-result (major/resolve-major-source state command source-opts)]
     (cond
       (not (:ok? source-result))
       source-result
@@ -148,7 +152,7 @@
                      :source (core/source-summary (:source source-result))})
 
       :else
-      source-result)))
+      source-result))))
 
 (defn- normalize-action-list [command key label maximum]
   (let [actions (get command key)]
@@ -251,13 +255,17 @@
                                    (core/append-history event))]
                 (core/success next-state [event])))))))))
 
-(defn apply-high-priestess-move-with-source-card-id [state command source-card-id]
+(defn apply-high-priestess-move-with-source-card-id
+  ([state command source-card-id]
+   (apply-high-priestess-move-with-source-card-id state command source-card-id {}))
+  ([state command source-card-id {:keys [source-opts]}]
   (let [source-result (resolve-specific-major-source
                        state
                        command
                        source-card-id
                        :high-priestess-actions-unavailable
-                       "Only High Priestess can apply redraw passes.")
+                       "Only High Priestess can apply redraw passes."
+                       source-opts)
         redraws-result (normalize-action-list command :redraws "High Priestess" 2)
         shuffle-fn (or (:shuffle-fn command) shuffle)]
     (cond
@@ -294,7 +302,7 @@
                        (inc pass-index)
                        (rest remaining)
                        (into events (:events pass-result)))))
-            (core/success current-state events)))))))
+            (core/success current-state events))))))))
 
 (defn apply-high-priestess-move [state command]
   (apply-high-priestess-move-with-source-card-id state
@@ -350,13 +358,17 @@
        :piece piece
        :piece-id piece-id})))
 
-(defn apply-judgement-move-with-source-card-id [state command source-card-id]
+(defn apply-judgement-move-with-source-card-id
+  ([state command source-card-id]
+   (apply-judgement-move-with-source-card-id state command source-card-id {}))
+  ([state command source-card-id {:keys [source-opts]}]
   (let [source-result (resolve-specific-major-source
                        state
                        command
                        source-card-id
                        :judgement-actions-unavailable
-                       "Only Judgement can draw cards from the discard pile.")
+                       "Only Judgement can draw cards from the discard pile."
+                       source-opts)
         card-ids (judgement-card-ids command)]
     (if-not (:ok? source-result)
       source-result
@@ -414,10 +426,21 @@
                                    (remove-cards-from-discard card-ids)
                                    (core/append-cards-to-hand player-id cards-to-draw)
                                    (core/append-history event))]
-                (core/success next-state [event])))))))))
+                (core/success next-state [event]))))))))))
 
 (defn apply-judgement-move [state command]
   (apply-judgement-move-with-source-card-id state command "judgement"))
+
+(def ^:private fool-suit-powers #{:cup :rod :disc :sword})
+
+(defn- card-power-key [card]
+  (keyword (:id card)))
+
+(defn- selected-card-power? [card power]
+  (and (= :major (:arcana card))
+       (or (nil? power)
+           (= power (card-power-key card))
+           (= power (:id card)))))
 
 (defn- fool-play-command [player-id card action]
   (let [play-command (or (:play-command action)
@@ -428,9 +451,33 @@
                       :kind :hand-card
                       :card-id (:id card)
                       :piece-id piece-id)]
-    (assoc (dissoc play-command :power)
+    (assoc play-command
            :player-id player-id
            :source source)))
+
+(defn- apply-fool-suit-play [state power command source-opts]
+  (case power
+    :cup
+    (cup/apply-cup-move-with-opts state
+                                  command
+                                  {:source-opts source-opts})
+
+    :rod
+    (rod/apply-rod-move-with-opts state
+                                  command
+                                  {:source-opts source-opts})
+
+    :disc
+    (disc/apply-disc-move-with-opts state
+                                    command
+                                    {:source-opts source-opts
+                                     :charge-source? false})
+
+    :sword
+    (sword/apply-sword-move-with-opts state
+                                      command
+                                      {:source-opts source-opts
+                                       :charge-source? false})))
 
 (defn- apply-fool-play [state player-id card action shuffle-fn]
   (let [play-command (or (:play-command action)
@@ -445,11 +492,15 @@
                     "Fool reveal play commands require a command map."
                     {:action action})
 
-      (not (contains? #{:cup :rod :disc :sword} power))
+      (and power
+           (not (contains? fool-suit-powers power))
+           (not (selected-card-power? card power)))
       (core/failure :invalid-fool-play-power
-                    "Fool can route revealed cards through an implemented suit power."
+                    "Fool can route revealed cards through an implemented suit or full-card major power."
                     {:power power
-                     :supported-powers #{:cup :rod :disc :sword}
+                     :supported-powers (cond-> fool-suit-powers
+                                         (= :major (:arcana card))
+                                         (conj (card-power-key card)))
                      :card-id (:id card)})
 
       :else
@@ -457,28 +508,13 @@
                       (and shuffle-fn
                            (not (contains? play-command :shuffle-fn)))
                       (assoc :shuffle-fn shuffle-fn))]
-        (case power
-          :cup
-          (cup/apply-cup-move-with-opts state
+        (if (contains? fool-suit-powers power)
+          (apply-fool-suit-play state power command source-opts)
+          (major-power/apply-card-power state
                                         command
-                                        {:source-opts source-opts})
-
-          :rod
-          (rod/apply-rod-move-with-opts state
-                                        command
-                                        {:source-opts source-opts})
-
-          :disc
-          (disc/apply-disc-move-with-opts state
-                                          command
-                                          {:source-opts source-opts
-                                           :charge-source? false})
-
-          :sword
-          (sword/apply-sword-move-with-opts state
-                                            command
-                                            {:source-opts source-opts
-                                             :charge-source? false}))))))
+                                        card
+                                        {:source-opts source-opts
+                                         :shuffle-fn shuffle-fn}))))))
 
 (defn- apply-fool-reveal
   [state player-id source-summary reveal-index action shuffle-fn]
@@ -525,13 +561,17 @@
                                   (concat [event]
                                           (:events play-result)))))))))))))
 
-(defn apply-fool-move-with-source-card-id [state command source-card-id]
+(defn apply-fool-move-with-source-card-id
+  ([state command source-card-id]
+   (apply-fool-move-with-source-card-id state command source-card-id {}))
+  ([state command source-card-id {:keys [source-opts]}]
   (let [source-result (resolve-specific-major-source
                        state
                        command
                        source-card-id
                        :fool-actions-unavailable
-                       "Only Fool can reveal and play draw-pile cards.")
+                       "Only Fool can reveal and play draw-pile cards."
+                       source-opts)
         reveals-result (normalize-action-list command :reveals "Fool" 2)
         shuffle-fn (or (:shuffle-fn command) shuffle)]
     (cond
@@ -567,7 +607,34 @@
                        (inc reveal-index)
                        (rest remaining)
                        (into events (:events reveal-result)))))
-            (core/success current-state events)))))))
+            (core/success current-state events))))))))
 
 (defn apply-fool-move [state command]
   (apply-fool-move-with-source-card-id state command "fool"))
+
+(defmethod major-power/apply-card-power "fool"
+  [state command _card {:keys [source-opts]}]
+  (apply-fool-move-with-source-card-id state command "fool" {:source-opts source-opts}))
+
+(defmethod major-power/apply-card-power "high-priestess"
+  [state command _card {:keys [source-opts shuffle-fn]}]
+  (apply-high-priestess-move-with-source-card-id
+   state
+   (cond-> command
+     (and shuffle-fn (not (contains? command :shuffle-fn)))
+     (assoc :shuffle-fn shuffle-fn))
+   "high-priestess"
+   {:source-opts source-opts}))
+
+(defmethod major-power/apply-card-power "judgement"
+  [state command _card {:keys [source-opts]}]
+  (apply-judgement-move-with-source-card-id state
+                                            command
+                                            "judgement"
+                                            {:source-opts source-opts}))
+
+(defmethod major-power/apply-card-power "wheeloffortune"
+  [state command _card {:keys [source-opts]}]
+  (cup/apply-cup-move-with-opts state
+                                (assoc command :cup-variant :wheel-cup)
+                                {:source-opts source-opts}))

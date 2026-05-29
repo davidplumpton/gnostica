@@ -3,6 +3,7 @@
             [gnostica.cards :as cards]
             [gnostica.game-state.cup :as cup]
             [gnostica.game-state.core :as core]
+            [gnostica.game-state.major-power :as major-power]
             [gnostica.game-state.placement :as placement]
             [gnostica.pieces :as pieces]))
 
@@ -742,8 +743,9 @@
 
 (defn- paid-disc-source-opts [source-result]
   (cond-> {:source-card (:source-card source-result)
-           :source-card-already-discarded? (:discard-source-card?
-                                            source-result)}
+           :source-card-already-discarded? (= :hand-card
+                                              (get-in source-result
+                                                      [:source :kind]))}
     (:power-card source-result)
     (assoc :power-card (:power-card source-result))))
 
@@ -1228,6 +1230,10 @@
 (defn apply-sun-move [state command]
   (apply-sun-move-with-opts state command {}))
 
+(defmethod major-power/apply-card-power "sun"
+  [state command _card {:keys [source-opts]}]
+  (apply-sun-move-with-opts state command {:source-opts source-opts}))
+
 (defn apply-disc-move-with-opts
   ([state command]
    (apply-disc-move-with-opts state command {}))
@@ -1245,3 +1251,11 @@
 
 (defn apply-disc-move [state command]
   (apply-disc-move-with-opts state command {}))
+
+(defmethod major-power/apply-card-power "strength"
+  [state command _card {:keys [source-opts]}]
+  (apply-disc-move-with-opts state command {:source-opts source-opts}))
+
+(defmethod major-power/apply-card-power "star"
+  [state command _card {:keys [source-opts]}]
+  (apply-disc-move-with-opts state command {:source-opts source-opts}))

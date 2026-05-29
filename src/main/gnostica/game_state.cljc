@@ -205,8 +205,11 @@
 (defn apply-world-move [state command]
   (apply-source-turn-action state command world/apply-world-move))
 
-(defn resolve-major-source [state command]
-  (major/resolve-major-source state command))
+(defn resolve-major-source
+  ([state command]
+   (major/resolve-major-source state command))
+  ([state command source-opts]
+   (major/resolve-major-source state command source-opts)))
 
 (defn charge-major-source-once [state source-result]
   (major/charge-source-once state source-result))
