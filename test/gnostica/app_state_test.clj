@@ -2577,6 +2577,100 @@
     (is (= ["justice"] (mapv :id (:discard-pile zones))))
     (is (game-schema/valid-game? (app-state/game confirmed-db)))))
 
+(deftest justice-hand-card-can-stage-hand-trade-only
+  (let [db (app-state/initialize {:player-specs test-player-specs
+                                  :game-options {:deck-order (deck-starting-with ["justice"])}
+                                  :demo-board-pieces [rose-rod-minion
+                                                      indigo-rod-target]})
+        rose-hand-before (mapv :id (get-in db [:game :players-by-id :rose :hand]))
+        indigo-hand-before (mapv :id (get-in db [:game :players-by-id :indigo :hand]))
+        power-db (-> db
+                     (app-state/select-move-source :play-hand-card)
+                     (app-state/select-move-hand-card "justice")
+                     (app-state/select-move-piece :rose-rod-minion)
+                     (app-state/select-move-power :justice))
+        trade-only-db (app-state/set-move-major-action-count power-db 1)
+        ready-db (app-state/select-move-target-piece trade-only-db
+                                                     :indigo-rod-target)
+        confirmed-db (app-state/confirm-move ready-db)
+        zones (app-state/card-zones confirmed-db)]
+    (is (= [{:id 1 :label "Trade only"}
+            {:id 2 :label "Use both"}]
+           (get-in (app-state/move-panel-view power-db)
+                   [:controls :major-action-count-options])))
+    (is (= 2 (get-in (app-state/move-panel-view power-db)
+                     [:controls :major-action-count])))
+    (is (= :confirm (:stage (app-state/move-selection ready-db))))
+    (is (= {:player-id :rose
+            :source {:kind :hand-card
+                     :card-id "justice"
+                     :piece-id :rose-rod-minion}
+            :hand-trade-target {:kind :piece
+                                :piece-id :indigo-rod-target}}
+           (app-state/move-command ready-db)))
+    (is (:ok? (get-in confirmed-db [:move-selection :last-result])))
+    (is (= [:justice/hands-traded]
+           (mapv :type (get-in confirmed-db [:move-selection :last-result :events]))))
+    (is (= indigo-hand-before
+           (mapv :id (get-in confirmed-db [:game :players-by-id :rose :hand]))))
+    (is (= (vec (remove #{"justice"} rose-hand-before))
+           (mapv :id (get-in confirmed-db [:game :players-by-id :indigo :hand]))))
+    (is (some? (piece-by-id confirmed-db :indigo-rod-target)))
+    (is (= ["justice"] (mapv :id (:discard-pile zones))))
+    (is (game-schema/valid-game? (app-state/game confirmed-db)))))
+
+(deftest hanged-man-hand-card-can-stage-hand-trade-only
+  (let [hanged-target {:id :indigo-hanged-target
+                       :player-id :indigo
+                       :space-index 4
+                       :size :small
+                       :orientation :north}
+        db (app-state/initialize {:player-specs test-player-specs
+                                  :game-options {:deck-order (deck-starting-with ["hangedman"])}
+                                  :demo-board-pieces [rose-rod-minion
+                                                      hanged-target]})
+        rose-hand-before (mapv :id (get-in db [:game :players-by-id :rose :hand]))
+        indigo-hand-before (mapv :id (get-in db [:game :players-by-id :indigo :hand]))
+        power-db (-> db
+                     (app-state/select-move-source :play-hand-card)
+                     (app-state/select-move-hand-card "hangedman")
+                     (app-state/select-move-piece :rose-rod-minion)
+                     (app-state/select-move-power :hanged-man))
+        trade-only-db (app-state/set-move-major-action-count power-db 1)
+        ready-db (app-state/select-move-target-piece trade-only-db
+                                                     :indigo-hanged-target)
+        confirmed-db (app-state/confirm-move ready-db)
+        zones (app-state/card-zones confirmed-db)]
+    (is (= [{:type :hand-card}
+            {:type :piece}
+            {:type :power}
+            {:type :major-action-count
+             :power :hanged-man}
+            {:type :target-piece
+             :power :hanged-man
+             :action-power :trade-hand}]
+           (move-control-group-summary trade-only-db)))
+    (is (= :confirm (:stage (app-state/move-selection ready-db))))
+    (is (= {:player-id :rose
+            :source {:kind :hand-card
+                     :card-id "hangedman"
+                     :piece-id :rose-rod-minion}
+            :actions [{:power :trade-hand
+                       :piece-id :rose-rod-minion
+                       :target {:kind :piece
+                                :piece-id :indigo-hanged-target}}]}
+           (app-state/move-command ready-db)))
+    (is (:ok? (get-in confirmed-db [:move-selection :last-result])))
+    (is (= [:hanged-man/hands-traded]
+           (mapv :type (get-in confirmed-db [:move-selection :last-result :events]))))
+    (is (= 3 (:space-index (piece-by-id confirmed-db :rose-rod-minion))))
+    (is (= indigo-hand-before
+           (mapv :id (get-in confirmed-db [:game :players-by-id :rose :hand]))))
+    (is (= (vec (remove #{"hangedman"} rose-hand-before))
+           (mapv :id (get-in confirmed-db [:game :players-by-id :indigo :hand]))))
+    (is (= ["hangedman"] (mapv :id (:discard-pile zones))))
+    (is (game-schema/valid-game? (app-state/game confirmed-db)))))
+
 (deftest death-hand-card-can_stage_two_sword_actions
   (let [target-piece {:id :indigo-death-target
                       :player-id :indigo

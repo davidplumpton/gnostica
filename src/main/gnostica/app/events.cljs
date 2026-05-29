@@ -30,6 +30,7 @@
 (def select-move-disc-target-kind :gnostica.app/select-move-disc-target-kind)
 (def select-move-sword-target-kind :gnostica.app/select-move-sword-target-kind)
 (def set-move-disc-action-count :gnostica.app/set-move-disc-action-count)
+(def set-move-major-action-count :gnostica.app/set-move-major-action-count)
 (def set-move-sword-action-count :gnostica.app/set-move-sword-action-count)
 (def set-move-devil-action-count :gnostica.app/set-move-devil-action-count)
 (def set-move-fool-reveal-count :gnostica.app/set-move-fool-reveal-count)
@@ -268,6 +269,11 @@ select-move-rod-mode
  set-move-disc-action-count
  (fn [db [_ action-count]]
    (app-state/set-move-disc-action-count db action-count)))
+
+(rf/reg-event-db
+ set-move-major-action-count
+ (fn [db [_ action-count]]
+   (app-state/set-move-major-action-count db action-count)))
 
 (rf/reg-event-db
  set-move-sword-action-count

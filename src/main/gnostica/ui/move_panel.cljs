@@ -350,6 +350,22 @@
         :on-click #(rf/dispatch [events/set-move-sword-action-count action-count])}
        action-count])]])
 
+(defn- major-action-count-choices [options selected-count]
+  [:div.move-step
+   [:div.move-step__header
+    [:span "Major actions"]
+    [:strong (or (some #(when (= selected-count (:id %)) (:label %)) options)
+                 "None")]]
+   [:div.move-choice-list.is-compact
+    (for [{:keys [id label]} options]
+      ^{:key id}
+      [:button.move-chip
+       {:type "button"
+        :class (when (= selected-count id) "is-selected")
+        :aria-pressed (= selected-count id)
+        :on-click #(rf/dispatch [events/set-move-major-action-count id])}
+       label])]])
+
 (defn- devil-action-count-choices [options selected-count]
   [:div.move-step
    [:div.move-step__header
@@ -753,7 +769,8 @@
   (let [{:keys [params]} selection
         {:keys [board power power-options rod-mode-options piece-options
                 world-copy-options world-copied-power-options world-copied-power
-                disc-action-count-options sword-action-count-options devil-action-count-options
+                disc-action-count-options major-action-count-options major-action-count
+                sword-action-count-options devil-action-count-options
                 sun-disc-mode-options
                 fool-reveal-count-options high-priestess-redraw-count-options
                 high-priestess-redraw-options judgement-card-options
@@ -779,6 +796,9 @@
 
       :power
       [power-choices power-options power]
+
+      :major-action-count
+      [major-action-count-choices major-action-count-options major-action-count]
 
       :world-copy
       [world-copy-choices world-copy-options (:copied-board-index params)]

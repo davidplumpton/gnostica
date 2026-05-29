@@ -189,6 +189,15 @@
 (def death-sword-action-count-order
   [1 2])
 
+(def hand-trade-major-action-count-order
+  [1 2])
+
+(def hand-trade-major-action-count-definitions
+  {1 {:id 1
+      :label "Trade only"}
+   2 {:id 2
+      :label "Use both"}})
+
 (def devil-action-count-order
   [1 2 3])
 
@@ -478,6 +487,9 @@
 (defn- completed-major-action-count [params]
   (count (completed-major-actions params)))
 
+(declare hand-trade-major-action-count-option-values
+         selected-hand-trade-major-action-count)
+
 (defn- composite-major-move? [db source-id params]
   (contains? composite-major-powers (active-power db source-id params)))
 
@@ -493,9 +505,17 @@
               :rod
               :cup)
     :chariot :rod
-    :hanged-man (if (zero? (completed-major-action-count params))
-                  :rod
-                  :trade-hand)
+    :hanged-man (let [action-count (selected-hand-trade-major-action-count
+                                     db
+                                     source-id
+                                     params)
+                      completed-count (completed-major-action-count params)]
+                  (when (< completed-count action-count)
+                    (if (= 1 action-count)
+                      :trade-hand
+                      (if (zero? completed-count)
+                        :rod
+                        :trade-hand))))
     :temperance :cup
     nil))
 
@@ -507,9 +527,15 @@
 
 (defn- active-sword-major-action-power [db source-id params]
   (case (active-power db source-id params)
-    :justice (if (zero? (completed-major-action-count params))
-               :trade-hand
-               :sword)
+    :justice (let [action-count (selected-hand-trade-major-action-count
+                                 db
+                                 source-id
+                                 params)
+                   completed-count (completed-major-action-count params)]
+               (when (< completed-count action-count)
+                 (if (zero? completed-count)
+                   :trade-hand
+                   :sword)))
     :death :sword
     :tower (if (zero? (completed-major-action-count params))
              :orient-minion
@@ -610,6 +636,21 @@
             death-sword-action-count-order)
     (:sword-action-count params)
     1))
+
+(defn- hand-trade-major-action-count-source? [db source-id params]
+  (contains? #{:hanged-man :justice}
+             (active-power db source-id params)))
+
+(defn- hand-trade-major-action-count-option-values [db source-id params]
+  (if (hand-trade-major-action-count-source? db source-id params)
+    hand-trade-major-action-count-order
+    []))
+
+(defn- selected-hand-trade-major-action-count [db source-id params]
+  (if (some #{(:major-action-count params)}
+            (hand-trade-major-action-count-option-values db source-id params))
+    (:major-action-count params)
+    2))
 
 (defn- fool-move? [db source-id params]
   (= :fool (active-power db source-id params)))
@@ -1768,6 +1809,16 @@
   (let [{:keys [source params]} (move-selection db)]
     (disc-action-count-option-values db source params)))
 
+(defn move-major-action-count-options [db]
+  (let [{:keys [source params]} (move-selection db)]
+    (mapv hand-trade-major-action-count-definitions
+          (hand-trade-major-action-count-option-values db source params))))
+
+(defn move-major-action-count [db]
+  (let [{:keys [source params]} (move-selection db)]
+    (when (hand-trade-major-action-count-source? db source params)
+      (selected-hand-trade-major-action-count db source params))))
+
 (defn move-sword-action-count-options [db]
   (let [{:keys [source params]} (move-selection db)]
     (death-sword-action-count-option-values db source params)))
@@ -1855,18 +1906,24 @@
 (defn- composite-major-control-groups [db source-id params]
   (let [power (active-power db source-id params)
         action-power (active-composite-action-power db source-id params)]
-    (case action-power
-      :orient-minion [(major-action-control-group power action-power :minion-orientation)]
-      :rod [(major-action-control-group power action-power :rod)]
-      :cup [(major-action-control-group power action-power :cup)]
-      :trade-hand [(major-action-control-group power action-power :target-piece)]
-      [])))
+    (vec
+     (concat
+      (when (seq (hand-trade-major-action-count-option-values db source-id params))
+        [(power-control-group power :major-action-count)])
+      (case action-power
+        :orient-minion [(major-action-control-group power action-power :minion-orientation)]
+        :rod [(major-action-control-group power action-power :rod)]
+        :cup [(major-action-control-group power action-power :cup)]
+        :trade-hand [(major-action-control-group power action-power :target-piece)]
+        [])))))
 
 (defn- sword-major-control-groups [db source-id params]
   (let [power (active-power db source-id params)
         action-power (active-sword-major-action-power db source-id params)]
     (vec
      (concat
+      (when (seq (hand-trade-major-action-count-option-values db source-id params))
+        [(power-control-group power :major-action-count)])
       (when (= :death power)
         [(power-control-group power :sword-action-count)])
       (when (or (not= :death power)
@@ -2851,6 +2908,7 @@
             :damage
             :sword-action-count
             :devil-action-count
+            :major-action-count
             :fool-reveal-count
             :high-priestess-redraw-count
             :redraws
@@ -2866,6 +2924,7 @@
               :disc-action-count
               :sword-action-count
               :devil-action-count
+              :major-action-count
               :minion-orientation
               :fool-reveal-count
               :high-priestess-redraw-count
@@ -2889,6 +2948,7 @@
                   :disc-action-count
                   :sword-action-count
                   :devil-action-count
+                  :major-action-count
                   :minion-orientation
                   :fool-reveal-count
                   :high-priestess-redraw-count
@@ -2962,6 +3022,7 @@
                   :sword-target-kind
                   :disc-action-count
                   :sword-action-count
+                  :major-action-count
                   :minion-orientation
                   :fool-reveal-count
                   :high-priestess-redraw-count
@@ -3049,6 +3110,14 @@
                   :orientation
                   :damage
                   :sword-target-kind)
+          (assoc :major-actions [])))))
+
+(defn- set-major-action-count-param [params action-count]
+  (let [next-params (assoc params :major-action-count action-count)]
+    (if (= (:major-action-count params) action-count)
+      next-params
+      (-> next-params
+          clear-current-major-action-params
           (assoc :major-actions [])))))
 
 (defn- set-devil-action-count-param [params action-count]
@@ -3567,6 +3636,18 @@
                              :error
                              (move-error :invalid-sword-action-count
                                          "Choose a supported Sword action count."
+                                         {:action-count action-count
+                                          :options options})))))
+
+(defn set-move-major-action-count [db action-count]
+  (let [{:keys [source params]} (move-selection db)
+        options (hand-trade-major-action-count-option-values db source params)]
+    (if (some #{action-count} options)
+      (update-move-selection-success db update :params set-major-action-count-param action-count)
+      (update-move-selection db assoc
+                             :error
+                             (move-error :invalid-major-action-count
+                                         "Choose a supported major action count."
                                          {:action-count action-count
                                           :options options})))))
 
@@ -4420,8 +4501,9 @@
                           (some #(when (= power (:power %)) %) actions))]
     (case (active-power db source params)
       :justice
-      (merge {:hand-trade-target (:target (action-by-power :trade-hand))}
-             (sword-command db source params))
+      (cond-> {:hand-trade-target (:target (action-by-power :trade-hand))}
+        (action-by-power :sword)
+        (merge (sword-command db source params)))
 
       :death
       {:sword-actions (mapv #(dissoc % :power) actions)}

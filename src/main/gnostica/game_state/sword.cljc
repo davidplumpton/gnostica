@@ -1358,6 +1358,13 @@
         (core/update-player left-player-id assoc :hand (vec right-hand))
         (core/update-player right-player-id assoc :hand (vec left-hand)))))
 
+(defn- justice-sword-action-command? [command]
+  (or (contains? command :target)
+      (contains? command :damage)
+      (contains? command :replacement-card-source)
+      (contains? command :replacement-card-id)
+      (contains? command :orientation)))
+
 (defn- apply-justice-sword-move
   ([state command]
    (apply-justice-sword-move state command {}))
@@ -1399,17 +1406,20 @@
                   trade-state (-> cost-state
                                   (swap-player-hands player-id other-player-id)
                                   (core/append-history event))
-                  sword-result (apply-single-sword-move
-                                trade-state
-                                (dissoc command
+                  sword-command (dissoc command
                                         :hand-trade-target
-                                        :hand-trade-target-piece-id)
-                                {:source-opts (paid-sword-source-opts source-result)
-                                 :charge-source? false})]
-              (if-not (:ok? sword-result)
-                sword-result
-                (core/success (:state sword-result)
-                              (concat [event] (:events sword-result))))))))))))
+                                        :hand-trade-target-piece-id)]
+              (if-not (justice-sword-action-command? sword-command)
+                (core/success trade-state [event])
+                (let [sword-result (apply-single-sword-move
+                                    trade-state
+                                    sword-command
+                                    {:source-opts (paid-sword-source-opts source-result)
+                                     :charge-source? false})]
+                  (if-not (:ok? sword-result)
+                    sword-result
+                    (core/success (:state sword-result)
+                                  (concat [event] (:events sword-result))))))))))))))
 
 (defn- apply-tower-sword-move
   ([state command]

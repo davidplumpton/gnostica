@@ -689,6 +689,8 @@
 (def move-world-copied-power move-selection/move-world-copied-power)
 (def move-rod-mode-options move-selection/move-rod-mode-options)
 (def move-disc-action-count-options move-selection/move-disc-action-count-options)
+(def move-major-action-count-options move-selection/move-major-action-count-options)
+(def move-major-action-count move-selection/move-major-action-count)
 (def move-sword-action-count-options move-selection/move-sword-action-count-options)
 (def move-devil-action-count-options move-selection/move-devil-action-count-options)
 (def move-sun-disc-mode-options move-selection/move-sun-disc-mode-options)
@@ -757,6 +759,7 @@
 (def select-move-disc-target-kind move-selection/select-move-disc-target-kind)
 (def select-move-sword-target-kind move-selection/select-move-sword-target-kind)
 (def set-move-disc-action-count move-selection/set-move-disc-action-count)
+(def set-move-major-action-count move-selection/set-move-major-action-count)
 (def set-move-sword-action-count move-selection/set-move-sword-action-count)
 (def set-move-devil-action-count move-selection/set-move-devil-action-count)
 (def set-move-fool-reveal-count move-selection/set-move-fool-reveal-count)
@@ -790,6 +793,7 @@
 (defn move-panel-view-model
   [{:keys [current-player selection source-options prompt ready? control-groups
            board power power-options rod-mode-options disc-action-count-options
+           major-action-count-options major-action-count
            world-copy-options world-copied-power-options world-copied-power
            sword-action-count-options devil-action-count-options
            sun-disc-mode-options fool-reveal-count-options
@@ -817,6 +821,8 @@
               :world-copied-power world-copied-power
               :rod-mode-options rod-mode-options
               :disc-action-count-options disc-action-count-options
+              :major-action-count-options major-action-count-options
+              :major-action-count major-action-count
               :sword-action-count-options sword-action-count-options
               :devil-action-count-options devil-action-count-options
               :sun-disc-mode-options sun-disc-mode-options
@@ -863,6 +869,8 @@
     :world-copied-power (move-world-copied-power db)
     :rod-mode-options (move-rod-mode-options db)
     :disc-action-count-options (move-disc-action-count-options db)
+    :major-action-count-options (move-major-action-count-options db)
+    :major-action-count (move-major-action-count db)
     :sword-action-count-options (move-sword-action-count-options db)
     :devil-action-count-options (move-devil-action-count-options db)
     :sun-disc-mode-options (move-sun-disc-mode-options db)

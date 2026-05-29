@@ -2984,6 +2984,36 @@
            shrunk-piece))
     (is (game-schema/valid-game? state))))
 
+(deftest justice-can-trade-hands-without-applying-sword
+  (let [enemy-piece {:id :indigo-justice-target
+                     :player-id :indigo
+                     :space-index 4
+                     :size :medium
+                     :orientation :north}
+        state (:state (game-state/create-game
+                       player-specs
+                       {:deck-order (deck-starting-with ["justice"])}))
+        state (game-state/with-board-pieces state [rose-sword-minion enemy-piece])
+        rose-hand-before (player-hand-ids state :rose)
+        indigo-hand-before (player-hand-ids state :indigo)
+        {:keys [ok? state events]} (game-state/apply-sword-move
+                                    state
+                                    {:player-id :rose
+                                     :source {:kind :hand-card
+                                              :card-id "justice"
+                                              :piece-id :rose-sword-minion}
+                                     :hand-trade-target-piece-id
+                                     :indigo-justice-target})]
+    (is ok?)
+    (is (= [:justice/hands-traded]
+           (mapv :type events)))
+    (is (= indigo-hand-before (player-hand-ids state :rose)))
+    (is (= (vec (remove #{"justice"} rose-hand-before))
+           (player-hand-ids state :indigo)))
+    (is (= enemy-piece (piece-by-id state :indigo-justice-target)))
+    (is (= ["justice"] (mapv :id (:discard-pile state))))
+    (is (game-schema/valid-game? state))))
+
 (deftest tower-orients-minion-before-applying-sword
   (let [tower-minion (assoc rose-sword-minion :orientation :north)
         enemy-piece {:id :indigo-tower-target
@@ -3368,6 +3398,39 @@
     (is (= [:rod/minion-moved :hanged-man/hands-traded]
            (mapv :type events)))
     (is (= 4 (:space-index (piece-by-id state :rose-rod-minion))))
+    (is (= indigo-hand-before (player-hand-ids state :rose)))
+    (is (= (vec (remove #{"hangedman"} rose-hand-before))
+           (player-hand-ids state :indigo)))
+    (is (= ["hangedman"] (mapv :id (:discard-pile state))))
+    (is (game-schema/valid-game? state))))
+
+(deftest hanged-man-can-trade-hands-without-applying-rod
+  (let [enemy-piece {:id :indigo-hanged-target
+                     :player-id :indigo
+                     :space-index 4
+                     :size :medium
+                     :orientation :north}
+        state (:state (game-state/create-game
+                       player-specs
+                       {:deck-order (deck-starting-with ["hangedman"])}))
+        state (game-state/with-board-pieces
+               state
+               [(assoc rose-rod-minion :orientation :east)
+                enemy-piece])
+        rose-hand-before (player-hand-ids state :rose)
+        indigo-hand-before (player-hand-ids state :indigo)
+        {:keys [ok? state events]} (game-state/apply-hanged-man-move
+                                    state
+                                    {:player-id :rose
+                                     :source {:kind :hand-card
+                                              :card-id "hangedman"
+                                              :piece-id :rose-rod-minion}
+                                     :hand-trade-target-piece-id
+                                     :indigo-hanged-target})]
+    (is ok?)
+    (is (= [:hanged-man/hands-traded]
+           (mapv :type events)))
+    (is (= 3 (:space-index (piece-by-id state :rose-rod-minion))))
     (is (= indigo-hand-before (player-hand-ids state :rose)))
     (is (= (vec (remove #{"hangedman"} rose-hand-before))
            (player-hand-ids state :indigo)))
