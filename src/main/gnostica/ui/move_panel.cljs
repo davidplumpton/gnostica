@@ -350,6 +350,21 @@
         :on-click #(rf/dispatch [events/set-move-sword-action-count action-count])}
        action-count])]])
 
+(defn- devil-action-count-choices [options selected-count]
+  [:div.move-step
+   [:div.move-step__header
+    [:span "Devil orientations"]
+    [:strong (or selected-count "None")]]
+   [:div.move-choice-list.is-compact
+    (for [action-count options]
+      ^{:key action-count}
+      [:button.move-chip
+       {:type "button"
+        :class (when (= selected-count action-count) "is-selected")
+        :aria-pressed (= selected-count action-count)
+        :on-click #(rf/dispatch [events/set-move-devil-action-count action-count])}
+       action-count])]])
+
 (defn- sun-disc-mode-choices [options selected-mode]
   [:div.move-step
    [:div.move-step__header
@@ -690,6 +705,18 @@
    (when (:target-piece-id params)
      [orientation-choices label orientation-options (:orientation params)])])
 
+(defn- devil-move-controls
+  [params board devil-action-count-options target-piece-options orientation-options]
+  [:<>
+   [devil-action-count-choices devil-action-count-options (:devil-action-count params)]
+   (when (:devil-action-count params)
+     [piece-orientation-major-controls
+      "Target orientation"
+      params
+      board
+      target-piece-options
+      orientation-options])])
+
 (defn- hermit-move-controls
   [params board target-piece-options target-board-options target-wasteland-options
    orientation-options orientation-required?]
@@ -823,6 +850,7 @@
 (defn- world-move-controls
   [params board world-copy-options copied-power-options copied-power
    rod-mode-options disc-action-count-options sword-action-count-options
+   devil-action-count-options
    sun-disc-mode-options fool-reveal-count-options
    high-priestess-redraw-count-options high-priestess-redraw-options
    judgement-card-options judgement-card-maximum
@@ -911,10 +939,10 @@
                 target-wasteland-options
                 orientation-options
                 orientation-required?]
-       :devil [piece-orientation-major-controls
-               "Target orientation"
+       :devil [devil-move-controls
                params
                board
+               devil-action-count-options
                target-piece-options
                orientation-options]
        (:empress :emperor :lovers :chariot :hanged-man :temperance)
@@ -954,7 +982,8 @@
   (let [{:keys [source params]} selection
         {:keys [board power power-options rod-mode-options piece-options
                 world-copy-options world-copied-power-options world-copied-power
-                disc-action-count-options sword-action-count-options sun-disc-mode-options
+                disc-action-count-options sword-action-count-options devil-action-count-options
+                sun-disc-mode-options
                 fool-reveal-count-options high-priestess-redraw-count-options
                 high-priestess-redraw-options judgement-card-options
                 judgement-card-maximum
@@ -1050,10 +1079,10 @@
                      target-wasteland-options
                      orientation-options
                      orientation-required?]
-            :devil [piece-orientation-major-controls
-                    "Target orientation"
+            :devil [devil-move-controls
                     params
                     board
+                    devil-action-count-options
                     target-piece-options
                     orientation-options]
             :world [world-move-controls
@@ -1065,6 +1094,7 @@
                     rod-mode-options
                     disc-action-count-options
                     sword-action-count-options
+                    devil-action-count-options
                     sun-disc-mode-options
                     fool-reveal-count-options
                     high-priestess-redraw-count-options
@@ -1202,10 +1232,10 @@
                      target-wasteland-options
                      orientation-options
                      orientation-required?]
-            :devil [piece-orientation-major-controls
-                    "Target orientation"
+            :devil [devil-move-controls
                     params
                     board
+                    devil-action-count-options
                     target-piece-options
                     orientation-options]
             :world [world-move-controls
@@ -1217,6 +1247,7 @@
                     rod-mode-options
                     disc-action-count-options
                     sword-action-count-options
+                    devil-action-count-options
                     sun-disc-mode-options
                     fool-reveal-count-options
                     high-priestess-redraw-count-options

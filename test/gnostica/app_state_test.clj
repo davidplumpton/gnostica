@@ -1436,6 +1436,77 @@
     (is (= ["hierophant"] (mapv :id (:discard-pile zones))))
     (is (game-schema/valid-game? (app-state/game confirmed-db)))))
 
+(deftest devil-territory-source-can_stage_retargeted_orientation_actions
+  (let [devil-minion {:id :rose-devil-minion
+                      :player-id :rose
+                      :space-index 4
+                      :size :medium
+                      :orientation :up}
+        enemy-target {:id :indigo-devil-target
+                      :player-id :indigo
+                      :space-index 5
+                      :size :small
+                      :orientation :north}
+        db (app-state/initialize
+            {:player-specs test-player-specs
+             :game-options {:deck-order
+                            (deck-with-card-at
+                             (board-card-position test-player-specs 4)
+                             "devil")}
+             :demo-board-pieces [devil-minion enemy-target]})
+        source-db (-> db
+                      (app-state/select-board-card 4)
+                      (app-state/select-move-source :activate-territory)
+                      (app-state/select-move-piece :rose-devil-minion))
+        action-count-db (app-state/set-move-devil-action-count source-db 2)
+        first-target-db (app-state/select-move-target-piece action-count-db
+                                                            :rose-devil-minion)
+        first-action-db (app-state/set-move-orientation first-target-db :east)
+        second-target-db (app-state/select-move-target-piece first-action-db
+                                                             :indigo-devil-target)
+        ready-db (app-state/set-move-orientation second-target-db :south)
+        confirmed-db (app-state/confirm-move ready-db)]
+    (is (= :devil (app-state/move-power source-db)))
+    (is (= :devil-action-count (:stage (app-state/move-selection source-db))))
+    (is (= [1 2 3]
+           (get-in (app-state/move-panel-view source-db)
+                   [:controls :devil-action-count-options])))
+    (is (= [:rose-devil-minion]
+           (mapv :id (app-state/move-target-piece-options action-count-db))))
+    (is (= :orientation (:stage (app-state/move-selection first-target-db))))
+    (is (= :target-piece (:stage (app-state/move-selection first-action-db))))
+    (is (= [{:power :orient-target
+             :piece-id :rose-devil-minion
+             :target {:kind :piece
+                      :piece-id :rose-devil-minion}
+             :orientation :east}]
+           (get-in first-action-db [:move-selection :params :major-actions])))
+    (is (some #{:indigo-devil-target}
+              (mapv :id (app-state/move-target-piece-options first-action-db))))
+    (is (= :confirm (:stage (app-state/move-selection ready-db))))
+    (is (= {:player-id :rose
+            :source {:kind :territory
+                     :board-index 4
+                     :piece-id :rose-devil-minion}
+            :actions [{:power :orient-target
+                       :piece-id :rose-devil-minion
+                       :target {:kind :piece
+                                :piece-id :rose-devil-minion}
+                       :orientation :east}
+                      {:power :orient-target
+                       :piece-id :rose-devil-minion
+                       :target {:kind :piece
+                                :piece-id :indigo-devil-target}
+                       :orientation :south}]}
+           (app-state/move-command ready-db)))
+    (is (:ok? (get-in confirmed-db [:move-selection :last-result])))
+    (is (= :east (:orientation (piece-by-id confirmed-db :rose-devil-minion))))
+    (is (= :south (:orientation (piece-by-id confirmed-db :indigo-devil-target))))
+    (is (= [:devil/piece-oriented :devil/piece-oriented]
+           (mapv :type (get-in confirmed-db [:move-selection :last-result :events]))))
+    (is (empty? (get-in confirmed-db [:game :discard-pile])))
+    (is (game-schema/valid-game? (app-state/game confirmed-db)))))
+
 (deftest playing-a-cup-hand-card-can-create-a_wasteland_territory
   (let [db (app-state/initialize {:player-specs test-player-specs
                                   :game-options {:deck-order (deck-starting-with ["cups2" "coins2"])}
