@@ -4532,10 +4532,23 @@
          :player-id (current-player-id db)
          :params params}))))
 
+(defn- command-uses-draw-pile-territory-card? [value]
+  (cond
+    (map? value)
+    (or (= :draw-pile-top (:territory-card-source value))
+        (some command-uses-draw-pile-territory-card? (vals value)))
+
+    (sequential? value)
+    (some command-uses-draw-pile-territory-card? value)
+
+    :else
+    false))
+
 (defn- command-with-transition-options [command transition-options power]
   (cond-> command
     (and (or (= :draw-cards (:source command))
-             (contains? #{:fool :high-priestess} power))
+             (contains? #{:fool :high-priestess} power)
+             (command-uses-draw-pile-territory-card? command))
          (:shuffle-fn transition-options)
          (not (contains? command :shuffle-fn)))
     (assoc :shuffle-fn (:shuffle-fn transition-options))))

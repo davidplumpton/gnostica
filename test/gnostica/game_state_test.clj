@@ -1766,6 +1766,56 @@
            events))
     (is (game-schema/valid-game? state))))
 
+(deftest wheel-cup-reshuffles-discard-pile-for-draw-pile-territory
+  (let [draw-start (+ (hand-card-count (count player-specs)) board/board-card-count)
+        initial-state (:state (game-state/create-game
+                               player-specs
+                               {:deck-order (deck-with-cards-at
+                                             {0 "wheeloffortune"
+                                              draw-start "world"})}))
+        wheel-card (cards/card-by-id "wheeloffortune")
+        prepared-discard (:draw-pile initial-state)
+        state (-> initial-state
+                  (game-state/with-board-pieces [rose-cup-wasteland-minion])
+                  (assoc :draw-pile []
+                         :discard-pile prepared-discard))
+        command {:player-id :rose
+                 :source {:kind :hand-card
+                          :card-id "wheeloffortune"
+                          :piece-id :rose-cup-minion}
+                 :cup-variant :wheel-cup
+                 :target {:kind :wasteland
+                          :row 1
+                          :col -1}
+                 :territory-card-source :draw-pile-top
+                 :shuffle-fn identity}
+        {:keys [ok? state events]} (game-state/apply-cup-move state command)
+        created-cell (board-cell-by-index state 9)
+        expected-refreshed-draw-pile (conj prepared-discard wheel-card)]
+    (is ok?)
+    (is (= "world" (get-in created-cell [:card :id])))
+    (is (= (mapv :id (rest expected-refreshed-draw-pile))
+           (mapv :id (:draw-pile state))))
+    (is (empty? (:discard-pile state)))
+    (is (not (some #{"wheeloffortune"} (player-hand-ids state :rose))))
+    (is (= [{:type :cup/territory-created
+             :player-id :rose
+             :cup-variant :wheel-cup
+             :source {:kind :hand-card
+                      :card-id "wheeloffortune"
+                      :piece-id :rose-cup-minion}
+             :target {:kind :wasteland
+                      :row 1
+                      :col -1}
+             :board-index 9
+             :card-id "world"
+             :territory-card-source :draw-pile-top
+             :reshuffled-discard? true}]
+           events))
+    (is (= (count cards/deck) (count (all-card-ids state))))
+    (is (= (count cards/deck) (count (set (all-card-ids state)))))
+    (is (game-schema/valid-game? state))))
+
 (deftest non-wheel-cups-reject-draw-pile-territory-source
   (let [state (state-with-pieces [rose-cup-wasteland-minion])
         result (game-state/apply-cup-move

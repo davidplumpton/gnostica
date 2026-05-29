@@ -7,23 +7,6 @@
             [gnostica.game-state.sword :as sword]
             [gnostica.pieces :as pieces]))
 
-(defn- refresh-draw-pile [state shuffle-fn]
-  (if (and (empty? (:draw-pile state))
-           (seq (:discard-pile state)))
-    (let [shuffled-cards (shuffle-fn (:discard-pile state))]
-      (if (sequential? shuffled-cards)
-        {:ok? true
-         :state (-> state
-                    (assoc :draw-pile (vec shuffled-cards))
-                    (assoc :discard-pile []))
-         :reshuffled? true}
-        (core/failure :invalid-shuffle-result
-                 "The draw-pile shuffle function must return a sequential collection of cards."
-                 {:result shuffled-cards})))
-    {:ok? true
-     :state state
-     :reshuffled? false}))
-
 (defn- draw-from-piles [state draw-count shuffle-fn]
   (loop [state state
          remaining draw-count
@@ -31,7 +14,7 @@
          reshuffled? false]
     (if (zero? remaining)
       (let [refresh-result (if (pos? draw-count)
-                             (refresh-draw-pile state shuffle-fn)
+                             (core/refresh-draw-pile state shuffle-fn)
                              {:ok? true
                               :state state
                               :reshuffled? false})]
@@ -41,7 +24,7 @@
            :drawn-cards drawn-cards
            :reshuffled? (or reshuffled? (:reshuffled? refresh-result))}
           refresh-result))
-      (let [refresh-result (refresh-draw-pile state shuffle-fn)]
+      (let [refresh-result (core/refresh-draw-pile state shuffle-fn)]
         (if-not (:ok? refresh-result)
           refresh-result
           (let [state (:state refresh-result)
@@ -449,7 +432,7 @@
            :player-id player-id
            :source source)))
 
-(defn- apply-fool-play [state player-id card action]
+(defn- apply-fool-play [state player-id card action shuffle-fn]
   (let [play-command (or (:play-command action)
                          (:command action))
         power (or (:power action)
@@ -470,7 +453,10 @@
                      :card-id (:id card)})
 
       :else
-      (let [command (fool-play-command player-id card action)]
+      (let [command (cond-> (fool-play-command player-id card action)
+                      (and shuffle-fn
+                           (not (contains? play-command :shuffle-fn)))
+                      (assoc :shuffle-fn shuffle-fn))]
         (case power
           :cup
           (cup/apply-cup-move-with-opts state
@@ -504,7 +490,7 @@
                    :action action})
 
     :else
-    (let [refresh-result (refresh-draw-pile state shuffle-fn)]
+    (let [refresh-result (core/refresh-draw-pile state shuffle-fn)]
       (if-not (:ok? refresh-result)
         refresh-result
         (let [refreshed-state (:state refresh-result)
@@ -531,7 +517,8 @@
                 (let [play-result (apply-fool-play reveal-state
                                                    player-id
                                                    revealed-card
-                                                   action)]
+                                                   action
+                                                   shuffle-fn)]
                   (if-not (:ok? play-result)
                     play-result
                     (core/success (:state play-result)

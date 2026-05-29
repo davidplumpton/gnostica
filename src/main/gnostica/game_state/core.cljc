@@ -398,6 +398,31 @@
 (defn discard-cards [state cards]
   (update state :discard-pile into (vec cards)))
 
+(defn refresh-draw-pile [state shuffle-fn]
+  (cond
+    (not (ifn? shuffle-fn))
+    (failure :invalid-shuffle-fn
+             "Draw-pile refresh requires a callable shuffle function."
+             {:shuffle-fn shuffle-fn})
+
+    (and (empty? (:draw-pile state))
+         (seq (:discard-pile state)))
+    (let [shuffled-cards (shuffle-fn (:discard-pile state))]
+      (if (sequential? shuffled-cards)
+        {:ok? true
+         :state (-> state
+                    (assoc :draw-pile (vec shuffled-cards))
+                    (assoc :discard-pile []))
+         :reshuffled? true}
+        (failure :invalid-shuffle-result
+                 "The draw-pile shuffle function must return a sequential collection of cards."
+                 {:result shuffled-cards})))
+
+    :else
+    {:ok? true
+     :state state
+     :reshuffled? false}))
+
 (defn append-cards-to-hand [state player-id cards]
   (update-player state player-id update :hand
                  (fn [hand]

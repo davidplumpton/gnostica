@@ -1948,6 +1948,50 @@
            (:draw-count zones)))
     (is (game-schema/valid-game? (app-state/game confirmed-db)))))
 
+(deftest wheel-cup-hand-card-confirmation-uses-injected-shuffle-for-empty-draw-pile
+  (let [seed 20260529
+        draw-start (+ (board-card-position test-player-specs 0) board/board-card-count)
+        db (app-state/initialize {:player-specs test-player-specs
+                                  :game-options {:deck-order
+                                                 (deck-with-cards-at
+                                                  {0 "wheeloffortune"
+                                                   draw-start "world"})}
+                                  :demo-board-pieces [rose-hand-piece]})
+        wheel-card (cards/card-by-id "wheeloffortune")
+        prepared-discard (get-in db [:game :draw-pile])
+        empty-draw-db (-> db
+                          (assoc-in [:game :draw-pile] [])
+                          (assoc-in [:game :discard-pile] prepared-discard))
+        draw-source-db (-> empty-draw-db
+                           (app-state/select-move-source :play-hand-card)
+                           (app-state/select-move-hand-card "wheeloffortune")
+                           (app-state/select-move-piece :rose-striker)
+                           (app-state/select-move-wasteland-target 3 2)
+                           (app-state/select-move-territory-card-source :draw-pile-top))
+        first-confirmed-db (app-handlers/confirm-move-db draw-source-db {:shuffle-seed seed})
+        second-confirmed-db (app-handlers/confirm-move-db draw-source-db {:shuffle-seed seed})
+        shuffled-discard (deterministic-shuffle/shuffle-with-seed
+                          seed
+                          (conj prepared-discard wheel-card))
+        expected-card (first shuffled-discard)
+        zones (app-state/card-zones first-confirmed-db)
+        created-cell (last (app-state/board first-confirmed-db))]
+    (is (= (app-state/game first-confirmed-db)
+           (app-state/game second-confirmed-db)))
+    (is (= :confirm (:stage (app-state/move-selection draw-source-db))))
+    (is (= "wheeloffortune"
+           (get-in (app-state/move-command draw-source-db)
+                   [:source :card-id])))
+    (is (:ok? (get-in first-confirmed-db [:move-selection :last-result])))
+    (is (= (:id expected-card) (get-in created-cell [:card :id])))
+    (is (= (mapv :id (rest shuffled-discard))
+           (mapv :id (:draw-pile zones))))
+    (is (empty? (:discard-pile zones)))
+    (is (not (some #{"wheeloffortune"} (map :id (:hand zones)))))
+    (is (true? (get-in first-confirmed-db
+                       [:move-selection :last-result :events 0 :reshuffled-discard?])))
+    (is (game-schema/valid-game? (app-state/game first-confirmed-db)))))
+
 (deftest disc-hand-card-can-grow-a_target_piece
   (let [db (app-state/initialize {:player-specs test-player-specs
                                   :game-options {:deck-order (deck-starting-with ["coins2"])}

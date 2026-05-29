@@ -353,12 +353,12 @@
         (core/success next-state [event])))))
 
 (defn- create-wasteland-territory
-  [state player-id source target one-point-card-id territory-card-source]
+  [state player-id source target one-point-card-id territory-card-source shuffle-fn]
   (let [{:keys [row col] :as normalized-target} (core/wasteland-target target)
         source-card-id (get-in source [:source-card :id])
         one-point-card (core/player-hand-card state player-id one-point-card-id)
         territory-card-source (or territory-card-source :hand)
-        draw-pile-card (first (:draw-pile state))]
+        shuffle-fn (or shuffle-fn shuffle)]
     (cond
       (nil? normalized-target)
       (core/failure :invalid-cup-target
@@ -423,45 +423,57 @@
                "Cup territory creation requires a one-point spot card."
                {:card-id one-point-card-id})
 
-      (and (= :draw-pile-top territory-card-source)
-           (nil? draw-pile-card))
-      (core/failure :draw-pile-empty
-               "Wheel Cup territory creation requires a card in the draw pile."
-               {:territory-card-source territory-card-source})
-
       :else
       (let [board-index (core/next-board-index state)
-            territory-card (case territory-card-source
-                             :draw-pile-top draw-pile-card
-                             one-point-card)
-            cell {:index board-index
-                  :row row
-                  :col col
-                  :orientation (board/orientation-for row col)
-                  :face :up
-                  :card territory-card}
-            event {:type :cup/territory-created
-                   :player-id player-id
-                   :cup-variant (:cup-variant source)
-                   :source (core/source-summary (:source source))
-                   :target normalized-target
-                   :board-index board-index
-                   :card-id (:id territory-card)
-                   :territory-card-source territory-card-source}
             cost-state (core/apply-source-cost state player-id source)
-            card-source-state (case territory-card-source
-                                :draw-pile-top
-                                (assoc cost-state
-                                       :draw-pile (vec (rest (:draw-pile cost-state))))
+            card-source-result (case territory-card-source
+                                 :draw-pile-top
+                                 (let [refresh-result (core/refresh-draw-pile cost-state shuffle-fn)]
+                                   (if-not (:ok? refresh-result)
+                                     refresh-result
+                                     (let [refreshed-state (:state refresh-result)
+                                           draw-pile-card (first (:draw-pile refreshed-state))]
+                                       (if draw-pile-card
+                                         {:ok? true
+                                          :state (assoc refreshed-state
+                                                        :draw-pile (vec (rest (:draw-pile refreshed-state))))
+                                          :territory-card draw-pile-card
+                                          :reshuffled? (:reshuffled? refresh-result)}
+                                         (core/failure
+                                          :draw-pile-empty
+                                          "Wheel Cup territory creation requires a card in the draw pile or discard pile."
+                                          {:territory-card-source territory-card-source})))))
 
-                                (core/remove-card-from-hand cost-state
-                                                       player-id
-                                                       one-point-card-id))
-            next-state (-> card-source-state
-                           (update :board conj cell)
-                           (core/move-wasteland-pieces-to-board-index row col board-index)
-                           (core/append-history event))]
-        (core/success next-state [event])))))
+                                 {:ok? true
+                                  :state (core/remove-card-from-hand cost-state
+                                                                     player-id
+                                                                     one-point-card-id)
+                                  :territory-card one-point-card
+                                  :reshuffled? false})]
+        (if-not (:ok? card-source-result)
+          card-source-result
+          (let [territory-card (:territory-card card-source-result)
+                cell {:index board-index
+                      :row row
+                      :col col
+                      :orientation (board/orientation-for row col)
+                      :face :up
+                      :card territory-card}
+                event (cond-> {:type :cup/territory-created
+                                :player-id player-id
+                                :cup-variant (:cup-variant source)
+                                :source (core/source-summary (:source source))
+                                :target normalized-target
+                                :board-index board-index
+                                :card-id (:id territory-card)
+                                :territory-card-source territory-card-source}
+                        (true? (:reshuffled? card-source-result))
+                        (assoc :reshuffled-discard? true))
+                next-state (-> (:state card-source-result)
+                               (update :board conj cell)
+                               (core/move-wasteland-pieces-to-board-index row col board-index)
+                               (core/append-history event))]
+            (core/success next-state [event])))))))
 
 (defn apply-cup-move-with-opts
   ([state command]
@@ -469,7 +481,7 @@
   ([state command {:keys [source-opts]
                    :or {source-opts {}}}]
   (let [{:keys [player-id source target orientation one-point-card-id
-                cup-variant territory-card-source]} command]
+                cup-variant territory-card-source shuffle-fn]} command]
     (cond
       (not (map? command))
       (core/failure :invalid-cup-command
@@ -507,7 +519,8 @@
                                         source-result
                                         target
                                         one-point-card-id
-                                        territory-card-source)
+                                        territory-card-source
+                                        shuffle-fn)
 
             (core/failure :invalid-cup-target
                      "Cup move targets must be :territory, :piece, or :wasteland."
