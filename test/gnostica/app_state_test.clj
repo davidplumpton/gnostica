@@ -855,6 +855,8 @@
         first-pass-db (-> count-db
                           (app-state/toggle-move-high-priestess-discard-card 1 "cups2")
                           (app-state/set-move-high-priestess-draw-count 1 1))
+        second-pass-options (second (app-state/move-high-priestess-redraw-options
+                                     first-pass-db))
         second-pass-db (-> first-pass-db
                            (app-state/toggle-move-high-priestess-discard-card 2 "wands2")
                            (app-state/set-move-high-priestess-draw-count 2 1))
@@ -867,6 +869,8 @@
            (:stage (app-state/move-selection count-db))))
     (is (= [1 2]
            (mapv :pass-index (app-state/move-high-priestess-redraw-options count-db))))
+    (is (= ["wands2" "coins2" "swords2" "cups3" (:id first-drawn-card)]
+           (mapv :id (:discard-card-options second-pass-options))))
     (is (= :confirm (:stage (app-state/move-selection second-pass-db))))
     (is (= {:player-id :rose
             :source {:kind :hand-card
@@ -881,6 +885,77 @@
     (is (= ["coins2" "swords2" "cups3" (:id first-drawn-card) (:id second-drawn-card)]
            (mapv :id (:hand zones))))
     (is (= ["high-priestess" "cups2" "wands2"]
+           (mapv :id (:discard-pile zones))))
+    (is (game-schema/valid-game? (app-state/game confirmed-db)))))
+
+(deftest high-priestess-redraw-staging-prevents_duplicate_discards_across_passes
+  (let [db (app-state/initialize {:player-specs test-player-specs
+                                  :game-options {:deck-order
+                                                 (deck-starting-with
+                                                  ["high-priestess" "cups2" "wands2"
+                                                   "coins2" "swords2" "cups3"])}
+                                  :demo-board-pieces [rose-hand-piece]})
+        count-db (-> db
+                     (app-state/select-move-source :play-hand-card)
+                     (app-state/select-move-hand-card "high-priestess")
+                     (app-state/select-move-piece :rose-striker)
+                     (app-state/set-move-high-priestess-redraw-count 2))
+        first-pass-db (-> count-db
+                          (app-state/toggle-move-high-priestess-discard-card 1 "cups2")
+                          (app-state/set-move-high-priestess-draw-count 1 0))
+        second-pass-options (second (app-state/move-high-priestess-redraw-options
+                                     first-pass-db))
+        duplicate-db (app-state/toggle-move-high-priestess-discard-card
+                      first-pass-db
+                      2
+                      "cups2")]
+    (is (not (some #{"cups2"} (map :id (:discard-card-options second-pass-options)))))
+    (is (= [] (:selected-discard-card-ids second-pass-options)))
+    (is (= :invalid-high-priestess-discard-card
+           (get-in duplicate-db [:move-selection :error :code])))
+    (is (= [] (:selected-discard-card-ids
+               (second (app-state/move-high-priestess-redraw-options duplicate-db)))))))
+
+(deftest high-priestess-second_redraw_can_discard_card_drawn_in_first_pass
+  (let [db (app-state/initialize {:player-specs test-player-specs
+                                  :game-options {:deck-order
+                                                 (deck-starting-with
+                                                  ["high-priestess" "cups2" "wands2"
+                                                   "coins2" "swords2" "cups3"])}
+                                  :demo-board-pieces [rose-hand-piece]})
+        first-drawn-card (first (get-in db [:game :draw-pile]))
+        drawn-card-id (:id first-drawn-card)
+        first-pass-db (-> db
+                          (app-state/select-move-source :play-hand-card)
+                          (app-state/select-move-hand-card "high-priestess")
+                          (app-state/select-move-piece :rose-striker)
+                          (app-state/set-move-high-priestess-redraw-count 2)
+                          (app-state/toggle-move-high-priestess-discard-card 1 "cups2")
+                          (app-state/set-move-high-priestess-draw-count 1 1))
+        second-pass-options (second (app-state/move-high-priestess-redraw-options
+                                     first-pass-db))
+        second-pass-db (-> first-pass-db
+                           (app-state/toggle-move-high-priestess-discard-card
+                            2
+                            drawn-card-id)
+                           (app-state/set-move-high-priestess-draw-count 2 0))
+        confirmed-db (app-state/confirm-move second-pass-db)
+        zones (app-state/card-zones confirmed-db)]
+    (is (some #{drawn-card-id} (map :id (:discard-card-options second-pass-options))))
+    (is (= :confirm (:stage (app-state/move-selection second-pass-db))))
+    (is (= {:player-id :rose
+            :source {:kind :hand-card
+                     :card-id "high-priestess"
+                     :piece-id :rose-striker}
+            :redraws [{:discard-card-ids ["cups2"]
+                       :draw-count 1}
+                      {:discard-card-ids [drawn-card-id]
+                       :draw-count 0}]}
+           (app-state/move-command second-pass-db)))
+    (is (:ok? (get-in confirmed-db [:move-selection :last-result])))
+    (is (= ["wands2" "coins2" "swords2" "cups3"]
+           (mapv :id (:hand zones))))
+    (is (= ["high-priestess" "cups2" drawn-card-id]
            (mapv :id (:discard-pile zones))))
     (is (game-schema/valid-game? (app-state/game confirmed-db)))))
 

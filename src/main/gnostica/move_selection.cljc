@@ -1363,48 +1363,170 @@
       :else
       (dissoc params :draw-count))))
 
-(defn- high-priestess-source-card-id [source-id params]
+(defn- high-priestess-source-card [db source-id params]
   (when (= :play-hand-card source-id)
-    (:hand-card-id params)))
-
-(defn- high-priestess-hand-card-options [db source-id params]
-  (let [source-card-id (high-priestess-source-card-id source-id params)]
-    (cond->> (current-player-hand db)
-      source-card-id
-      (remove #(= source-card-id (:id %)))
-      true
-      vec)))
-
-(defn- high-priestess-valid-discard-card-ids [db source-id params discard-card-ids]
-  (let [hand-card-ids (set (map :id (high-priestess-hand-card-options db source-id params)))]
-    (vec (filter hand-card-ids (distinct (or discard-card-ids []))))))
-
-(defn- high-priestess-draw-count-options [db source-id params discard-card-ids]
-  (let [discard-count (count (high-priestess-valid-discard-card-ids
-                              db
-                              source-id
-                              params
-                              discard-card-ids))
-        source-cost-count (if (high-priestess-source-card-id source-id params) 1 0)
-        post-source-hand-count (- (count (current-player-hand db)) source-cost-count)
-        post-discard-hand-count (- post-source-hand-count discard-count)
-        hand-slots (- game-state/starting-hand-size post-discard-hand-count)
-        available-cards (+ (count (get-in db [:game :draw-pile] []))
-                           (count (get-in db [:game :discard-pile] []))
-                           source-cost-count
-                           discard-count)
-        max-draw-count (max 0 (min hand-slots available-cards))]
-    (vec (range 0 (inc max-draw-count)))))
-
-(defn- selected-high-priestess-redraw-count [params]
-  (when (some #{(:high-priestess-redraw-count params)}
-              high-priestess-redraw-count-order)
-    (:high-priestess-redraw-count params)))
+    (source-card db source-id params)))
 
 (defn- redraw-pass-offset [pass-index]
   (when (and (int? pass-index)
              (<= 1 pass-index 2))
     (dec pass-index)))
+
+(defn- high-priestess-initial-redraw-state [db source-id params]
+  (let [source-card (high-priestess-source-card db source-id params)
+        source-card-id (:id source-card)]
+    {:hand (if source-card-id
+             (vec (remove #(= source-card-id (:id %)) (current-player-hand db)))
+             (current-player-hand db))
+     :unknown-hand-count 0
+     :draw-pile (vec (get-in db [:game :draw-pile] []))
+     :unknown-draw-count 0
+     :discard-pile (cond-> (discard-pile db)
+                     source-card
+                     (conj source-card))}))
+
+(defn- high-priestess-hand-count [redraw-state]
+  (+ (count (:hand redraw-state))
+     (:unknown-hand-count redraw-state 0)))
+
+(defn- high-priestess-valid-discard-card-ids-in-state [redraw-state discard-card-ids]
+  (let [hand-card-ids (set (map :id (:hand redraw-state)))]
+    (vec (filter hand-card-ids (distinct (or discard-card-ids []))))))
+
+(defn- high-priestess-draw-count-options-in-state [redraw-state discard-card-ids]
+  (let [discard-count (count (high-priestess-valid-discard-card-ids-in-state
+                              redraw-state
+                              discard-card-ids))
+        post-discard-hand-count (- (high-priestess-hand-count redraw-state)
+                                   discard-count)
+        hand-slots (- game-state/starting-hand-size post-discard-hand-count)
+        available-cards (+ (count (:draw-pile redraw-state))
+                           (:unknown-draw-count redraw-state 0)
+                           (count (:discard-pile redraw-state))
+                           discard-count)
+        max-draw-count (max 0 (min hand-slots available-cards))]
+    (vec (range 0 (inc max-draw-count)))))
+
+(defn- high-priestess-discard-staged-cards [redraw-state discard-card-ids]
+  (let [valid-discard-card-ids (high-priestess-valid-discard-card-ids-in-state
+                                redraw-state
+                                discard-card-ids)
+        discard-card-id-set (set valid-discard-card-ids)
+        cards-to-discard (filterv #(contains? discard-card-id-set (:id %))
+                                  (:hand redraw-state))]
+    (-> redraw-state
+        (update :hand
+                (fn [hand]
+                  (vec (remove #(contains? discard-card-id-set (:id %)) hand))))
+        (update :discard-pile into cards-to-discard))))
+
+(defn- high-priestess-refresh-staged-draw-pile [redraw-state]
+  (if (and (empty? (:draw-pile redraw-state))
+           (zero? (:unknown-draw-count redraw-state 0))
+           (seq (:discard-pile redraw-state)))
+    (let [discard-count (count (:discard-pile redraw-state))]
+      (-> redraw-state
+          (assoc :discard-pile [])
+          (assoc :unknown-draw-count discard-count)))
+    redraw-state))
+
+(defn- high-priestess-stage-draw-one [redraw-state]
+  (let [redraw-state (high-priestess-refresh-staged-draw-pile redraw-state)]
+    (cond
+      (seq (:draw-pile redraw-state))
+      (let [card (first (:draw-pile redraw-state))]
+        (-> redraw-state
+            (update :draw-pile #(vec (rest %)))
+            (update :hand conj card)))
+
+      (pos? (:unknown-draw-count redraw-state 0))
+      (-> redraw-state
+          (update :unknown-draw-count dec)
+          (update :unknown-hand-count inc))
+
+      :else
+      redraw-state)))
+
+(defn- high-priestess-stage-draw [redraw-state draw-count]
+  (let [drawn-state (nth (iterate high-priestess-stage-draw-one redraw-state)
+                         draw-count)]
+    (if (pos? draw-count)
+      (high-priestess-refresh-staged-draw-pile drawn-state)
+      drawn-state)))
+
+(defn- high-priestess-apply-staged-redraw-pass [redraw-state pass]
+  (let [discard-card-ids (high-priestess-valid-discard-card-ids-in-state
+                          redraw-state
+                          (:discard-card-ids pass))
+        options (set (high-priestess-draw-count-options-in-state
+                      redraw-state
+                      discard-card-ids))
+        draw-count (if (contains? options (:draw-count pass))
+                     (:draw-count pass)
+                     0)]
+    (-> redraw-state
+        (high-priestess-discard-staged-cards discard-card-ids)
+        (high-priestess-stage-draw draw-count))))
+
+(defn- high-priestess-redraw-state-before-pass [db source-id params pass-index]
+  (when-let [target-offset (redraw-pass-offset pass-index)]
+    (loop [redraw-state (high-priestess-initial-redraw-state db source-id params)
+           offset 0]
+      (if (>= offset target-offset)
+        redraw-state
+        (recur (high-priestess-apply-staged-redraw-pass
+                redraw-state
+                (get (vec (:redraws params)) offset {}))
+               (inc offset))))))
+
+(defn- high-priestess-hand-card-options
+  ([db source-id params]
+   (:hand (high-priestess-initial-redraw-state db source-id params)))
+  ([db source-id params pass-index]
+   (if-let [redraw-state (high-priestess-redraw-state-before-pass
+                          db
+                          source-id
+                          params
+                          pass-index)]
+     (:hand redraw-state)
+     [])))
+
+(defn- high-priestess-valid-discard-card-ids
+  ([db source-id params discard-card-ids]
+   (high-priestess-valid-discard-card-ids-in-state
+    (high-priestess-initial-redraw-state db source-id params)
+    discard-card-ids))
+  ([db source-id params pass-index discard-card-ids]
+   (if-let [redraw-state (high-priestess-redraw-state-before-pass
+                          db
+                          source-id
+                          params
+                          pass-index)]
+     (high-priestess-valid-discard-card-ids-in-state
+      redraw-state
+      discard-card-ids)
+     [])))
+
+(defn- high-priestess-draw-count-options
+  ([db source-id params discard-card-ids]
+   (high-priestess-draw-count-options-in-state
+    (high-priestess-initial-redraw-state db source-id params)
+    discard-card-ids))
+  ([db source-id params pass-index discard-card-ids]
+   (if-let [redraw-state (high-priestess-redraw-state-before-pass
+                          db
+                          source-id
+                          params
+                          pass-index)]
+     (high-priestess-draw-count-options-in-state
+      redraw-state
+      discard-card-ids)
+     [])))
+
+(defn- selected-high-priestess-redraw-count [params]
+  (when (some #{(:high-priestess-redraw-count params)}
+              high-priestess-redraw-count-order)
+    (:high-priestess-redraw-count params)))
 
 (defn- high-priestess-redraw-pass [params pass-index]
   (let [offset (redraw-pass-offset pass-index)]
@@ -1413,38 +1535,53 @@
 
 (defn- normalize-high-priestess-redraws [db source-id params]
   (if-let [redraw-count (selected-high-priestess-redraw-count params)]
-    (assoc params
-           :redraws
-           (mapv (fn [offset]
-                   (let [pass (get (vec (:redraws params)) offset {})
-                         discard-card-ids (high-priestess-valid-discard-card-ids
-                                           db
-                                           source-id
-                                           params
-                                           (:discard-card-ids pass))
-                         options (set (high-priestess-draw-count-options
-                                       db
-                                       source-id
-                                       params
-                                       discard-card-ids))
-                         pass (assoc pass :discard-card-ids discard-card-ids)]
-                     (if (contains? options (:draw-count pass))
-                       pass
-                       (dissoc pass :draw-count))))
-                 (range redraw-count)))
+    (let [redraws (vec (:redraws params))]
+      (loop [redraw-state (high-priestess-initial-redraw-state db source-id params)
+             offset 0
+             normalized-redraws []]
+        (if (= offset redraw-count)
+          (assoc params :redraws normalized-redraws)
+          (let [pass (get redraws offset {})
+                discard-card-ids (high-priestess-valid-discard-card-ids-in-state
+                                  redraw-state
+                                  (:discard-card-ids pass))
+                options (set (high-priestess-draw-count-options-in-state
+                              redraw-state
+                              discard-card-ids))
+                normalized-pass (cond-> (assoc pass :discard-card-ids discard-card-ids)
+                                  (not (contains? options (:draw-count pass)))
+                                  (dissoc :draw-count))]
+            (recur (high-priestess-apply-staged-redraw-pass
+                    redraw-state
+                    normalized-pass)
+                   (inc offset)
+                   (conj normalized-redraws normalized-pass))))))
     (dissoc params :redraws)))
 
 (defn- high-priestess-redraws-complete? [db source-id params]
   (if-let [redraw-count (selected-high-priestess-redraw-count params)]
-    (every? (fn [offset]
-              (let [pass (get (vec (:redraws params)) offset)
-                    options (set (high-priestess-draw-count-options
-                                  db
-                                  source-id
-                                  params
-                                  (:discard-card-ids pass)))]
-                (contains? options (:draw-count pass))))
-            (range redraw-count))
+    (let [redraws (vec (:redraws params))]
+      (loop [redraw-state (high-priestess-initial-redraw-state db source-id params)
+             offset 0]
+        (if (= offset redraw-count)
+          true
+          (let [pass (get redraws offset)
+                discard-card-ids (high-priestess-valid-discard-card-ids-in-state
+                                  redraw-state
+                                  (:discard-card-ids pass))
+                options (set (high-priestess-draw-count-options-in-state
+                              redraw-state
+                              discard-card-ids))
+                normalized-pass (cond-> (assoc pass :discard-card-ids discard-card-ids)
+                                  (not (contains? options (:draw-count pass)))
+                                  (dissoc :draw-count))]
+            (if (and (= (vec (:discard-card-ids pass)) discard-card-ids)
+                     (contains? options (:draw-count pass)))
+              (recur (high-priestess-apply-staged-redraw-pass
+                      redraw-state
+                      normalized-pass)
+                     (inc offset))
+              false)))))
     false))
 
 (defn- judgement-discard-card-options [db source-id params]
@@ -1612,20 +1749,29 @@
                                (selected-high-priestess-redraw-count params))]
       (mapv (fn [pass-index]
               (let [pass (high-priestess-redraw-pass params pass-index)
-                    discard-card-ids (:discard-card-ids pass)]
+                    discard-card-ids (:discard-card-ids pass)
+                    draw-count-options (high-priestess-draw-count-options
+                                        db
+                                        source
+                                        params
+                                        pass-index
+                                        discard-card-ids)]
                 {:pass-index pass-index
-                 :discard-card-options (high-priestess-hand-card-options db source params)
+                 :discard-card-options (high-priestess-hand-card-options
+                                        db
+                                        source
+                                        params
+                                        pass-index)
                  :selected-discard-card-ids (high-priestess-valid-discard-card-ids
                                              db
                                              source
                                              params
+                                             pass-index
                                              discard-card-ids)
-                 :draw-count-options (high-priestess-draw-count-options
-                                      db
-                                      source
-                                      params
-                                      discard-card-ids)
-                 :selected-draw-count (:draw-count pass)}))
+                 :draw-count-options draw-count-options
+                 :selected-draw-count (when (some #{(:draw-count pass)}
+                                                  draw-count-options)
+                                        (:draw-count pass))}))
             (range 1 (inc redraw-count)))
       [])))
 
@@ -3231,7 +3377,7 @@
 (defn toggle-move-high-priestess-discard-card [db pass-index card-id]
   (let [{:keys [source params]} (move-selection db)
         pass (high-priestess-redraw-pass params pass-index)
-        card-options (high-priestess-hand-card-options db source params)
+        card-options (high-priestess-hand-card-options db source params pass-index)
         card-option-ids (set (map :id card-options))]
     (cond
       (not (high-priestess-move? db source params))
@@ -3287,6 +3433,7 @@
         options (high-priestess-draw-count-options db
                                                    source
                                                    params
+                                                   pass-index
                                                    (:discard-card-ids pass))]
     (if (and (high-priestess-move? db source params)
              (int? pass-index)
@@ -3296,11 +3443,15 @@
        db
        update
        :params
-       update-high-priestess-redraw-pass
-       pass-index
-       assoc
-       :draw-count
-       draw-count)
+       (fn [params]
+         (normalize-high-priestess-redraws
+          db
+          source
+          (update-high-priestess-redraw-pass params
+                                             pass-index
+                                             assoc
+                                             :draw-count
+                                             draw-count))))
       (update-move-selection db assoc
                              :error
                              (move-error :invalid-high-priestess-draw-count
@@ -4050,8 +4201,8 @@
 (defn- fool-command [_db _source params]
   {:reveals (vec (repeat (or (:fool-reveal-count params) 0) {}))})
 
-(defn- high-priestess-command [_db _source params]
-  {:redraws (vec (:redraws params))})
+(defn- high-priestess-command [db source params]
+  {:redraws (vec (:redraws (normalize-high-priestess-redraws db source params)))})
 
 (defn- judgement-command [db source params]
   {:piece-id (:piece-id params)
