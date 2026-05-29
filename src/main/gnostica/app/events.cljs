@@ -756,22 +756,8 @@ move-rod-orientation-required?
 
 (rf/reg-sub
  header-view
- :<- [current-player]
- :<- [game-status]
- :<- [lobby]
- :<- [card-icon-mode]
- :<- [open-panels]
- (fn [[current-player game-status lobby card-icon-mode open-panels] _]
-   (app-state/header-view-model
-    {:current-player current-player
-     :game-status game-status
-     :can-announce-challenge? (and current-player
-                                   game-status
-                                   (nil? (:active-challenge-player-id game-status))
-                                   (not (:finished? game-status)))
-     :lobby? (some? lobby)
-     :card-icon-mode card-icon-mode
-     :open-panels open-panels})))
+ (fn [db _]
+   (app-state/header-view db)))
 
 (rf/reg-sub
  board-view

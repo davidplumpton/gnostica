@@ -128,6 +128,16 @@
               [:game :players-by-id]
               (into {} (map (juxt :id identity) players)))))
 
+(defn- mark-game-player-eliminated [db player-id]
+  (let [players (mapv (fn [player]
+                        (if (= player-id (:id player))
+                          (assoc player :eliminated? true)
+                          player))
+                      (get-in db [:game :players]))]
+    (assoc-in (assoc-in db [:game :players] players)
+              [:game :players-by-id]
+              (into {} (map (juxt :id identity) players)))))
+
 (def ^:private expected-major-power-options
   {"fool" [:fool]
    "magician" [:cup :rod :disc :sword]
@@ -405,6 +415,29 @@
     (is (= :rose (get-in challenged-header [:game-status :active-challenge-player-id])))
     (is (false? (:can-announce-challenge? challenged-header)))
     (is (game-schema/valid-game? (app-state/game challenged-db)))))
+
+(deftest header-view-challenge-availability-follows-facade
+  (let [db (app-state/initialize {:player-specs test-player-specs
+                                  :game-options {:shuffle-fn identity}
+                                  :demo-board-pieces [rose-source-piece]})
+        challenged-db (app-state/end-turn db {:announce-challenge? true})
+        finished-db (assoc-in db [:game :phase] :finished)
+        eliminated-db (mark-game-player-eliminated db :rose)
+        lobby-db (app-state/initialize {:start-in-lobby? true
+                                        :player-specs test-player-specs})
+        cases {:available db
+               :active-challenge challenged-db
+               :finished finished-db
+               :eliminated-current-player eliminated-db
+               :lobby lobby-db}]
+    (doseq [[label case-db] cases
+            :let [header-view (app-state/header-view case-db)]]
+      (is (= (app-state/can-announce-challenge? case-db)
+             (:can-announce-challenge? header-view))
+          (str "header challenge availability should match facade for "
+               (name label))))
+    (is (false? (:can-announce-challenge?
+                 (app-state/header-view eliminated-db))))))
 
 (deftest bypass-lobby-initializes-game-for-fixtures
   (let [db (app-state/initialize {:start-in-lobby? true
