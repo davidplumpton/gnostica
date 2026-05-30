@@ -163,7 +163,10 @@
                          (some-> (.-dataTransfer event)
                                  (.setData "text/plain"
                                            (ui/piece-summary piece)))
-                         (rf/dispatch [events/start-gesture-intent drag-input])))}
+                         (rf/dispatch [events/start-gesture-intent drag-input])))
+      :on-drag-over on-drag-over-gesture
+      :on-drop #(on-drop-gesture % {:kind :piece
+                                    :piece-id (:id piece)})}
      [:span.board-piece__body
       [:span.board-piece__pips
        (for [pip (range pips)]

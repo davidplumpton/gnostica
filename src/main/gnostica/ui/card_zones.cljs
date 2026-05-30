@@ -31,6 +31,12 @@
   {:source {:kind :hand-card
             :card-id (:id card)}})
 
+(defn- replacement-card-choice-input [card descriptor]
+  {:preserve-selection? true
+   :fields (cond-> {:replacement-card-id (:id card)}
+             (:replacement-card-source descriptor)
+             (assoc :replacement-card-source (:replacement-card-source descriptor)))})
+
 (defn- draw-pile-source-input []
   {:source {:kind :draw-pile}})
 
@@ -51,6 +57,23 @@
   (not (contains? #{:discard :territory-card :replacement-card}
                   (:role descriptor))))
 
+(defn- hand-card-drag-input [card descriptor]
+  (cond
+    (and (= :replacement-card (:role descriptor))
+         (:enabled? descriptor))
+    (replacement-card-choice-input card descriptor)
+
+    (draggable-source? descriptor)
+    (hand-card-source-input card)
+
+    :else
+    nil))
+
+(defn- discard-card-drag-input [card descriptor]
+  (when (and (= :replacement-card (:role descriptor))
+             (:enabled? descriptor))
+    (replacement-card-choice-input card descriptor)))
+
 (defn- activation-key? [event]
   (contains? #{"Enter" " "} (.-key event)))
 
@@ -60,30 +83,31 @@
     (rf/dispatch dispatch-value)))
 
 (defn- hand-card [card card-icon-mode descriptor]
-  ^{:key (:id card)}
-  [:article.hand-card
-   {:class (str (when (card-ui/card-icon-summary card) "has-gnostica-icons")
-                (target-status-class descriptor))
-    :role "button"
-    :tabIndex 0
-    :title (target-reason descriptor)
-    :aria-pressed (true? (:selected? descriptor))
-    :draggable (if (draggable-source? descriptor) "true" "false")
-    :on-click #(rf/dispatch (card-action-event card descriptor))
-    :on-key-down #(dispatch-on-activation-key %
-                                              (card-action-event card descriptor))
-    :on-drag-start (fn [event]
-                     (when (draggable-source? descriptor)
-                       (let [input (hand-card-source-input card)]
+  (let [drag-input (hand-card-drag-input card descriptor)]
+    ^{:key (:id card)}
+    [:article.hand-card
+     {:class (str (when (card-ui/card-icon-summary card) "has-gnostica-icons")
+                  (target-status-class descriptor))
+      :role "button"
+      :tabIndex 0
+      :title (target-reason descriptor)
+      :aria-pressed (true? (:selected? descriptor))
+      :draggable (if drag-input "true" "false")
+      :on-click #(rf/dispatch (card-action-event card descriptor))
+      :on-key-down #(dispatch-on-activation-key %
+                                                (card-action-event card descriptor))
+      :on-drag-start (fn [event]
+                       (when drag-input
                          (some-> (.-dataTransfer event)
                                  (.setData "application/gnostica-gesture"
-                                           (gesture-input-string input)))
+                                           (gesture-input-string drag-input)))
                          (some-> (.-dataTransfer event)
                                  (.setData "text/plain"
                                            (:title card)))
-                         (rf/dispatch [events/start-gesture-intent input]))))}
-   [card-ui/card-face card "hand-card__face" (:title card) card-icon-mode {:focusable? true}]
-   [:h3.hand-card__title (:title card)]])
+                         (when-not (:preserve-selection? drag-input)
+                           (rf/dispatch [events/start-gesture-intent drag-input]))))}
+     [card-ui/card-face card "hand-card__face" (:title card) card-icon-mode {:focusable? true}]
+     [:h3.hand-card__title (:title card)]]))
 
 (defn- draw-deck-zone [draw-count descriptor]
   [:button.card-pile-zone
@@ -100,30 +124,41 @@
     [:p.card-pile-zone__detail (str (ui/card-count-label draw-count) " remaining")]]])
 
 (defn- discard-pile-zone [discard-count top-card card-icon-mode descriptor]
-  [:button.card-pile-zone
-   {:class (target-status-class descriptor)
-    :type "button"
-    :title (target-reason descriptor)
-    :aria-label (str "Discard pile, " (ui/card-count-label discard-count))
-    :disabled (nil? (and top-card
-                         (discard-card-action-event top-card descriptor)))
-    :on-click #(when-let [event (and top-card
-                                      (discard-card-action-event top-card descriptor))]
-                 (rf/dispatch event))}
-   (if top-card
-     [card-ui/card-face
-      top-card
-      "card-pile-zone__preview"
-      (str "Top discard: " (:title top-card))
-      card-icon-mode]
-     [:div.card-pile-zone__preview.is-empty
-      {:aria-hidden "true"}])
-   [:div.card-pile-zone__body
-    [:h3.card-pile-zone__title "Discard pile"]
-    [:p.card-pile-zone__detail
+  (let [drag-input (when top-card
+                     (discard-card-drag-input top-card descriptor))]
+    [:button.card-pile-zone
+     {:class (target-status-class descriptor)
+      :type "button"
+      :title (target-reason descriptor)
+      :aria-label (str "Discard pile, " (ui/card-count-label discard-count))
+      :disabled (nil? (and top-card
+                           (discard-card-action-event top-card descriptor)))
+      :draggable (if drag-input "true" "false")
+      :on-click #(when-let [event (and top-card
+                                        (discard-card-action-event top-card descriptor))]
+                   (rf/dispatch event))
+      :on-drag-start (fn [event]
+                       (when drag-input
+                         (some-> (.-dataTransfer event)
+                                 (.setData "application/gnostica-gesture"
+                                           (gesture-input-string drag-input)))
+                         (some-> (.-dataTransfer event)
+                                 (.setData "text/plain"
+                                           (:title top-card)))))}
      (if top-card
-       (str (ui/card-count-label discard-count) ", top card " (:title top-card))
-       "No cards discarded")]]])
+       [card-ui/card-face
+        top-card
+        "card-pile-zone__preview"
+        (str "Top discard: " (:title top-card))
+        card-icon-mode]
+       [:div.card-pile-zone__preview.is-empty
+        {:aria-hidden "true"}])
+     [:div.card-pile-zone__body
+      [:h3.card-pile-zone__title "Discard pile"]
+      [:p.card-pile-zone__detail
+       (if top-card
+         (str (ui/card-count-label discard-count) ", top card " (:title top-card))
+         "No cards discarded")]]]))
 
 (defn card-zones []
   (let [{:keys [current-player card-icon-mode zones legal-targets]}

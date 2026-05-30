@@ -118,6 +118,10 @@
   (some #(when (= card-id (:card-id %)) %)
         (:hand-cards targets)))
 
+(defn- discard-card-target [targets card-id]
+  (some #(when (= card-id (:card-id %)) %)
+        (:discard-cards targets)))
+
 (defn- move-control-group-summary [db]
   (mapv #(select-keys % [:type :power :action-power])
         (:control-groups (app-state/move-panel-view db))))
@@ -1169,6 +1173,194 @@
            moved-cell))
     (is (game-schema/valid-game? (app-state/game piece-confirmed-db)))
     (is (game-schema/valid-game? (app-state/game territory-confirmed-db)))))
+
+(deftest gesture-intent-stages-disc-replacement-card-drop-onto-territory
+  (let [deck-order (deck-with-cards-at {0 "coins2"
+                                        1 "cupsking"
+                                        (board-card-position test-player-specs 4) "cups2"})
+        db (app-state/initialize {:player-specs test-player-specs
+                                  :game-options {:deck-order deck-order}
+                                  :demo-board-pieces [rose-rod-minion]})
+        kind-db (-> db
+                    (app-state/select-move-source :play-hand-card)
+                    (app-state/select-move-hand-card "coins2")
+                    (app-state/select-move-piece :rose-rod-minion)
+                    (app-state/select-move-disc-target-kind :territory))
+        pending-db (app-state/start-gesture-intent
+                    kind-db
+                    {:preserve-selection? true
+                     :fields {:replacement-card-source :hand
+                              :replacement-card-id "cupsking"}
+                     :target {:kind :territory
+                              :board-index 4}})
+        tray (app-state/pending-move-tray-view pending-db)]
+    (is (= (app-state/game db)
+           (app-state/game pending-db)))
+    (is (= :confirm (:stage (app-state/move-selection pending-db))))
+    (is (= {:hand-card-id "coins2"
+            :piece-id :rose-rod-minion
+            :disc-target-kind :territory
+            :target-board-index 4
+            :replacement-card-source :hand
+            :replacement-card-id "cupsking"}
+           (app-state/move-params pending-db)))
+    (is (true? (:can-confirm? tray)))
+    (is (= {:player-id :rose
+            :source {:kind :hand-card
+                     :card-id "coins2"
+                     :piece-id :rose-rod-minion}
+            :disc-variant :disc
+            :target {:kind :territory
+                     :board-index 4}
+            :replacement-card-source :hand
+            :replacement-card-id "cupsking"}
+           (:preview-command tray)))))
+
+(deftest gesture-intent-infers-disc-piece-target-kind-from-piece-drop
+  (let [db (app-state/initialize {:player-specs test-player-specs
+                                  :game-options {:deck-order (deck-starting-with ["coins2"])}
+                                  :demo-board-pieces [rose-rod-minion
+                                                      indigo-rod-target]})
+        pending-db (app-state/start-gesture-intent
+                    db
+                    {:source {:kind :hand-card
+                              :card-id "coins2"}
+                     :fields {:piece-id :rose-rod-minion}
+                     :target {:kind :piece
+                              :piece-id :indigo-rod-target}})]
+    (is (= (app-state/game db)
+           (app-state/game pending-db)))
+    (is (= :confirm (:stage (app-state/move-selection pending-db))))
+    (is (= {:hand-card-id "coins2"
+            :piece-id :rose-rod-minion
+            :disc-target-kind :piece
+            :target-piece-id :indigo-rod-target}
+           (app-state/move-params pending-db)))
+    (is (= {:player-id :rose
+            :source {:kind :hand-card
+                     :card-id "coins2"
+                     :piece-id :rose-rod-minion}
+            :disc-variant :disc
+            :target {:kind :piece
+                     :piece-id :indigo-rod-target}}
+           (app-state/move-command pending-db)))))
+
+(deftest gesture-intent-stages-sword-damage-and-replacement-card-drop
+  (let [deck-order (deck-with-cards-at {0 "swords2"
+                                        1 "cups2"
+                                        (board-card-position test-player-specs 4) "cupsking"})
+        db (app-state/initialize {:player-specs test-player-specs
+                                  :game-options {:deck-order deck-order}
+                                  :demo-board-pieces [rose-rod-minion]})
+        kind-db (-> db
+                    (app-state/select-move-source :play-hand-card)
+                    (app-state/select-move-hand-card "swords2")
+                    (app-state/select-move-piece :rose-rod-minion)
+                    (app-state/select-move-sword-target-kind :territory))
+        pending-db (app-state/start-gesture-intent
+                    kind-db
+                    {:preserve-selection? true
+                     :fields {:damage 1
+                              :replacement-card-source :hand
+                              :replacement-card-id "cups2"}
+                     :target {:kind :territory
+                              :board-index 4}})
+        confirmed-db (app-state/confirm-move pending-db)]
+    (is (= (app-state/game db)
+           (app-state/game pending-db)))
+    (is (= :confirm (:stage (app-state/move-selection pending-db))))
+    (is (= {:hand-card-id "swords2"
+            :piece-id :rose-rod-minion
+            :sword-target-kind :territory
+            :target-board-index 4
+            :damage 1
+            :replacement-card-source :hand
+            :replacement-card-id "cups2"}
+           (app-state/move-params pending-db)))
+    (is (= {:player-id :rose
+            :source {:kind :hand-card
+                     :card-id "swords2"
+                     :piece-id :rose-rod-minion}
+            :target {:kind :territory
+                     :board-index 4}
+            :damage 1
+            :replacement-card-source :hand
+            :replacement-card-id "cups2"
+            :sword-variant :sword}
+           (app-state/move-command pending-db)))
+    (is (:ok? (get-in confirmed-db [:move-selection :last-result])))
+    (is (= "cups2" (get-in (board-cell-by-index confirmed-db 4) [:card :id])))
+    (is (game-schema/valid-game? (app-state/game confirmed-db)))))
+
+(deftest gesture-intent-stages-discard-pile-replacements-only-for-permitted-sources
+  (let [star-db (app-state/initialize
+                 {:player-specs test-player-specs
+                  :game-options {:deck-order
+                                 (deck-with-cards-at
+                                  {0 "star"
+                                   (board-card-position test-player-specs 4) "cupsking"})}
+                  :demo-board-pieces [(assoc rose-rod-minion
+                                             :orientation :north)]})
+        star-target-db (-> star-db
+                           (app-state/select-move-source :play-hand-card)
+                           (app-state/select-move-hand-card "star")
+                           (app-state/select-move-piece :rose-rod-minion)
+                           (app-state/set-move-minion-orientation :east)
+                           (app-state/select-move-disc-target-kind :territory)
+                           (app-state/select-board-card 4))
+        star-targets (app-state/move-legal-targets star-target-db)
+        star-pending-db (app-state/start-gesture-intent
+                         star-target-db
+                         {:preserve-selection? true
+                          :fields {:replacement-card-source :discard-pile
+                                   :replacement-card-id "star"}
+                          :target {:kind :territory
+                                   :board-index 4}})
+        normal-db (-> (app-state/initialize
+                       {:player-specs test-player-specs
+                        :game-options {:deck-order
+                                       (deck-with-cards-at
+                                        {0 "swords2"
+                                         (board-card-position test-player-specs 4) "cupsking"})}
+                        :demo-board-pieces [rose-rod-minion]})
+                      (update-in [:game :draw-pile]
+                                 #(vec (remove (fn [card]
+                                                 (= "cups2" (:id card)))
+                                               %)))
+                      (assoc-in [:game :discard-pile]
+                                [(cards/card-by-id "cups2")]))
+        normal-target-db (-> normal-db
+                             (app-state/select-move-source :play-hand-card)
+                             (app-state/select-move-hand-card "swords2")
+                             (app-state/select-move-piece :rose-rod-minion)
+                             (app-state/select-move-sword-target-kind :territory)
+                             (app-state/select-board-card 4)
+                             (app-state/set-move-damage 1))
+        normal-targets (app-state/move-legal-targets normal-target-db)
+        rejected-db (app-state/start-gesture-intent
+                     normal-target-db
+                     {:preserve-selection? true
+                      :fields {:replacement-card-source :discard-pile
+                               :replacement-card-id "cups2"}
+                      :target {:kind :territory
+                               :board-index 4}})]
+    (is (= :replacement-card-source
+           (:stage (app-state/move-selection star-target-db))))
+    (is (= :legal (:status (hand-card-target star-targets "star"))))
+    (is (= :discard-pile
+           (:replacement-card-source (hand-card-target star-targets "star"))))
+    (is (= :confirm (:stage (app-state/move-selection star-pending-db))))
+    (is (= :discard-pile
+           (get-in (app-state/move-command star-pending-db)
+                   [:replacement-card-source])))
+    (is (= :disabled (:status (discard-card-target normal-targets "cups2"))))
+    (is (= :replacement-card-source-unavailable
+           (get-in (discard-card-target normal-targets "cups2")
+                   [:error :code])))
+    (is (= (app-state/game normal-target-db)
+           (app-state/game rejected-db)))
+    (is (= :invalid-territory-card-source
+           (get-in rejected-db [:gesture-intent :error :code])))))
 
 (deftest move-panel-view-control-groups-track-staged-powers
   (let [composite-db (app-state/initialize

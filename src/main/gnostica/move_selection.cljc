@@ -845,11 +845,10 @@
            source-card)
       (conj source-card))))
 
-(defn- disc-replacement-card-options-for [db source-id params]
+(defn- disc-replacement-card-options-for-source [db source-id params replacement-source]
   (let [target-cell (target-board-cell db params)
         original-card (:card target-cell)
-        source-card-id (source-hand-card-id source-id params)
-        replacement-source (selected-disc-replacement-card-source db source-id params)]
+        source-card-id (source-hand-card-id source-id params)]
     (if-not original-card
       []
       (->> (case replacement-source
@@ -858,11 +857,18 @@
              [])
            (filter #(and (card-worth-disc-actions-more?
                           %
-                          original-card
-                          (selected-disc-action-count db source-id params))
+                         original-card
+                         (selected-disc-action-count db source-id params))
                          (or (not= :hand replacement-source)
                              (not= source-card-id (:id %)))))
            vec))))
+
+(defn- disc-replacement-card-options-for [db source-id params]
+  (disc-replacement-card-options-for-source
+   db
+   source-id
+   params
+   (selected-disc-replacement-card-source db source-id params)))
 
 (defn- disc-replacement-card-by-id [db source-id params card-id]
   (some #(when (= card-id (:id %)) %)
@@ -1000,12 +1006,11 @@
       :else
       nil)))
 
-(defn- sword-replacement-card-options-for [db source-id params]
+(defn- sword-replacement-card-options-for-source [db source-id params replacement-source]
   (let [target-cell (target-board-cell db params)
         original-card (:card target-cell)
         damage (:damage params)
-        source-card-id (source-hand-card-id source-id params)
-        replacement-source (selected-sword-replacement-card-source db source-id params)]
+        source-card-id (source-hand-card-id source-id params)]
     (if-not (and original-card damage replacement-source)
       []
       (->> (case replacement-source
@@ -1015,10 +1020,17 @@
            (filter #(and (card-worth-sword-damage-less?
                           %
                           original-card
-                          damage)
+                         damage)
                          (or (not= :hand replacement-source)
                              (not= source-card-id (:id %)))))
            vec))))
+
+(defn- sword-replacement-card-options-for [db source-id params]
+  (sword-replacement-card-options-for-source
+   db
+   source-id
+   params
+   (selected-sword-replacement-card-source db source-id params)))
 
 (defn- sword-replacement-card-by-id [db source-id params card-id]
   (some #(when (= card-id (:id %)) %)
@@ -1432,6 +1444,68 @@
 (defn- sun-disc-replacement-card-by-id [db source-id params card-id]
   (some #(when (= card-id (:id %)) %)
         (sun-disc-replacement-card-options-for db source-id params)))
+
+(defn- replacement-card-source-option-ids [db source-id params]
+  (cond
+    (sun-move? db source-id params)
+    [:hand]
+
+    (disc-move? db source-id params)
+    (disc-replacement-card-source-option-ids db source-id params)
+
+    (sword-move? db source-id params)
+    (sword-replacement-card-source-option-ids db source-id params)
+
+    :else
+    []))
+
+(defn- selected-replacement-card-source [db source-id params]
+  (cond
+    (sun-move? db source-id params)
+    :hand
+
+    (disc-move? db source-id params)
+    (selected-disc-replacement-card-source db source-id params)
+
+    (sword-move? db source-id params)
+    (selected-sword-replacement-card-source db source-id params)
+
+    :else
+    nil))
+
+(defn- replacement-card-options-for-source [db source-id params card-source]
+  (when (contains? (set (replacement-card-source-option-ids db source-id params))
+                   card-source)
+    (cond
+      (and (sun-move? db source-id params)
+           (= :hand card-source))
+      (sun-disc-replacement-card-options-for db source-id params)
+
+      (disc-move? db source-id params)
+      (disc-replacement-card-options-for-source db source-id params card-source)
+
+      (sword-move? db source-id params)
+      (sword-replacement-card-options-for-source db source-id params card-source)
+
+      :else
+      [])))
+
+(defn- replacement-card-source-for-card [db source-id params card-id]
+  (let [selected-source (selected-replacement-card-source db source-id params)
+        candidate-sources (if selected-source
+                            [selected-source]
+                            (replacement-card-source-option-ids db source-id params))
+        matching-sources (filterv
+                          (fn [card-source]
+                            (some #(= card-id (:id %))
+                                  (replacement-card-options-for-source
+                                   db
+                                   source-id
+                                   params
+                                   card-source)))
+                          candidate-sources)]
+    (when (= 1 (count matching-sources))
+      (first matching-sources))))
 
 (defn- sun-disc-territory-target-stage? [db source-id params]
   (and (sun-move? db source-id params)
@@ -4126,6 +4200,7 @@
   (let [{:keys [source params]} (move-selection db)
         replacement-source? (or (disc-move? db source params)
                                 (sword-move? db source params))
+        sun-replacement-source? (sun-move? db source params)
         option-ids (set (cond
                           (disc-move? db source params)
                           (disc-replacement-card-source-option-ids db source params)
@@ -4133,17 +4208,26 @@
                           (sword-move? db source params)
                           (sword-replacement-card-source-option-ids db source params)
 
+                          sun-replacement-source?
+                          [:hand]
+
                           :else
                           (territory-card-source-option-ids db source params)))]
     (if (contains? option-ids territory-card-source)
       (update-move-selection-success db
                                      update
                                      :params
-                                     (if replacement-source?
+                                     (cond
+                                       replacement-source?
                                        (fn [params card-source]
                                          (-> params
                                              (assoc :replacement-card-source card-source)
                                              (dissoc :replacement-card-id)))
+
+                                       sun-replacement-source?
+                                       (fn [params _card-source] params)
+
+                                       :else
                                        set-territory-card-source)
                                      territory-card-source)
       (update-move-selection db assoc
@@ -4182,12 +4266,24 @@
                                          {:card-id card-id}))
 
       (and (disc-move? db source params)
-           (disc-replacement-card-by-id db source params card-id))
-      (update-move-selection-success db assoc-in [:params :replacement-card-id] card-id)
+           (replacement-card-source-for-card db source params card-id))
+      (let [card-source (replacement-card-source-for-card db source params card-id)]
+        (update-move-selection-success db
+                                       update
+                                       :params
+                                       assoc
+                                       :replacement-card-source card-source
+                                       :replacement-card-id card-id))
 
       (and (sword-move? db source params)
-           (sword-replacement-card-by-id db source params card-id))
-      (update-move-selection-success db assoc-in [:params :replacement-card-id] card-id)
+           (replacement-card-source-for-card db source params card-id))
+      (let [card-source (replacement-card-source-for-card db source params card-id)]
+        (update-move-selection-success db
+                                       update
+                                       :params
+                                       assoc
+                                       :replacement-card-source card-source
+                                       :replacement-card-id card-id))
 
       (disc-move? db source params)
       (update-move-selection db assoc
@@ -4436,6 +4532,79 @@
   {:code code
    :message message
    :data data})
+
+(defn- replacement-card-source-label [card-source]
+  (get-in disc-replacement-card-source-definitions [card-source :label] "card source"))
+
+(defn- replacement-card-expected-value [db source params]
+  (cond
+    (sun-move? db source params)
+    (case (selected-sun-disc-mode db source params)
+      :created-territory 2
+      :territory (some-> (sun-disc-target-cell db params)
+                         :card
+                         cards/card-point-value
+                         inc)
+      nil)
+
+    (disc-move? db source params)
+    (some-> (target-board-cell db params)
+            :card
+            cards/card-point-value
+            (+ (selected-disc-action-count db source params)))
+
+    (sword-move? db source params)
+    (when-let [target-value (some-> (target-board-cell db params)
+                                    :card
+                                    cards/card-point-value)]
+      (when-let [damage (:damage params)]
+        (let [replacement-value (- target-value damage)]
+          (when (pos? replacement-value)
+            replacement-value))))
+
+    :else
+    nil))
+
+(defn- replacement-card-disabled-error [db card-source]
+  (let [{:keys [source params]} (move-selection db)
+        source-options (set (replacement-card-source-option-ids db source params))
+        selected-source (selected-replacement-card-source db source params)
+        expected-value (replacement-card-expected-value db source params)]
+    (cond
+      (not (contains? source-options card-source))
+      (descriptor-error :replacement-card-source-unavailable
+                        (str (replacement-card-source-label card-source)
+                             " replacements are not available for the active source.")
+                        {:source source
+                         :replacement-card-source card-source
+                         :available-sources (vec source-options)})
+
+      (and selected-source
+           (not= selected-source card-source))
+      (descriptor-error :replacement-card-source-unavailable
+                        (str "The active replacement source is "
+                             (replacement-card-source-label selected-source)
+                             ".")
+                        {:source source
+                         :replacement-card-source card-source
+                         :selected-replacement-card-source selected-source})
+
+      expected-value
+      (descriptor-error :invalid-replacement-card
+                        (str "Choose a replacement card worth "
+                             expected-value
+                             " point"
+                             (when (not= 1 expected-value) "s")
+                             ".")
+                        {:source source
+                         :replacement-card-source card-source
+                         :required-point-value expected-value})
+
+      :else
+      (descriptor-error :invalid-replacement-card
+                        "Choose an available replacement card."
+                        {:source source
+                         :replacement-card-source card-source}))))
 
 (defn- selected-territory-indexes [params]
   (set (keep params
@@ -4740,6 +4909,49 @@
                        :reason (:message disabled-error)))))
           (board-pieces db))))
 
+(defn- replacement-card-descriptor-context [db card-source]
+  (let [{:keys [source params]} (move-selection db)
+        selected-source (selected-replacement-card-source db source params)
+        source-active? (or (nil? selected-source)
+                           (= selected-source card-source))
+        source-options (vec (replacement-card-options-for-source
+                             db
+                             source
+                             params
+                             card-source))
+        hand-card-ids (set (map :id (current-player-hand db)))
+        discard-source-active? (and (= :hand card-source)
+                                    (or (nil? selected-source)
+                                        (= :discard-pile selected-source))
+                                    (contains? (set (replacement-card-source-option-ids
+                                                     db
+                                                     source
+                                                     params))
+                                               :discard-pile))
+        just-discarded-hand-options (when discard-source-active?
+                                      (filterv #(contains? hand-card-ids (:id %))
+                                               (replacement-card-options-for-source
+                                                db
+                                                source
+                                                params
+                                                :discard-pile)))
+        options (if source-active?
+                  (vec (concat source-options just-discarded-hand-options))
+                  (vec just-discarded-hand-options))
+        source-by-card-id (merge
+                           (into {} (map (fn [card]
+                                           [(:id card) card-source])
+                                         source-options))
+                           (into {} (map (fn [card]
+                                           [(:id card) :discard-pile])
+                                         just-discarded-hand-options)))]
+    {:active? true
+     :role :replacement-card
+     :replacement-card-source card-source
+     :replacement-card-source-by-card-id source-by-card-id
+     :options options
+     :disabled-error (replacement-card-disabled-error db card-source)}))
+
 (defn- card-descriptor-context [db]
   (let [{:keys [source stage]} (move-selection db)]
     (cond
@@ -4768,20 +4980,9 @@
                                                 "Choose a one-point card from the current player's hand."
                                                 {:source source})}}
 
-      (= :replacement-card stage)
-      (let [options (move-replacement-card-options db)]
-        {:hand {:active? true
-                :role :replacement-card
-                :options options
-                :disabled-error (descriptor-error :invalid-replacement-card
-                                                  "Choose an available replacement card."
-                                                  {:source source})}
-         :discard {:active? true
-                   :role :replacement-card
-                   :options options
-                   :disabled-error (descriptor-error :invalid-replacement-card
-                                                     "Choose an available replacement card."
-                                                     {:source source})}})
+      (contains? #{:replacement-card-source :replacement-card} stage)
+      {:hand (replacement-card-descriptor-context db :hand)
+       :discard (replacement-card-descriptor-context db :discard-pile)}
 
       (= :judgement-card-selection stage)
       {:discard {:active? true
@@ -4794,21 +4995,28 @@
       :else
       {})))
 
-(defn- card-descriptors-for [cards {:keys [active? role options disabled-error]}
+(defn- card-descriptors-for [cards {:keys [active? role options disabled-error]
+                                    :as context}
                              selected-card-ids]
-  (let [legal-card-ids (set (map :id options))]
+  (let [legal-card-ids (set (map :id options))
+        descriptor-context (select-keys context [:replacement-card-source])]
     (mapv (fn [{:keys [id title] :as card}]
             (let [enabled? (contains? legal-card-ids id)
-                  status (target-status active? enabled?)]
-              (cond-> {:kind :card
-                       :role role
-                       :card-id id
-                       :label title
-                       :card card
-                       :active? (true? active?)
-                       :enabled? enabled?
-                       :status status
-                       :selected? (contains? selected-card-ids id)}
+                  status (target-status active? enabled?)
+                  card-source (get-in context [:replacement-card-source-by-card-id id]
+                                      (:replacement-card-source context))]
+              (cond-> (merge {:kind :card
+                              :role role
+                              :card-id id
+                              :label title
+                              :card card
+                              :active? (true? active?)
+                              :enabled? enabled?
+                              :status status
+                              :selected? (contains? selected-card-ids id)}
+                             (cond-> descriptor-context
+                               card-source
+                               (assoc :replacement-card-source card-source)))
                 (and active? (not enabled?) disabled-error)
                 (assoc :error (assoc-in disabled-error [:data :card-id] id)
                        :reason (:message disabled-error)))))
@@ -4819,7 +5027,8 @@
         context (get (card-descriptor-context db) :hand)
         selected-ids (set (concat [(:hand-card-id params)
                                    (:one-point-card-id params)
-                                   (:replacement-card-id params)]
+                                   (:replacement-card-id params)
+                                   (:sun-disc-replacement-card-id params)]
                                   (:discard-card-ids params)))]
     (card-descriptors-for (current-player-hand db) context selected-ids)))
 

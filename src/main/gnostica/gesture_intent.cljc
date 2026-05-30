@@ -215,6 +215,9 @@
     :territory-card-source
     (move-selection/select-move-territory-card-source db value)
 
+    :replacement-card-source
+    (move-selection/select-move-territory-card-source db value)
+
     :one-point-card-id
     (move-selection/select-move-one-point-card db value)
 
@@ -259,13 +262,14 @@
 (def ^:private post-target-field-order
   [:territory-card-source
    :one-point-card-id
+   :damage
+   :distance
+   :replacement-card-source
    :replacement-card-id
    :hermit-destination-board-index
    :target-wasteland
    :hermit-destination-wasteland
    :orientation
-   :distance
-   :damage
    :draw-count])
 
 (defn- apply-fields [db fields field-order]
@@ -334,20 +338,40 @@
         (when-let [to (target-coordinate db target)]
           (cardinal-distance from (:orientation minion) to))))))
 
-(defn- apply-target [db target]
-  (if-let [distance (rod-drop-distance db target)]
-    (move-selection/set-move-distance db distance)
-    (case (:kind target)
-      :territory
-      (move-selection/select-board-for-active-move db (:board-index target))
+(defn- infer-target-kind [db target]
+  (let [stage (:stage (move-selection/move-selection db))
+        target-kind (case (:kind target)
+                      :territory :territory
+                      :piece :piece
+                      nil)]
+    (case stage
+      :disc-target-kind
+      (if target-kind
+        (move-selection/select-move-disc-target-kind db target-kind)
+        db)
 
-      :piece
-      (move-selection/select-move-target-piece db (:piece-id target))
-
-      :wasteland
-      (move-selection/select-move-wasteland-target db (:row target) (:col target))
+      :sword-target-kind
+      (if target-kind
+        (move-selection/select-move-sword-target-kind db target-kind)
+        db)
 
       db)))
+
+(defn- apply-target [db target]
+  (let [db (infer-target-kind db target)]
+    (if-let [distance (rod-drop-distance db target)]
+      (move-selection/set-move-distance db distance)
+      (case (:kind target)
+        :territory
+        (move-selection/select-board-for-active-move db (:board-index target))
+
+        :piece
+        (move-selection/select-move-target-piece db (:piece-id target))
+
+        :wasteland
+        (move-selection/select-move-wasteland-target db (:row target) (:col target))
+
+        db))))
 
 (defn- stage-gesture [db {:keys [fields target preserve-selection?] :as input} inferred-source]
   (let [fields (or fields {})
