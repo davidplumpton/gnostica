@@ -94,6 +94,16 @@
    :message message
    :data data})
 
+(def ^:private starting-bid-choice-error-codes
+  #{:invalid-starting-bid-card
+    :incomplete-starting-bid-round
+    :starting-bid-unresolved})
+
+(defn- clear-lobby-error-codes [db error-codes]
+  (if (contains? error-codes (get-in db [:lobby :error :code]))
+    (update db :lobby dissoc :error)
+    db))
+
 (defn- duplicate-lobby-player-ids [players]
   (->> players
        (map :id)
@@ -558,7 +568,9 @@
       db
 
       (str/blank? card-id)
-      (update-in db [:lobby :starting-bid :current-bids] dissoc player-id)
+      (-> db
+          (update-in [:lobby :starting-bid :current-bids] dissoc player-id)
+          (clear-lobby-error-codes starting-bid-choice-error-codes))
 
       (nil? (starting-bid-card current-game player-id card-id))
       (assoc-in db [:lobby :error]
@@ -575,7 +587,7 @@
       :else
       (-> db
           (assoc-in [:lobby :starting-bid :current-bids player-id] card-id)
-          (update :lobby dissoc :error)))))
+          (clear-lobby-error-codes starting-bid-choice-error-codes)))))
 
 (defn reveal-lobby-bids [db]
   (let [starting-bid (get-in db [:lobby :starting-bid])

@@ -570,6 +570,48 @@
     (is (contains-data-value? (:title cupsqueen) revealed-view))
     (is (contains-data-value? (:title fool) revealed-view))))
 
+(deftest lobby-starting-bid-card-changes-clear-stale-bid-errors
+  (let [db (app-state/initialize
+            {:start-in-lobby? true
+             :player-specs test-player-specs
+             :game-options {:deck-order (deck-with-cards-at
+                                          {0 "cupsking"
+                                           1 "cupsqueen"
+                                           6 "fool"})}})
+        bidding-db (app-state/start-lobby-bidding db)
+        invalid-db (app-state/select-lobby-bid-card bidding-db
+                                                     :rose
+                                                     "not-a-bid-card")
+        cleared-invalid-db (app-state/select-lobby-bid-card invalid-db
+                                                            :rose
+                                                            "")
+        incomplete-db (-> bidding-db
+                          (app-state/select-lobby-bid-card :rose "cupsking")
+                          app-state/reveal-lobby-bids)
+        changed-after-incomplete-db
+        (app-state/select-lobby-bid-card incomplete-db :rose "cupsqueen")
+        unrelated-error {:code :too-few-players
+                         :message "Unrelated validation"
+                         :data {:count 1
+                                :minimum game-state/min-players}}
+        unrelated-error-db (assoc-in bidding-db [:lobby :error]
+                                     unrelated-error)
+        preserved-error-db (app-state/select-lobby-bid-card
+                            unrelated-error-db
+                            :rose
+                            "")]
+    (is (= :invalid-starting-bid-card
+           (get-in invalid-db [:lobby :error :code])))
+    (is (nil? (get-in cleared-invalid-db [:lobby :error])))
+    (is (= :incomplete-starting-bid-round
+           (get-in incomplete-db [:lobby :error :code])))
+    (is (nil? (get-in changed-after-incomplete-db [:lobby :error])))
+    (is (= "cupsqueen"
+           (get-in changed-after-incomplete-db
+                   [:lobby :starting-bid :current-bids :rose])))
+    (is (= unrelated-error
+           (get-in preserved-error-db [:lobby :error])))))
+
 (deftest lobby-starting-bid-redraws-follow-order-and-prevent_invalid_choices
   (let [three-player-specs [{:id :rose}
                             {:id :indigo}
