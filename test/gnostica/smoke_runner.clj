@@ -18,6 +18,53 @@
                         :ready-expression stats/app-ready-js
                         :ready? true?})))
 
+(defn- assert-drag-started! [description result]
+  (when-not (true? (get result "started"))
+    (throw (ex-info (str description " did not start.")
+                    {:result result})))
+  (when-not (seq (get result "payload"))
+    (throw (ex-info (str description " did not write a gesture payload.")
+                    {:result result}))))
+
+(defn- cancel-pending-tray! [client description]
+  (browser/evaluate! client stats/cancel-pending-move-js)
+  (browser/wait-for! client
+                     (str description " pending tray close")
+                     stats/pending-tray-stats-js
+                     stats/pending-tray-closed?)
+  (browser/evaluate! client stats/close-move-panel-js))
+
+(defn- run-three-direct-gesture-smoke! [client viewport]
+  (let [points (browser/evaluate! client stats/three-piece-drag-points-js)]
+    (when-not (true? (get points "ok"))
+      (throw (ex-info "Could not calculate an in-canvas Three.js piece drag path."
+                      {:viewport viewport
+                       :points points})))
+    (browser/dispatch-drag! client (get points "source") (get points "target"))
+    (let [pending (browser/wait-for! client
+                                     (str (:name viewport) " Three.js piece drag pending tray")
+                                     stats/pending-tray-stats-js
+                                     stats/pending-tray-needs-choice-ready?)]
+      (cancel-pending-tray! client (str (:name viewport) " Three.js piece drag"))
+      pending)))
+
+(defn- run-hand-card-direct-gesture-smoke! [client viewport]
+  (let [drag-result (browser/evaluate! client stats/hand-card-drag-js)]
+    (assert-drag-started! "Hand-card drag" drag-result)
+    (let [pending (browser/wait-for! client
+                                     (str (:name viewport) " hand-card drag pending tray")
+                                     stats/pending-tray-stats-js
+                                     stats/pending-tray-needs-choice-ready?)]
+      (browser/evaluate! client stats/open-detailed-entry-js)
+      (let [detailed (browser/wait-for! client
+                                        (str (:name viewport) " hand-card drag Detailed entry")
+                                        stats/pending-tray-stats-js
+                                        stats/pending-tray-detailed-open-ready?)]
+        (cancel-pending-tray! client (str (:name viewport) " hand-card drag"))
+        {:drag-result drag-result
+         :pending pending
+         :detailed detailed}))))
+
 (defn- run-happy-viewport! [http-client chrome url viewport]
   (println (format "Smoke checking %s viewport at %dx%d."
                    (:name viewport)
@@ -45,6 +92,8 @@
                           {:viewport viewport
                            :stats initial-stats
                            :pixel-stats pixel-stats})))
+        (let [three-piece-drag (run-three-direct-gesture-smoke! client viewport)
+              hand-card-drag (run-hand-card-direct-gesture-smoke! client viewport)]
         (stats/focus-three-board! client)
         (browser/dispatch-w-key! client)
         (let [wasd-stats (browser/wait-for! client
@@ -117,8 +166,10 @@
                      :icon-help icon-help
                      :popup-stats popup-stats
                      :pixel-stats pixel-stats
+                     :three-piece-drag three-piece-drag
+                     :hand-card-drag hand-card-drag
                      :selection selection
-                     :move-panel move-panel})))))))
+                     :move-panel move-panel}))))))))
       (catch Exception error
         (throw (ex-info (str "3D board smoke failed in the " (:name viewport) " viewport.")
                         {:viewport viewport
@@ -129,6 +180,23 @@
                         error)))
       (finally
         (browser/close-cdp! client)))))
+
+(defn- run-fallback-direct-gesture-smoke! [client description]
+  (let [drag-result (browser/evaluate! client stats/fallback-piece-drag-js)]
+    (assert-drag-started! "CSS fallback piece drag" drag-result)
+    (let [pending (browser/wait-for! client
+                                     (str description " CSS piece drag pending tray")
+                                     stats/pending-tray-stats-js
+                                     stats/pending-tray-needs-choice-ready?)]
+      (browser/evaluate! client stats/open-detailed-entry-js)
+      (let [detailed (browser/wait-for! client
+                                        (str description " CSS piece drag Detailed entry")
+                                        stats/pending-tray-stats-js
+                                        stats/pending-tray-detailed-open-ready?)]
+        (cancel-pending-tray! client (str description " CSS piece drag"))
+        {:drag-result drag-result
+         :pending pending
+         :detailed detailed}))))
 
 (defn- run-missing-three-fallback! [http-client chrome url]
   (println "Smoke checking missing-Three.js fallback path.")
@@ -142,6 +210,7 @@
                          "CSS fallback after blocked Three.js CDN globals"
                          stats/fallback-stats-js
                          stats/fallback-ready?)
+      (run-fallback-direct-gesture-smoke! client "blocked Three.js")
       (browser/dispatch-i-key! client)
       (browser/wait-for! client
                          "CSS fallback popup icon mode"

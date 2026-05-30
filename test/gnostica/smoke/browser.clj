@@ -330,6 +330,41 @@
   (dispatch-click! client {"x" centerX
                            "y" centerY}))
 
+(defn dispatch-drag! [client start-point end-point]
+  (let [start-x (double (get start-point "x"))
+        start-y (double (get start-point "y"))
+        end-x (double (get end-point "x"))
+        end-y (double (get end-point "y"))
+        mid-x (/ (+ start-x end-x) 2)
+        mid-y (/ (+ start-y end-y) 2)]
+    (cdp-command! client
+                  "Input.dispatchMouseEvent"
+                  {"type" "mouseMoved"
+                   "x" start-x
+                   "y" start-y})
+    (cdp-command! client
+                  "Input.dispatchMouseEvent"
+                  {"type" "mousePressed"
+                   "x" start-x
+                   "y" start-y
+                   "button" "left"
+                   "clickCount" 1})
+    (doseq [[x y] [[mid-x mid-y] [end-x end-y]]]
+      (cdp-command! client
+                    "Input.dispatchMouseEvent"
+                    {"type" "mouseMoved"
+                     "x" x
+                     "y" y
+                     "button" "left"
+                     "buttons" 1}))
+    (cdp-command! client
+                  "Input.dispatchMouseEvent"
+                  {"type" "mouseReleased"
+                   "x" end-x
+                   "y" end-y
+                   "button" "left"
+                   "clickCount" 1})))
+
 (defn dispatch-wheel! [client {:strs [centerX centerY]} delta-y]
   (cdp-command! client
                 "Input.dispatchMouseEvent"

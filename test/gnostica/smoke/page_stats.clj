@@ -333,6 +333,137 @@
      };
    })()")
 
+(def pending-tray-stats-js
+  "(() => {
+     const text = (node) => node ? node.textContent.trim() : '';
+     const tray = document.querySelector('.pending-move-tray');
+     const panel = document.querySelector('.move-panel');
+     const board = document.querySelector('.board-three');
+     const stage = document.querySelector('.board-fallback .board-stage');
+     const buttons = Array.from(tray ? tray.querySelectorAll('button') : []);
+     const buttonByText = (label) => buttons.find((button) => text(button) === label);
+     const confirm = buttonByText('Confirm');
+     const cancel = buttonByText('Cancel');
+     const detailed = buttonByText('Detailed entry');
+     return {
+       active: Boolean(tray),
+       status: text(document.querySelector('.pending-move-tray__status')),
+       summary: text(document.querySelector('.pending-move-tray__summary')),
+       missingCount: document.querySelectorAll('.pending-move-tray__missing li').length,
+       errorText: text(document.querySelector('.pending-move-tray .move-error')),
+       confirmVisible: Boolean(confirm),
+       canConfirm: Boolean(confirm && !confirm.disabled),
+       cancelVisible: Boolean(cancel),
+       detailedVisible: Boolean(detailed),
+       detailedPressed: detailed ? detailed.getAttribute('aria-pressed') : null,
+       panelOpen: Boolean(panel),
+       panelActive: Boolean(panel && panel.classList.contains('is-active')),
+       boardPointerDragEnabled: board ? board.dataset.pointerDragEnabled === 'true' : null,
+       fallbackPointerDragEnabled: stage ? stage.dataset.pointerDragEnabled === 'true' : null
+     };
+   })()")
+
+(def open-detailed-entry-js
+  "(() => {
+     const buttons = Array.from(document.querySelectorAll('.pending-move-tray button'));
+     const detailed = buttons.find((button) => button.textContent.trim() === 'Detailed entry');
+     if (detailed) detailed.click();
+     return Boolean(detailed);
+   })()")
+
+(def cancel-pending-move-js
+  "(() => {
+     const buttons = Array.from(document.querySelectorAll('.pending-move-tray button'));
+     const cancel = buttons.find((button) => button.textContent.trim() === 'Cancel');
+     if (cancel) cancel.click();
+     return Boolean(cancel);
+   })()")
+
+(def close-move-panel-js
+  "(() => {
+     const close = document.querySelector('.move-panel .panel-close');
+     if (close) close.click();
+     return Boolean(close);
+   })()")
+
+(def hand-card-drag-js
+  "(() => {
+     const card = document.querySelector('.hand-card[draggable=\"true\"]');
+     if (!card) {
+       return {started: false, reason: 'No draggable hand card found.'};
+     }
+     const dataTransfer = new DataTransfer();
+     const event = new DragEvent('dragstart', {
+       bubbles: true,
+       cancelable: true,
+       dataTransfer
+     });
+     const dispatched = card.dispatchEvent(event);
+     return {
+       started: true,
+       dispatched,
+       draggable: card.getAttribute('draggable'),
+       payload: dataTransfer.getData('application/gnostica-gesture')
+     };
+   })()")
+
+(def fallback-piece-drag-js
+  "(() => {
+     const piece = document.querySelector('.board-fallback .board-piece[draggable=\"true\"]');
+     if (!piece) {
+       return {started: false, reason: 'No draggable CSS fallback piece found.'};
+     }
+     const dataTransfer = new DataTransfer();
+     const event = new DragEvent('dragstart', {
+       bubbles: true,
+       cancelable: true,
+       dataTransfer
+     });
+     const dispatched = piece.dispatchEvent(event);
+     return {
+       started: true,
+       dispatched,
+       pieceId: piece.dataset.pieceId || null,
+       draggable: piece.getAttribute('draggable'),
+       payload: dataTransfer.getData('application/gnostica-gesture')
+     };
+   })()")
+
+(def three-piece-drag-points-js
+  "(() => {
+     const canvas = document.querySelector('.board-three__canvas');
+     if (!canvas || !window.THREE) {
+       return {ok: false, reason: 'Three.js canvas is unavailable.'};
+     }
+     const rect = canvas.getBoundingClientRect();
+     if (rect.width <= 0 || rect.height <= 0) {
+       return {ok: false, reason: 'Three.js canvas has no measurable bounds.'};
+     }
+     const camera = new THREE.PerspectiveCamera(45, rect.width / rect.height, 0.1, 100);
+     camera.up.set(0, 0, 1);
+     camera.position.set(0, -4.8, 5.9);
+     camera.lookAt(new THREE.Vector3(0, 0, 0));
+     camera.updateMatrixWorld();
+     camera.updateProjectionMatrix();
+     const project = (x, y, z) => {
+       const point = new THREE.Vector3(x, y, z).project(camera);
+       return {
+         x: rect.left + ((point.x + 1) / 2) * rect.width,
+         y: rect.top + ((1 - point.y) / 2) * rect.height
+       };
+     };
+     const source = project(-1.39, 1.36, 0.12);
+     return {
+       ok: source.x >= rect.left
+         && source.x <= rect.right
+         && source.y >= rect.top
+         && source.y <= rect.bottom,
+       source,
+       target: {x: source.x + 32, y: source.y + 18},
+       canvas: {x: rect.left, y: rect.top, width: rect.width, height: rect.height}
+     };
+   })()")
+
 (def mismatched-three-js
   "window.THREE = {REVISION: '999', OrbitControls: function OrbitControls() {}};")
 
@@ -634,6 +765,24 @@
        (= "Play hand card" (get stats "selectedSourceLabel"))
        (true? (get stats "handCardStep"))
        (= 6 (long (or (get stats "handCardChoiceCount") -1)))))
+
+(defn pending-tray-needs-choice-ready? [stats]
+  (and (true? (get stats "active"))
+       (= "Needs choice" (get stats "status"))
+       (seq (get stats "summary"))
+       (true? (get stats "confirmVisible"))
+       (false? (get stats "canConfirm"))
+       (true? (get stats "cancelVisible"))
+       (true? (get stats "detailedVisible"))))
+
+(defn pending-tray-detailed-open-ready? [stats]
+  (and (pending-tray-needs-choice-ready? stats)
+       (= "true" (get stats "detailedPressed"))
+       (true? (get stats "panelOpen"))
+       (true? (get stats "panelActive"))))
+
+(defn pending-tray-closed? [stats]
+  (false? (get stats "active")))
 
 (defn focus-three-board! [client]
   (when-not (true? (browser/evaluate! client

@@ -1058,6 +1058,178 @@
     (is (= (app-state/game db)
            (app-state/game pending-db)))))
 
+(deftest direct-gesture-commands-match-staged-move-panel-commands
+  (let [cup-db (app-state/initialize
+                {:player-specs test-player-specs
+                 :game-options {:deck-order (deck-starting-with ["cups2"])}
+                 :demo-board-pieces [rose-hand-cup-territory-piece]})
+        rod-db (app-state/initialize
+                {:player-specs test-player-specs
+                 :game-options {:deck-order (deck-starting-with ["wands2"])}
+                 :demo-board-pieces [rose-rod-minion]})
+        disc-db (app-state/initialize
+                 {:player-specs test-player-specs
+                  :game-options {:deck-order (deck-starting-with ["coins2"])}
+                  :demo-board-pieces [rose-rod-minion indigo-rod-target]})
+        sword-db (app-state/initialize
+                  {:player-specs test-player-specs
+                   :game-options {:deck-order (deck-starting-with ["swords2"])}
+                   :demo-board-pieces [rose-rod-minion indigo-rod-target]})
+        orient-db (app-state/initialize
+                   {:player-specs test-player-specs
+                    :game-options {:shuffle-fn identity}
+                    :demo-board-pieces [rose-source-piece]})
+        initial-db (app-state/initialize
+                    {:player-specs test-player-specs
+                     :game-options {:shuffle-fn identity}
+                     :demo-board-pieces []})
+        fool-db (app-state/initialize
+                 {:player-specs test-player-specs
+                  :game-options {:deck-order (deck-starting-with ["fool"])}
+                  :demo-board-pieces [rose-hand-piece]})
+        cases [{:label "Cup"
+                :db cup-db
+                :gesture {:source {:kind :hand-card
+                                    :card-id "cups2"}
+                          :fields {:piece-id :rose-striker
+                                   :orientation :north}
+                          :target {:kind :territory
+                                   :board-index 3}}
+                :staged #(-> %
+                             (app-state/select-move-source :play-hand-card)
+                             (app-state/select-move-hand-card "cups2")
+                             (app-state/select-move-piece :rose-striker)
+                             (app-state/select-board-card 3)
+                             (app-state/set-move-orientation :north))}
+               {:label "Rod"
+                :db rod-db
+                :gesture {:source {:kind :hand-card
+                                    :card-id "wands2"}
+                          :fields {:piece-id :rose-rod-minion
+                                   :rod-mode :move-minion
+                                   :distance 1
+                                   :orientation :east}}
+                :staged #(-> %
+                             (app-state/select-move-source :play-hand-card)
+                             (app-state/select-move-hand-card "wands2")
+                             (app-state/select-move-piece :rose-rod-minion)
+                             (app-state/select-move-rod-mode :move-minion)
+                             (app-state/set-move-distance 1)
+                             (app-state/set-move-orientation :east))}
+               {:label "Disc"
+                :db disc-db
+                :gesture {:source {:kind :hand-card
+                                    :card-id "coins2"}
+                          :fields {:piece-id :rose-rod-minion}
+                          :target {:kind :piece
+                                   :piece-id :indigo-rod-target}}
+                :staged #(-> %
+                             (app-state/select-move-source :play-hand-card)
+                             (app-state/select-move-hand-card "coins2")
+                             (app-state/select-move-piece :rose-rod-minion)
+                             (app-state/select-move-disc-target-kind :piece)
+                             (app-state/select-move-target-piece :indigo-rod-target))}
+               {:label "Sword"
+                :db sword-db
+                :gesture {:source {:kind :hand-card
+                                    :card-id "swords2"}
+                          :fields {:piece-id :rose-rod-minion
+                                   :damage 1}
+                          :target {:kind :piece
+                                   :piece-id :indigo-rod-target}}
+                :staged #(-> %
+                             (app-state/select-move-source :play-hand-card)
+                             (app-state/select-move-hand-card "swords2")
+                             (app-state/select-move-piece :rose-rod-minion)
+                             (app-state/select-move-sword-target-kind :piece)
+                             (app-state/select-move-target-piece :indigo-rod-target)
+                             (app-state/set-move-damage 1))}
+               {:label "Orient"
+                :db orient-db
+                :gesture {:source {:kind :piece
+                                    :piece-id :rose-scout}
+                          :fields {:orientation :west}}
+                :staged #(-> %
+                             (app-state/select-move-source :orient-piece)
+                             (app-state/select-move-piece :rose-scout)
+                             (app-state/set-move-orientation :west))}
+               {:label "Initial placement"
+                :db initial-db
+                :gesture {:source {:kind :stash-piece
+                                    :player-id :rose
+                                    :size :small}
+                          :target {:kind :wasteland
+                                   :row 0
+                                   :col 3}
+                          :fields {:orientation :north}}
+                :staged #(-> %
+                             (app-state/select-move-source :place-initial-small)
+                             (app-state/select-move-wasteland-target 0 3)
+                             (app-state/set-move-orientation :north))}
+               {:label "Major"
+                :db fool-db
+                :gesture {:source {:kind :hand-card
+                                    :card-id "fool"}
+                          :fields {:piece-id :rose-striker
+                                   :power :fool
+                                   :fool-reveal-count 0}}
+                :staged #(-> %
+                             (app-state/select-move-source :play-hand-card)
+                             (app-state/select-move-hand-card "fool")
+                             (app-state/select-move-piece :rose-striker)
+                             (app-state/set-move-fool-reveal-count 0))}]]
+    (doseq [{:keys [label db gesture staged]} cases
+            :let [direct-db (app-state/start-gesture-intent db gesture)
+                  staged-db (staged db)
+                  tray (app-state/pending-move-tray-view direct-db)
+                  command (app-state/move-command staged-db)]]
+      (is (= (app-state/game db) (app-state/game direct-db))
+          (str label " gesture should not mutate game state before confirmation"))
+      (is (= :confirm (:stage (app-state/move-selection direct-db)))
+          (str label " gesture should reach confirmation"))
+      (is (= command (app-state/move-command direct-db))
+          (str label " gesture command should match staged controls"))
+      (is (= command (:preview-command tray))
+          (str label " pending tray should expose the same command preview"))
+      (is (true? (:can-confirm? tray))
+          (str label " pending tray should allow confirmation")))))
+
+(deftest detailed-entry-fallback-completes-staged-controls-when-dragging-disabled
+  (let [db (app-state/initialize
+            {:player-specs test-player-specs
+             :game-options {:deck-order (deck-starting-with ["cups2"])}
+             :direct-manipulation {:pointer-drag-enabled? false
+                                   :detailed-entry-default? true}
+             :demo-board-pieces [rose-hand-cup-territory-piece]})
+        ready-db (-> db
+                     (app-state/select-move-source :play-hand-card)
+                     (app-state/select-move-hand-card "cups2")
+                     (app-state/select-move-piece :rose-striker)
+                     (app-state/select-board-card 3)
+                     (app-state/set-move-orientation :north))
+        confirmed-db (app-state/confirm-move ready-db)
+        blocked-card-id (:id (first (app-state/current-player-hand confirmed-db)))
+        blocked-gesture-db (app-state/start-gesture-intent
+                            confirmed-db
+                            {:source {:kind :hand-card
+                                      :card-id blocked-card-id}})
+        created-piece (piece-by-id confirmed-db :rose-small-1)]
+    (is (= {:pointer-drag-enabled? false
+            :detailed-entry-available? true
+            :detailed-entry-default? true}
+           (:direct-manipulation (app-state/move-panel-view db))))
+    (is (true? (app-state/panel-open? db :move)))
+    (is (= :confirm (:stage (app-state/move-selection ready-db))))
+    (is (:ok? (get-in confirmed-db [:move-selection :last-result])))
+    (is (not= (app-state/game db) (app-state/game confirmed-db)))
+    (is (= 3 (:space-index created-piece)))
+    (is (= :north (:orientation created-piece)))
+    (is (= (app-state/game confirmed-db)
+           (app-state/game blocked-gesture-db)))
+    (is (= :move-source-unavailable
+           (get-in blocked-gesture-db [:gesture-intent :error :code])))
+    (is (game-schema/valid-game? (app-state/game confirmed-db)))))
+
 (deftest gesture-intent-maps-cup-wasteland-resolution-to-one-point-card
   (let [db (app-state/initialize
             {:player-specs test-player-specs
