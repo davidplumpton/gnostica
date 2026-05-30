@@ -103,9 +103,12 @@
                   (layout/piece-compass-z-rotation :west)))
     (is (nil? (layout/piece-compass-z-rotation :up)))
     (is (roughly= (/ Math/PI 4) layout/piece-side-face-roll))
-    (is (roughly= (+ layout/piece-surface-z (/ (:height piece-size) 2))
+    (is (roughly= (+ layout/piece-upright-surface-z (/ (:height piece-size) 2))
                   (layout/piece-center-z piece-size :up)))
-    (is (roughly= (+ layout/piece-surface-z
+    (is (roughly= (+ layout/card-surface-z layout/piece-cardinal-surface-lift)
+                  layout/piece-cardinal-surface-z))
+    (is (< layout/piece-cardinal-surface-z layout/piece-upright-surface-z))
+    (is (roughly= (+ layout/piece-cardinal-surface-z
                      (pieces/lying-center-height-above-surface piece-size))
                   (layout/piece-center-z piece-size :north)))))
 

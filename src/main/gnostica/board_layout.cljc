@@ -14,7 +14,10 @@
 (def card-long 1.5)
 (def card-gap 0.14)
 (def selected-card-padding 0.14)
-(def piece-surface-z 0.07)
+(def card-surface-z 0.02)
+(def piece-upright-surface-z 0.07)
+(def piece-cardinal-surface-lift 0.004)
+(def piece-cardinal-surface-z (+ card-surface-z piece-cardinal-surface-lift))
 (def piece-pip-marker-radius 0.024)
 (def piece-pip-marker-surface-lift 0.01)
 (def piece-pip-marker-base-inset-ratio 0.22)
@@ -140,9 +143,9 @@
     nil))
 
 (defn piece-center-z [piece-size orientation]
-  (+ piece-surface-z
-     (if (= :up orientation)
-       (/ (:height piece-size) 2)
+  (if (= :up orientation)
+    (+ piece-upright-surface-z (/ (:height piece-size) 2))
+    (+ piece-cardinal-surface-z
        (pieces/lying-center-height-above-surface piece-size))))
 
 (defn- piece-radius-at-local-y [piece-size y]

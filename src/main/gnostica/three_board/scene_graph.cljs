@@ -356,7 +356,7 @@
         [x y] (layout/card-position cell)]
     (.set (.-position selection-mesh) x y 0.01)
     (set! (.-visible selection-mesh) false)
-    (.set (.-position mesh) x y 0.02)
+    (.set (.-position mesh) x y layout/card-surface-z)
     (when (= :landscape orientation)
       (set! (.. selection-mesh -rotation -z) (/ js/Math.PI 2))
       (set! (.. mesh -rotation -z) (/ js/Math.PI 2)))
