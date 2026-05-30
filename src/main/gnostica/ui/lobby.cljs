@@ -77,19 +77,32 @@
      :on-click #(rf/dispatch [events/remove-lobby-player slot-id])}
     "Remove"]])
 
-(defn- bid-card-select [{:keys [id name bid-card-id bid-card-options]}]
-  [:label.lobby-field.starting-bid__field
-   [:span.lobby-field__label name]
-   [:select
-    {:value (or bid-card-id "")
-     :aria-label (str name " bid card")
-     :on-change #(rf/dispatch [events/select-lobby-bid-card
-                                id
-                                (event-value %)])}
-    [:option {:value ""} "Choose bid"]
-    (for [{card-id :id title :title} bid-card-options]
-      ^{:key card-id}
-      [:option {:value card-id} title])]])
+(defn- bid-card-select [{:keys [id name bid-card-id bid-card-selected?
+                                bid-card-options]}]
+  (if bid-card-selected?
+    [:div.lobby-field.starting-bid__field
+     [:span.lobby-field__label name]
+     [:div.starting-bid__masked-choice
+      [:output.lobby-control
+       {:aria-label (str name " bid card")}
+       "Bid selected"]
+      [:button.lobby-remove
+       {:type "button"
+        :aria-label (str "Clear " name " bid card")
+        :on-click #(rf/dispatch [events/select-lobby-bid-card id ""])}
+       "Clear"]]]
+    [:label.lobby-field.starting-bid__field
+     [:span.lobby-field__label name]
+     [:select
+      {:value (or bid-card-id "")
+       :aria-label (str name " bid card")
+       :on-change #(rf/dispatch [events/select-lobby-bid-card
+                                  id
+                                  (event-value %)])}
+      [:option {:value ""} "Choose bid"]
+      (for [{card-id :id title :title} bid-card-options]
+        ^{:key card-id}
+        [:option {:value card-id} title])]]))
 
 (defn- bid-history-row [{:keys [round bids winner-name tied-players]}]
   [:li.starting-bid__history-row

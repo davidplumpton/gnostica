@@ -547,6 +547,17 @@ img {
   min-width: 0;
 }
 
+.starting-bid__masked-choice {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.45rem;
+  min-width: 0;
+}
+
+.starting-bid__masked-choice .lobby-control {
+  color: var(--muted);
+}
+
 .starting-bid__history {
   display: grid;
   gap: 0.45rem;

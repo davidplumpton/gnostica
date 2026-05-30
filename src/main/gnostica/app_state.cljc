@@ -827,9 +827,12 @@
           selected-card-id (get-in starting-bid [:current-bids player-id])
           hand (get-in starting-bid [:current-game :players-by-id player-id :hand])]
       (assoc player
-             :bid-card-id selected-card-id
-             :bid-card-options (mapv (partial bid-card-option selected-card-id)
-                                     hand)
+             :bid-card-id nil
+             :bid-card-selected? (some? selected-card-id)
+             :bid-card-options (if selected-card-id
+                                 []
+                                 (mapv (partial bid-card-option nil)
+                                       hand))
              :bid-ready? (some? selected-card-id)))))
 
 (defn- starting-bid-view [players starting-bid]

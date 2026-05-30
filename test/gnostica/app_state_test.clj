@@ -95,6 +95,11 @@
                (subvec remaining-cards 1)
                (conj result (first remaining-cards)))))))
 
+(defn- contains-data-value? [needle data]
+  (boolean
+   (some #(= needle %)
+         (tree-seq coll? seq data))))
+
 (defn- board-card-position [player-specs board-index]
   (+ (* game-state/starting-hand-size (count player-specs))
      board-index))
@@ -523,6 +528,47 @@
              :card-ids ["cupsking"]}]
            (get-in state [:setup :bid-redraws])))
     (is (game-schema/valid-game? state))))
+
+(deftest lobby-starting-bid-masks-selected-cards-before-reveal
+  (let [db (app-state/initialize
+            {:start-in-lobby? true
+             :player-specs test-player-specs
+             :game-options {:deck-order (deck-with-cards-at
+                                          {0 "cupsking"
+                                           1 "cupsqueen"
+                                           6 "fool"})}})
+        bidding-db (app-state/start-lobby-bidding db)
+        selected-db (-> bidding-db
+                        (app-state/select-lobby-bid-card :rose "cupsking")
+                        (app-state/select-lobby-bid-card :indigo "fool"))
+        selected-view (app-state/lobby-view selected-db)
+        [rose-view indigo-view] (:players selected-view)
+        cleared-db (app-state/select-lobby-bid-card selected-db :rose "")
+        cleared-view (app-state/lobby-view cleared-db)
+        changed-db (app-state/select-lobby-bid-card cleared-db :rose "cupsqueen")
+        changed-view (app-state/lobby-view changed-db)
+        revealed-view (app-state/lobby-view
+                       (app-state/reveal-lobby-bids changed-db))
+        cupsking (cards/card-by-id "cupsking")
+        cupsqueen (cards/card-by-id "cupsqueen")
+        fool (cards/card-by-id "fool")]
+    (is (true? (get-in selected-view [:starting-bid :can-reveal?])))
+    (is (every? true? (map :bid-ready? [rose-view indigo-view])))
+    (is (every? true? (map :bid-card-selected? [rose-view indigo-view])))
+    (is (= [nil nil] (mapv :bid-card-id [rose-view indigo-view])))
+    (is (= [[] []] (mapv :bid-card-options [rose-view indigo-view])))
+    (is (not (contains-data-value? (:id cupsking) selected-view)))
+    (is (not (contains-data-value? (:title cupsking) selected-view)))
+    (is (not (contains-data-value? (:id fool) selected-view)))
+    (is (not (contains-data-value? (:title fool) selected-view)))
+    (is (false? (get-in cleared-view [:starting-bid :can-reveal?])))
+    (is (some #(= "cupsking" (:id %))
+              (-> cleared-view :players first :bid-card-options)))
+    (is (true? (get-in changed-view [:starting-bid :can-reveal?])))
+    (is (not (contains-data-value? (:id cupsqueen) changed-view)))
+    (is (not (contains-data-value? (:title cupsqueen) changed-view)))
+    (is (contains-data-value? (:title cupsqueen) revealed-view))
+    (is (contains-data-value? (:title fool) revealed-view))))
 
 (deftest lobby-starting-bid-redraws-follow-order-and-prevent_invalid_choices
   (let [three-player-specs [{:id :rose}
