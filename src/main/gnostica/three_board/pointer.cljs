@@ -107,6 +107,15 @@
              :target-reason (or (:reason descriptor)
                                 (get-in descriptor [:error :message]))))))
 
+(defn- event-position [canvas event]
+  (let [rect (.getBoundingClientRect canvas)]
+    {:x (- (.-clientX event) (.-left rect))
+     :y (- (.-clientY event) (.-top rect))}))
+
+(defn- preview-at [legal-targets source-object target-object canvas event]
+  (assoc (preview-for legal-targets source-object target-object)
+         :pointer (event-position canvas event)))
+
 (defn- pointer-distance [event {:keys [x y]}]
   (js/Math.hypot (- (.-clientX event) x)
                  (- (.-clientY event) y)))
@@ -182,9 +191,11 @@
                                         (when dragging-now?
                                           (swap! pointer-down assoc :dragging? true)
                                           (assoc-state! :drag-preview
-                                                        (preview-for (current-legal-targets)
-                                                                     source-object
-                                                                     target-object))))))
+                                                        (preview-at (current-legal-targets)
+                                                                    source-object
+                                                                    target-object
+                                                                    canvas
+                                                                    event))))))
                                   (hover-card-at! event)))
         pointer-up-listener (fn [event]
                               (when-let [{:keys [id input source-object dragging?
@@ -230,17 +241,54 @@
                                   (reset! pointer-down nil)
                                   (clear-drag!))
         pointer-leave-listener (fn [_]
-                                 (assoc-state! :hovered-index nil))]
+                                 (assoc-state! :hovered-index nil))
+        external-drag-over-listener (fn [event]
+                                      (when (and drag-enabled?
+                                                 (gesture-input/gesture-data-transfer?
+                                                  (.-dataTransfer event)))
+                                        (.preventDefault event)
+                                        (.stopPropagation event)
+                                        (when-let [data-transfer (.-dataTransfer event)]
+                                          (set! (.-dropEffect data-transfer) "move"))
+                                        (when-let [input (gesture-input/gesture-input-from-data-transfer
+                                                         (.-dataTransfer event))]
+                                          (assoc-state! :drag-preview
+                                                        (preview-at (current-legal-targets)
+                                                                    (:source input)
+                                                                    (target-object-at! event)
+                                                                    canvas
+                                                                    event)))))
+        external-drop-listener (fn [event]
+                                 (when-let [input (and drag-enabled?
+                                                       (gesture-input/gesture-data-transfer?
+                                                        (.-dataTransfer event))
+                                                       (gesture-input/gesture-input-from-data-transfer
+                                                        (.-dataTransfer event)))]
+                                   (.preventDefault event)
+                                   (.stopPropagation event)
+                                   (let [target (target-for-object (target-object-at! event))]
+                                     (dispatch-gesture! (cond-> input
+                                                          target
+                                                          (assoc :target target))))
+                                   (clear-drag!)))
+        external-drag-leave-listener (fn [_]
+                                      (clear-drag!))]
     (.addEventListener canvas "pointerdown" pointer-down-listener true)
     (.addEventListener canvas "pointerup" pointer-up-listener true)
     (.addEventListener canvas "pointercancel" pointer-cancel-listener true)
     (.addEventListener canvas "pointermove" pointer-move-listener true)
     (.addEventListener canvas "pointerleave" pointer-leave-listener true)
+    (.addEventListener canvas "dragover" external-drag-over-listener true)
+    (.addEventListener canvas "drop" external-drop-listener true)
+    (.addEventListener canvas "dragleave" external-drag-leave-listener true)
     {:pointer-down-listener pointer-down-listener
      :pointer-up-listener pointer-up-listener
      :pointer-cancel-listener pointer-cancel-listener
      :pointer-move-listener pointer-move-listener
      :pointer-leave-listener pointer-leave-listener
+     :external-drag-over-listener external-drag-over-listener
+     :external-drop-listener external-drop-listener
+     :external-drag-leave-listener external-drag-leave-listener
      :pointer-listener-capture? true}))
 
 (def install-card-pointer-listeners! install-board-pointer-listeners!)

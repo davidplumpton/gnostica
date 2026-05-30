@@ -2,6 +2,7 @@
   (:require [gnostica.board-layout :as layout]
             [gnostica.icon-view :as icon-view]
             [gnostica.icons :as icons]
+            [gnostica.pieces :as pieces]
             [gnostica.three-board.controls :as controls]
             [gnostica.three-board.lifecycle :as lifecycle]
             [gnostica.three-board.pointer :as pointer]
@@ -19,6 +20,7 @@
     :territory (str "territory " board-index)
     :piece (str "piece " (name piece-id))
     :wasteland (str "wasteland " row ", " col)
+    :stash-piece "stash piece"
     "board object"))
 
 (defn- drag-preview-class [{:keys [target-status]}]
@@ -43,6 +45,19 @@
 
       :else
       (str "Dragging " source-label))))
+
+(defn- stash-piece-drag-ghost? [{:keys [source pointer]}]
+  (and pointer
+       (= :stash-piece (:kind source))
+       (= :small (:size source))))
+
+(defn- drag-ghost-style [{:keys [source pointer]}]
+  (let [{:keys [x y]} pointer
+        color (get-in pieces/players-by-id [(:player-id source) :css-color])]
+    (cond-> {"--drag-x" (str x "px")
+             "--drag-y" (str y "px")}
+      color
+      (assoc "--piece-color" color))))
 
 (defn- move-preview-class [{:keys [status]}]
   (case status
@@ -205,6 +220,19 @@
             {:class (drag-preview-class drag-preview)
              :aria-live "polite"}
             (drag-preview-summary drag-preview)])
+         (when (stash-piece-drag-ghost? drag-preview)
+           [:div.board-three__drag-piece-ghost
+            {:class (drag-preview-class drag-preview)
+             :aria-hidden "true"
+             :data-player-id (some-> drag-preview
+                                      (get-in [:source :player-id])
+                                      name)
+             :data-piece-size (some-> drag-preview
+                                      (get-in [:source :size])
+                                      name)
+             :style (drag-ghost-style drag-preview)}
+            [:span.board-three__drag-piece-ghost-body]
+            [:span.board-three__drag-piece-ghost-pip]])
          (when (:active? move-preview)
            [:div.board-three__move-preview
             {:class (move-preview-class move-preview)

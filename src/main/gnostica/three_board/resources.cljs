@@ -33,6 +33,9 @@
            pointer-cancel-listener
            pointer-move-listener
            pointer-leave-listener
+           external-drag-over-listener
+           external-drop-listener
+           external-drag-leave-listener
            pointer-listener-capture?
            active?
            geometries
@@ -65,6 +68,12 @@
         (.removeEventListener canvas "pointermove" pointer-move-listener pointer-listener-capture?))
       (when pointer-leave-listener
         (.removeEventListener canvas "pointerleave" pointer-leave-listener pointer-listener-capture?))
+      (when external-drag-over-listener
+        (.removeEventListener canvas "dragover" external-drag-over-listener pointer-listener-capture?))
+      (when external-drop-listener
+        (.removeEventListener canvas "drop" external-drop-listener pointer-listener-capture?))
+      (when external-drag-leave-listener
+        (.removeEventListener canvas "dragleave" external-drag-leave-listener pointer-listener-capture?))
       (when parent
         (.removeChild parent canvas)))
     (.dispose renderer)))

@@ -523,6 +523,86 @@
      };
    })()")
 
+(def direct-drop-three-stats-js
+  "(() => {
+     const text = (node) => node ? node.textContent.trim() : '';
+     const board = document.querySelector('.board-three');
+     const canvas = document.querySelector('.board-three__canvas');
+     const movePanel = document.querySelector('.move-panel');
+     const sourceButtons = Array.from(document.querySelectorAll('.move-source-option'));
+     const firstPieceSource = sourceButtons.find((button) => text(button).includes('Place first piece'));
+     return {
+       fallback: Boolean(document.querySelector('.board-fallback')),
+       canvas: Boolean(canvas),
+       pieceCount: board ? Number(board.dataset.visiblePieceCount || 0) : null,
+       pendingActive: Boolean(document.querySelector('.pending-move-tray')),
+       movePanelOpen: Boolean(movePanel),
+       movePanelActive: Boolean(movePanel && movePanel.classList.contains('is-active')),
+       firstPieceSourceVisible: Boolean(firstPieceSource),
+       firstPieceSourceDisabled: firstPieceSource ? firstPieceSource.disabled : null,
+       firstPieceSourceText: text(firstPieceSource),
+       pointerDragEnabled: board ? board.dataset.pointerDragEnabled === 'true' : null,
+       dragActive: board ? board.dataset.dragActive === 'true' : null,
+       dragGhostVisible: Boolean(document.querySelector('.board-three__drag-piece-ghost')),
+       dragTargetKind: board ? board.dataset.dragTargetKind : null,
+       dragTargetStatus: board ? board.dataset.dragTargetStatus : null
+     };
+   })()")
+
+(def initial-placement-three-drop-js
+  "(() => new Promise((resolve) => {
+     const text = (node) => node ? node.textContent.trim() : '';
+     const sourceButtons = Array.from(document.querySelectorAll('.move-source-option'));
+     const source = sourceButtons.find((button) => text(button).includes('Place first piece'));
+     const target = document.querySelector('.board-three__canvas');
+     if (!source || !target) {
+       resolve({
+         dropped: false,
+         reason: source ? 'No Three.js canvas drop target found.' : 'No Place first piece source found.',
+         sourceCount: sourceButtons.length,
+         canvasCount: document.querySelectorAll('.board-three__canvas').length
+       });
+       return;
+     }
+     const rect = target.getBoundingClientRect();
+     const dataTransfer = new DataTransfer();
+     const eventInit = {
+       bubbles: true,
+       cancelable: true,
+       dataTransfer,
+       clientX: rect.left + rect.width / 2,
+       clientY: rect.top + rect.height / 2
+     };
+     const dragStart = new DragEvent('dragstart', eventInit);
+     const dragStartDispatched = source.dispatchEvent(dragStart);
+     const dragOver = new DragEvent('dragover', eventInit);
+     const dragOverDispatched = target.dispatchEvent(dragOver);
+     requestAnimationFrame(() => requestAnimationFrame(() => {
+       const board = document.querySelector('.board-three');
+       const ghost = document.querySelector('.board-three__drag-piece-ghost');
+       const ghostStyle = ghost ? getComputedStyle(ghost) : null;
+       const drop = new DragEvent('drop', eventInit);
+       const dropDispatched = target.dispatchEvent(drop);
+       resolve({
+         dropped: true,
+         dragStartDispatched,
+         dragOverDispatched,
+         dropDispatched,
+         sourceText: text(source),
+         payload: dataTransfer.getData('application/gnostica-gesture'),
+         fallbackPayload: dataTransfer.getData('text/plain'),
+         target: {x: eventInit.clientX, y: eventInit.clientY},
+         ghostVisible: Boolean(ghost),
+         ghostPlayerId: ghost ? ghost.dataset.playerId : null,
+         ghostPieceSize: ghost ? ghost.dataset.pieceSize : null,
+         ghostClassName: ghost ? ghost.className : null,
+         ghostLeft: ghostStyle ? ghostStyle.left : null,
+         ghostTop: ghostStyle ? ghostStyle.top : null,
+         boardDragActiveBeforeDrop: board ? board.dataset.dragActive === 'true' : null
+       });
+     }));
+   }))()")
+
 (def initial-placement-drop-js
   "(() => {
      const text = (node) => node ? node.textContent.trim() : '';
@@ -978,6 +1058,16 @@
        (= expected-table-clear-color (get stats "tableClearColor"))
        (str/includes? (or (get stats "statusText") "") "Three.js is unavailable")))
 
+(defn direct-drop-three-ready? [stats]
+  (and (false? (get stats "fallback"))
+       (true? (get stats "canvas"))
+       (zero? (long (or (get stats "pieceCount") -1)))
+       (true? (get stats "movePanelOpen"))
+       (false? (get stats "movePanelActive"))
+       (true? (get stats "firstPieceSourceVisible"))
+       (false? (get stats "firstPieceSourceDisabled"))
+       (true? (get stats "pointerDragEnabled"))))
+
 (defn direct-drop-confirmed? [stats]
   (and (true? (get stats "fallback"))
        (false? (get stats "canvas"))
@@ -986,6 +1076,14 @@
        (= 1 (long (or (get stats "smallPieceCount") -1)))
        (= 1 (long (or (get stats "rosePieceCount") -1)))
        (false? (get stats "pendingActive"))
+       (true? (get stats "firstPieceSourceDisabled"))))
+
+(defn direct-drop-three-confirmed? [stats]
+  (and (false? (get stats "fallback"))
+       (true? (get stats "canvas"))
+       (= 1 (long (or (get stats "pieceCount") -1)))
+       (false? (get stats "pendingActive"))
+       (false? (get stats "dragGhostVisible"))
        (true? (get stats "firstPieceSourceDisabled"))))
 
 (defn touch-input-ready? [stats]

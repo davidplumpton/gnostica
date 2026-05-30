@@ -69,12 +69,8 @@
                                                 (card-action-event card descriptor))
       :on-drag-start (fn [event]
                        (when drag-input
-                         (some-> (.-dataTransfer event)
-                                 (.setData gesture-input/mime-type
-                                           (gesture-input/gesture-input-string drag-input)))
-                         (some-> (.-dataTransfer event)
-                                 (.setData "text/plain"
-                                           (:title card)))
+                         (gesture-input/set-gesture-data! (.-dataTransfer event)
+                                                          drag-input)
                          (when-not (:preserve-selection? drag-input)
                            (rf/dispatch [events/start-gesture-intent drag-input]))))}
      [card-ui/card-face card "hand-card__face" (:title card) card-icon-mode {:focusable? true}]
@@ -112,12 +108,8 @@
                    (rf/dispatch event))
       :on-drag-start (fn [event]
                        (when drag-input
-                         (some-> (.-dataTransfer event)
-                                 (.setData gesture-input/mime-type
-                                           (gesture-input/gesture-input-string drag-input)))
-                         (some-> (.-dataTransfer event)
-                                 (.setData "text/plain"
-                                           (:title top-card)))))}
+                         (gesture-input/set-gesture-data! (.-dataTransfer event)
+                                                          drag-input)))}
      (if top-card
        [card-ui/card-face
         top-card

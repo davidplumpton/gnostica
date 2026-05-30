@@ -1,6 +1,5 @@
 (ns gnostica.ui.board
-  (:require [cljs.reader :as reader]
-            [gnostica.app.events :as events]
+  (:require [gnostica.app.events :as events]
             [gnostica.gesture-input :as gesture-input]
             [gnostica.pieces :as pieces]
             [gnostica.three-board :as three-board]
@@ -36,19 +35,10 @@
       (get-in descriptor [:error :message])))
 
 (defn- gesture-input-from-event [event]
-  (let [payload (some-> (.-dataTransfer event)
-                        (.getData gesture-input/mime-type))]
-    (when (seq payload)
-      (try
-        (reader/read-string payload)
-        (catch :default _
-          nil)))))
+  (gesture-input/gesture-input-from-data-transfer (.-dataTransfer event)))
 
 (defn- gesture-drag-event? [event]
-  (when-let [data-transfer (.-dataTransfer event)]
-    (boolean
-     (some #(= gesture-input/mime-type %)
-           (array-seq (.-types data-transfer))))))
+  (gesture-input/gesture-data-transfer? (.-dataTransfer event)))
 
 (defn- on-drag-over-gesture [event]
   (when (gesture-drag-event? event)
@@ -215,12 +205,8 @@
       :on-drag-start (fn [event]
                        (when draggable?
                          (.stopPropagation event)
-                         (some-> (.-dataTransfer event)
-                                 (.setData gesture-input/mime-type
-                                           (gesture-input/gesture-input-string drag-input)))
-                         (some-> (.-dataTransfer event)
-                                 (.setData "text/plain"
-                                           (ui/piece-summary piece)))
+                         (gesture-input/set-gesture-data! (.-dataTransfer event)
+                                                          drag-input)
                          (rf/dispatch [events/start-gesture-intent drag-input])))
       :on-drag-over on-drag-over-gesture
       :on-drop #(on-drop-gesture % {:kind :piece
@@ -302,12 +288,8 @@
                                       (gesture-input/territory-source-input cell)])
       :on-drag-start (fn [event]
                        (when drag-input
-                         (some-> (.-dataTransfer event)
-                                 (.setData gesture-input/mime-type
-                                           (gesture-input/gesture-input-string drag-input)))
-                         (some-> (.-dataTransfer event)
-                                 (.setData "text/plain"
-                                           title))
+                         (gesture-input/set-gesture-data! (.-dataTransfer event)
+                                                          drag-input)
                          (rf/dispatch [events/start-gesture-intent drag-input])))
       :on-drag-over on-drag-over-gesture
      :on-drop #(on-drop-gesture % {:kind :territory

@@ -25,16 +25,21 @@
          :on-click #(rf/dispatch [events/select-move-source id])
          :on-drag-start (fn [event]
                           (when (and enabled? stash-input)
-                            (some-> (.-dataTransfer event)
-                                    (.setData gesture-input/mime-type
-                                              (gesture-input/gesture-input-string stash-input)))
-                            (some-> (.-dataTransfer event)
-                                    (.setData "text/plain" label))
+                            (gesture-input/set-gesture-data! (.-dataTransfer event)
+                                                             stash-input)
                             (rf/dispatch [events/start-gesture-intent stash-input])))}
         [:span.move-source-option__label
          (when stash-source?
            [:span.move-source-option__piece
             {:aria-hidden "true"
+             :draggable (if (and enabled? stash-input) "true" "false")
+             :on-drag-start (fn [event]
+                              (when (and enabled? stash-input)
+                                (.stopPropagation event)
+                                (gesture-input/set-gesture-data! (.-dataTransfer event)
+                                                                 stash-input)
+                                (rf/dispatch [events/start-gesture-intent
+                                              stash-input])))
              :style {"--piece-color" (get-in pieces/players-by-id
                                              [(:id current-player) :css-color])}}])
          label]

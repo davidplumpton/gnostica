@@ -34,6 +34,14 @@
     (throw (ex-info (str description " did not carry a gesture payload.")
                     {:result result}))))
 
+(defn- assert-first-piece-ghost! [description result]
+  (when-not (true? (get result "ghostVisible"))
+    (throw (ex-info (str description " did not show a first-piece drag ghost.")
+                    {:result result})))
+  (when-not (= "small" (get result "ghostPieceSize"))
+    (throw (ex-info (str description " drag ghost was not a small piece.")
+                    {:result result}))))
+
 (defn- assert-clicked! [description result]
   (when-not (true? (get result "clicked"))
     (throw (ex-info (str description " was not clicked.")
@@ -325,6 +333,60 @@
       (finally
         (browser/close-cdp! client)))))
 
+(defn- run-confirmed-three-direct-drop! [http-client chrome url]
+  (println "Smoke checking confirmed Three.js direct drop.")
+  (let [client (open-gnostica-page! http-client
+                                    chrome
+                                    (first stats/viewports)
+                                    (stats/direct-drop-smoke-url url)
+                                    [])]
+    (try
+      (browser/wait-for! client
+                         "direct-drop Three.js setup"
+                         stats/direct-drop-three-stats-js
+                         stats/direct-drop-three-ready?)
+      (let [drop-result (browser/evaluate! client stats/initial-placement-three-drop-js)]
+        (assert-drop-started! "Three.js initial-placement source-to-board drop" drop-result)
+        (assert-first-piece-ghost! "Three.js initial-placement source-to-board drop" drop-result)
+        (let [pending (browser/wait-for! client
+                                         "Three.js initial-placement pending tray"
+                                         stats/pending-tray-stats-js
+                                         stats/pending-tray-needs-choice-ready?)]
+          (browser/evaluate! client stats/open-detailed-entry-js)
+          (browser/wait-for! client
+                             "Three.js initial-placement Detailed entry"
+                             stats/pending-tray-stats-js
+                             stats/pending-tray-detailed-open-ready?)
+          (let [orientation-result (browser/evaluate! client
+                                                      stats/choose-north-orientation-js)]
+            (assert-selected! "North orientation" orientation-result)
+            (let [ready (browser/wait-for! client
+                                           "Three.js initial-placement ready tray"
+                                           stats/pending-tray-stats-js
+                                           stats/pending-tray-ready?)
+                  confirm-result (browser/evaluate! client
+                                                    stats/confirm-pending-move-js)]
+              (assert-clicked! "Three.js initial-placement Confirm" confirm-result)
+              (let [confirmed (browser/wait-for! client
+                                                 "Three.js initial-placement confirmed board state"
+                                                 stats/direct-drop-three-stats-js
+                                                 stats/direct-drop-three-confirmed?)]
+                {:drop-result drop-result
+                 :pending pending
+                 :orientation-result orientation-result
+                 :ready ready
+                 :confirm-result confirm-result
+                 :confirmed confirmed})))))
+      (catch Exception error
+        (throw (ex-info "Confirmed Three.js direct drop smoke failed."
+                        {:url url
+                         :browser-diagnostics (browser/browser-diagnostics client)
+                         :cause (ex-message error)
+                         :data (ex-data error)}
+                        error)))
+      (finally
+        (browser/close-cdp! client)))))
+
 (defn- run-missing-three-fallback! [http-client chrome url]
   (println "Smoke checking missing-Three.js fallback path.")
   (let [client (open-gnostica-page! http-client
@@ -398,6 +460,7 @@
           (println (str "Smoke target: " (:url target)))
           (doseq [viewport stats/viewports]
             (run-happy-viewport! http-client chrome (:url target) viewport))
+          (run-confirmed-three-direct-drop! http-client chrome (:url target))
           (run-missing-three-fallback! http-client chrome (:url target))
           (run-confirmed-fallback-direct-drop! http-client chrome (:url target))
           (run-mismatched-three-fallback! http-client chrome (:url target))
