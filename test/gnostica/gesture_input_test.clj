@@ -67,3 +67,41 @@
                card
                {:role :judgement-card
                 :enabled? true})))))
+
+(deftest board-space-drags-highlight-only-hovered-board-target
+  (let [stash-source {:kind :stash-piece
+                      :player-id :rose
+                      :size :small}
+        piece-source {:kind :piece
+                      :piece-id :rose-small-1}
+        hand-source {:kind :hand-card
+                     :card-id "cups2"}
+        territory-target {:kind :territory
+                          :board-index 3}
+        other-territory {:kind :territory
+                         :board-index 4}
+        wasteland-target {:kind :wasteland
+                          :row 0
+                          :col 3}]
+    (is (true? (gesture-input/board-space-drag-source? stash-source)))
+    (is (true? (gesture-input/board-space-drag-source?
+                {:source piece-source})))
+    (is (false? (gesture-input/board-space-drag-source? hand-source)))
+    (is (= [:territory 3]
+           (gesture-input/target-key territory-target)))
+    (is (= [:wasteland 0 3]
+           (gesture-input/target-key wasteland-target)))
+    (is (true? (gesture-input/show-target-highlight?
+                {:source stash-source
+                 :target territory-target}
+                territory-target)))
+    (is (false? (gesture-input/show-target-highlight?
+                 {:source stash-source
+                  :target territory-target}
+                 other-territory)))
+    (is (false? (gesture-input/show-target-highlight?
+                 {:source stash-source}
+                 territory-target)))
+    (is (true? (gesture-input/show-target-highlight?
+                {:source hand-source}
+                territory-target)))))

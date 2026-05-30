@@ -557,13 +557,14 @@
        firstPieceSourceIconClipPath: firstPieceBodyStyle ? firstPieceBodyStyle.clipPath : null,
        firstPieceSourceIconColor: firstPieceBodyStyle ? firstPieceBodyStyle.backgroundColor : null,
        firstPieceSourceIconPipVisible: Boolean(firstPiecePip),
-       pointerDragEnabled: board ? board.dataset.pointerDragEnabled === 'true' : null,
-       dragActive: board ? board.dataset.dragActive === 'true' : null,
-       dragGhostVisible: Boolean(document.querySelector('.board-three__drag-piece-ghost')),
-       dragTargetKind: board ? board.dataset.dragTargetKind : null,
-       dragTargetStatus: board ? board.dataset.dragTargetStatus : null
-     };
-   })()")
+	       pointerDragEnabled: board ? board.dataset.pointerDragEnabled === 'true' : null,
+	       dragActive: board ? board.dataset.dragActive === 'true' : null,
+	       dragGhostVisible: Boolean(document.querySelector('.board-three__drag-piece-ghost')),
+	       dragTargetKind: board ? board.dataset.dragTargetKind : null,
+	       dragTargetStatus: board ? board.dataset.dragTargetStatus : null,
+	       dragTargetHighlightCount: board ? Number(board.dataset.dragTargetHighlightCount || 0) : null
+	     };
+	   })()")
 
 (def initial-placement-three-drop-js
   "(() => new Promise((resolve) => {
@@ -586,82 +587,104 @@
        bubbles: true,
        cancelable: true,
        dataTransfer,
-       clientX: rect.left + rect.width / 2,
-       clientY: rect.top + rect.height / 2
-     };
-     const dragStart = new DragEvent('dragstart', eventInit);
-     const dragStartDispatched = source.dispatchEvent(dragStart);
-     const dragOver = new DragEvent('dragover', eventInit);
-     const dragOverDispatched = target.dispatchEvent(dragOver);
-     requestAnimationFrame(() => requestAnimationFrame(() => {
-       const board = document.querySelector('.board-three');
-       const ghost = document.querySelector('.board-three__drag-piece-ghost');
-       const ghostStyle = ghost ? getComputedStyle(ghost) : null;
-       const drop = new DragEvent('drop', eventInit);
-       const dropDispatched = target.dispatchEvent(drop);
-       resolve({
-         dropped: true,
-         dragStartDispatched,
-         dragOverDispatched,
-         dropDispatched,
-         sourceText: text(source),
-         payload: dataTransfer.getData('application/gnostica-gesture'),
-         fallbackPayload: dataTransfer.getData('text/plain'),
-         target: {x: eventInit.clientX, y: eventInit.clientY},
-         ghostVisible: Boolean(ghost),
-         ghostPlayerId: ghost ? ghost.dataset.playerId : null,
-         ghostPieceSize: ghost ? ghost.dataset.pieceSize : null,
-         ghostClassName: ghost ? ghost.className : null,
-         ghostLeft: ghostStyle ? ghostStyle.left : null,
-         ghostTop: ghostStyle ? ghostStyle.top : null,
-         boardDragActiveBeforeDrop: board ? board.dataset.dragActive === 'true' : null
-       });
-     }));
-   }))()")
+	       clientX: rect.left + rect.width / 2,
+	       clientY: rect.top + rect.height / 2
+	     };
+	     const dragStart = new DragEvent('dragstart', eventInit);
+	     const dragStartDispatched = source.dispatchEvent(dragStart);
+	     requestAnimationFrame(() => requestAnimationFrame(() => {
+	       const dragOver = new DragEvent('dragover', eventInit);
+	       const dragOverDispatched = target.dispatchEvent(dragOver);
+	       requestAnimationFrame(() => requestAnimationFrame(() => {
+	         const board = document.querySelector('.board-three');
+	         const ghost = document.querySelector('.board-three__drag-piece-ghost');
+	         const ghostStyle = ghost ? getComputedStyle(ghost) : null;
+	         const beforeDrop = {
+	           boardDragActiveBeforeDrop: board ? board.dataset.dragActive === 'true' : null,
+	           dragTargetKindBeforeDrop: board ? board.dataset.dragTargetKind : null,
+	           dragTargetStatusBeforeDrop: board ? board.dataset.dragTargetStatus : null,
+	           dragTargetHighlightCountBeforeDrop: board ? Number(board.dataset.dragTargetHighlightCount || 0) : null
+	         };
+	         const drop = new DragEvent('drop', eventInit);
+	         const dropDispatched = target.dispatchEvent(drop);
+	         resolve(Object.assign({
+	           dropped: true,
+	           dragStartDispatched,
+	           dragOverDispatched,
+	           dropDispatched,
+	           sourceText: text(source),
+	           payload: dataTransfer.getData('application/gnostica-gesture'),
+	           fallbackPayload: dataTransfer.getData('text/plain'),
+	           target: {x: eventInit.clientX, y: eventInit.clientY},
+	           ghostVisible: Boolean(ghost),
+	           ghostPlayerId: ghost ? ghost.dataset.playerId : null,
+	           ghostPieceSize: ghost ? ghost.dataset.pieceSize : null,
+	           ghostClassName: ghost ? ghost.className : null,
+	           ghostLeft: ghostStyle ? ghostStyle.left : null,
+	           ghostTop: ghostStyle ? ghostStyle.top : null
+	         }, beforeDrop));
+	       }));
+	     }));
+	   }))()")
 
 (def initial-placement-drop-js
-  "(() => {
+  "(() => new Promise((resolve) => {
      const text = (node) => node ? node.textContent.trim() : '';
      const sourceButtons = Array.from(document.querySelectorAll('.move-source-option'));
      const source = sourceButtons.find((button) => text(button).includes('Place first piece'));
      const target = document.querySelector('.board-fallback .board-card');
      if (!source || !target) {
-       return {
+       resolve({
          dropped: false,
          reason: source ? 'No CSS fallback board-card drop target found.' : 'No Place first piece source found.',
          sourceCount: sourceButtons.length,
          targetCount: document.querySelectorAll('.board-fallback .board-card').length
-       };
+       });
+       return;
      }
      const dataTransfer = new DataTransfer();
      const dragStart = new DragEvent('dragstart', {
        bubbles: true,
        cancelable: true,
        dataTransfer
-     });
-     const dragStartDispatched = source.dispatchEvent(dragStart);
-     const dragOver = new DragEvent('dragover', {
-       bubbles: true,
-       cancelable: true,
-       dataTransfer
-     });
-     const dragOverDispatched = target.dispatchEvent(dragOver);
-     const drop = new DragEvent('drop', {
-       bubbles: true,
-       cancelable: true,
-       dataTransfer
-     });
-     const dropDispatched = target.dispatchEvent(drop);
-     return {
-       dropped: true,
-       dragStartDispatched,
-       dragOverDispatched,
-       dropDispatched,
-       sourceText: text(source),
-       targetText: text(target),
-       payload: dataTransfer.getData('application/gnostica-gesture')
-     };
-   })()")
+	     });
+	     const dragStartDispatched = source.dispatchEvent(dragStart);
+	     requestAnimationFrame(() => requestAnimationFrame(() => {
+	       const dragOver = new DragEvent('dragover', {
+	         bubbles: true,
+	         cancelable: true,
+	         dataTransfer
+	       });
+	       const dragOverDispatched = target.dispatchEvent(dragOver);
+	       requestAnimationFrame(() => requestAnimationFrame(() => {
+	         const stage = document.querySelector('.board-fallback .board-stage');
+	         const beforeDrop = {
+	           boardDragActiveBeforeDrop: stage ? stage.dataset.dragActive === 'true' : null,
+	           dragHoverKindBeforeDrop: stage ? stage.dataset.dragHoverKind : null,
+	           dragHoverStatusBeforeDrop: stage ? stage.dataset.dragHoverStatus : null,
+	           dragHoverTargetCountBeforeDrop: document.querySelectorAll('.board-fallback .board-card.is-drag-hover-target, .board-fallback .board-wasteland.is-drag-hover-target').length,
+	           visibleLegalTargetCountBeforeDrop: document.querySelectorAll('.board-fallback .board-card.is-legal-target, .board-fallback .board-wasteland.is-legal-target').length,
+	           visibleDisabledTargetCountBeforeDrop: document.querySelectorAll('.board-fallback .board-card.is-disabled-target, .board-fallback .board-wasteland.is-disabled-target').length,
+	           dropTargetCountBeforeDrop: document.querySelectorAll('.board-fallback .board-card.is-drop-target, .board-fallback .board-wasteland.is-drop-target').length
+	         };
+	         const drop = new DragEvent('drop', {
+	           bubbles: true,
+	           cancelable: true,
+	           dataTransfer
+	         });
+	         const dropDispatched = target.dispatchEvent(drop);
+	         resolve(Object.assign({
+	           dropped: true,
+	           dragStartDispatched,
+	           dragOverDispatched,
+	           dropDispatched,
+	           sourceText: text(source),
+	           targetText: text(target),
+	           payload: dataTransfer.getData('application/gnostica-gesture')
+	         }, beforeDrop));
+	       }));
+	     }));
+	   }))()")
 
 (def choose-north-orientation-js
   "(() => {

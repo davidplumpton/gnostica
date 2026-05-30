@@ -1655,7 +1655,8 @@ img {
 }
 
 .board-wasteland.is-legal-target,
-.board-wasteland.is-disabled-target {
+.board-wasteland.is-disabled-target,
+.board-wasteland.is-drop-target {
   pointer-events: auto;
 }
 

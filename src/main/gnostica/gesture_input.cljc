@@ -90,6 +90,33 @@
     :row row
     :col col}))
 
+(def board-space-drag-source-kinds #{:piece :stash-piece})
+
+(defn source-kind [input-or-source]
+  (or (:kind input-or-source)
+      (get-in input-or-source [:source :kind])))
+
+(defn board-space-drag-source? [input-or-source]
+  (contains? board-space-drag-source-kinds
+             (source-kind input-or-source)))
+
+(defn target-key [{:keys [kind board-index row col piece-id]}]
+  (case kind
+    :territory [:territory board-index]
+    :wasteland [:wasteland row col]
+    :piece [:piece piece-id]
+    nil))
+
+(defn same-target? [left right]
+  (and (some? left)
+       (some? right)
+       (= (target-key left)
+          (target-key right))))
+
+(defn show-target-highlight? [drag-state target]
+  (or (not (board-space-drag-source? (:source drag-state)))
+      (same-target? (:target drag-state) target)))
+
 (defn replacement-card-choice-input [card-or-id descriptor]
   {:preserve-selection? true
    :fields (cond-> {:replacement-card-id (id-value card-or-id :id)}

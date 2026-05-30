@@ -1,5 +1,6 @@
 (ns gnostica.three-board.lifecycle
-  (:require [gnostica.three-board.controls :as controls]
+  (:require [gnostica.gesture-input :as gesture-input]
+            [gnostica.three-board.controls :as controls]
             [gnostica.three-board.pointer :as pointer]
             [gnostica.three-board.resources :as resources]
             [gnostica.three-board.runtime :as runtime]
@@ -34,7 +35,7 @@
         (:pieces legal-targets)))
 
 (defn- board-space-drag-preview? [{:keys [source]}]
-  (contains? #{:piece :stash-piece} (:kind source)))
+  (gesture-input/board-space-drag-source? source))
 
 (defn- drag-target-key [kind {:keys [target] :as drag-preview}]
   (when (and (board-space-drag-preview? drag-preview)
@@ -46,22 +47,29 @@
 
 (defn- target-mesh-style
   ([descriptor]
-   (target-mesh-style nil nil nil nil descriptor))
-  ([selected-key key drag-key kind descriptor]
+   (target-mesh-style nil nil false nil descriptor))
+  ([selected-key key drag-active? drag-key descriptor]
     (cond
       (and (some? drag-key)
            (= key drag-key))
       (if (= :disabled (:status descriptor))
         {:visible? true
          :color 0xff8a7a
-         :opacity 0.56}
+         :opacity 0.56
+         :drag-target? true}
         {:visible? true
          :color 0xfff2a6
-         :opacity 0.9})
+         :opacity 0.9
+         :drag-target? true})
 
       (and (some? selected-key)
            (= key selected-key))
       {:visible? true
+       :color 0x9ff7e7
+       :opacity 0.82}
+
+      drag-active?
+      {:visible? false
        :color 0x9ff7e7
        :opacity 0.82}
 
@@ -90,6 +98,15 @@
     (set! (.-transparent material) (< opacity 1))
     (set! (.-needsUpdate material) true)))
 
+(defn- assoc-state-when-changed! [this key value]
+  (let [state (r/state this)]
+    (when (not= (get state key) value)
+      (r/replace-state this (assoc state key value)))))
+
+(defn- style-and-track-drag-target! [mesh style]
+  (style-highlight-mesh! mesh style)
+  (true? (:drag-target? style)))
+
 (defn set-selection!
   ([this selected-index]
    (set-selection! this selected-index nil))
@@ -97,32 +114,41 @@
    (let [{:keys [active? render! selection-meshes wasteland-selection-meshes
                  piece-selection-meshes legal-targets-ref drag-preview]} (r/state this)]
      (when (and active? @active? selection-meshes)
-       (when legal-targets-ref
-         (reset! legal-targets-ref legal-targets))
-       (let [territory-targets (territory-targets-by-index legal-targets)
-             wasteland-targets (wasteland-targets-by-coordinate legal-targets)
-             piece-targets (piece-targets-by-id legal-targets)
-             drag-territory-key (drag-target-key :territory drag-preview)
-             drag-wasteland-key (drag-target-key :wasteland drag-preview)]
-         (doseq [[index mesh] selection-meshes]
-           (style-highlight-mesh! mesh
-                                  (target-mesh-style selected-index
-                                                     index
-                                                     drag-territory-key
-                                                     :territory
-                                                     (get territory-targets index))))
-         (doseq [[coordinate mesh] wasteland-selection-meshes]
-           (style-highlight-mesh! mesh
-                                  (target-mesh-style nil
-                                                     coordinate
-                                                     drag-wasteland-key
-                                                     :wasteland
-                                                     (get wasteland-targets coordinate))))
-         (doseq [[piece-id mesh] piece-selection-meshes]
-           (style-highlight-mesh! mesh
-                                  (target-mesh-style (get piece-targets piece-id)))))
-       (when render!
-         (render!))))))
+      (when legal-targets-ref
+        (reset! legal-targets-ref legal-targets))
+      (let [territory-targets (territory-targets-by-index legal-targets)
+            wasteland-targets (wasteland-targets-by-coordinate legal-targets)
+            piece-targets (piece-targets-by-id legal-targets)
+            board-space-drag-active? (board-space-drag-preview? drag-preview)
+            drag-territory-key (drag-target-key :territory drag-preview)
+            drag-wasteland-key (drag-target-key :wasteland drag-preview)
+            drag-target-count (atom 0)]
+        (doseq [[index mesh] selection-meshes]
+          (when (style-and-track-drag-target!
+                 mesh
+                 (target-mesh-style selected-index
+                                    index
+                                    board-space-drag-active?
+                                    drag-territory-key
+                                    (get territory-targets index)))
+            (swap! drag-target-count inc)))
+        (doseq [[coordinate mesh] wasteland-selection-meshes]
+          (when (style-and-track-drag-target!
+                 mesh
+                 (target-mesh-style nil
+                                    coordinate
+                                    board-space-drag-active?
+                                    drag-wasteland-key
+                                    (get wasteland-targets coordinate)))
+            (swap! drag-target-count inc)))
+        (doseq [[piece-id mesh] piece-selection-meshes]
+          (style-highlight-mesh! mesh
+                                 (target-mesh-style (get piece-targets piece-id))))
+        (assoc-state-when-changed! this
+                                   :drag-target-highlight-count
+                                   @drag-target-count)
+        (when render!
+          (render!)))))))
 
 (defn dispose! [this]
   (resources/dispose-board! (r/state this))

@@ -42,6 +42,43 @@
     (throw (ex-info (str description " drag ghost was not a small piece.")
                     {:result result}))))
 
+(defn- assert-css-single-drag-highlight! [description result]
+  (when-not (true? (get result "boardDragActiveBeforeDrop"))
+    (throw (ex-info (str description " did not mark the board drag as active before drop.")
+                    {:result result})))
+  (when-not (= "territory" (get result "dragHoverKindBeforeDrop"))
+    (throw (ex-info (str description " did not hover a territory target before drop.")
+                    {:result result})))
+  (when-not (= "legal" (get result "dragHoverStatusBeforeDrop"))
+    (throw (ex-info (str description " did not preserve the hovered target legal status.")
+                    {:result result})))
+  (when-not (= 1 (long (or (get result "dragHoverTargetCountBeforeDrop") -1)))
+    (throw (ex-info (str description " highlighted more than one active drag target.")
+                    {:result result})))
+  (when-not (= 1 (long (or (get result "visibleLegalTargetCountBeforeDrop") -1)))
+    (throw (ex-info (str description " rendered more than the hovered target as a visible legal target.")
+                    {:result result})))
+  (when-not (zero? (long (or (get result "visibleDisabledTargetCountBeforeDrop") -1)))
+    (throw (ex-info (str description " rendered disabled targets during a legal first-piece hover.")
+                    {:result result})))
+  (when-not (< 1 (long (or (get result "dropTargetCountBeforeDrop") 0)))
+    (throw (ex-info (str description " did not keep non-hover drop targets available for hit testing.")
+                    {:result result}))))
+
+(defn- assert-three-single-drag-highlight! [description result]
+  (when-not (true? (get result "boardDragActiveBeforeDrop"))
+    (throw (ex-info (str description " did not mark the board drag as active before drop.")
+                    {:result result})))
+  (when-not (= "territory" (get result "dragTargetKindBeforeDrop"))
+    (throw (ex-info (str description " did not hover a territory target before drop.")
+                    {:result result})))
+  (when-not (= "legal" (get result "dragTargetStatusBeforeDrop"))
+    (throw (ex-info (str description " did not preserve the hovered target legal status.")
+                    {:result result})))
+  (when-not (= 1 (long (or (get result "dragTargetHighlightCountBeforeDrop") -1)))
+    (throw (ex-info (str description " rendered more than one Three.js drag target highlight.")
+                    {:result result}))))
+
 (defn- assert-clicked! [description result]
   (when-not (true? (get result "clicked"))
     (throw (ex-info (str description " was not clicked.")
@@ -294,6 +331,7 @@
                          stats/direct-drop-fallback-ready?)
       (let [drop-result (browser/evaluate! client stats/initial-placement-drop-js)]
         (assert-drop-started! "CSS initial-placement source-to-board drop" drop-result)
+        (assert-css-single-drag-highlight! "CSS initial-placement source-to-board drop" drop-result)
         (let [pending (browser/wait-for! client
                                          "CSS initial-placement pending tray"
                                          stats/pending-tray-stats-js
@@ -348,6 +386,7 @@
       (let [drop-result (browser/evaluate! client stats/initial-placement-three-drop-js)]
         (assert-drop-started! "Three.js initial-placement source-to-board drop" drop-result)
         (assert-first-piece-ghost! "Three.js initial-placement source-to-board drop" drop-result)
+        (assert-three-single-drag-highlight! "Three.js initial-placement source-to-board drop" drop-result)
         (let [pending (browser/wait-for! client
                                          "Three.js initial-placement pending tray"
                                          stats/pending-tray-stats-js
