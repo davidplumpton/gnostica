@@ -501,6 +501,10 @@
      const movePanel = document.querySelector('.move-panel');
      const sourceButtons = Array.from(document.querySelectorAll('.move-source-option'));
      const firstPieceSource = sourceButtons.find((button) => text(button).includes('Place first piece'));
+     const firstPieceIcon = firstPieceSource ? firstPieceSource.querySelector('.move-source-option__piece') : null;
+     const firstPieceBody = firstPieceIcon ? firstPieceIcon.querySelector('.move-source-option__piece-body') : null;
+     const firstPiecePip = firstPieceIcon ? firstPieceIcon.querySelector('.move-source-option__piece-pip') : null;
+     const firstPieceBodyStyle = firstPieceBody ? getComputedStyle(firstPieceBody) : null;
      return {
        fallback: Boolean(document.querySelector('.board-fallback')),
        canvas: Boolean(document.querySelector('.board-three__canvas')),
@@ -516,6 +520,10 @@
        firstPieceSourceVisible: Boolean(firstPieceSource),
        firstPieceSourceDisabled: firstPieceSource ? firstPieceSource.disabled : null,
        firstPieceSourceText: text(firstPieceSource),
+       firstPieceSourceIconShape: firstPieceIcon ? firstPieceIcon.dataset.pieceShape : null,
+       firstPieceSourceIconClipPath: firstPieceBodyStyle ? firstPieceBodyStyle.clipPath : null,
+       firstPieceSourceIconColor: firstPieceBodyStyle ? firstPieceBodyStyle.backgroundColor : null,
+       firstPieceSourceIconPipVisible: Boolean(firstPiecePip),
        pointerDragEnabled: stage ? stage.dataset.pointerDragEnabled === 'true' : null,
        tableSurfaceColor: stage ? stage.dataset.tableSurfaceColor : null,
        tableClearColor: stage ? stage.dataset.tableClearColor : null,
@@ -531,6 +539,10 @@
      const movePanel = document.querySelector('.move-panel');
      const sourceButtons = Array.from(document.querySelectorAll('.move-source-option'));
      const firstPieceSource = sourceButtons.find((button) => text(button).includes('Place first piece'));
+     const firstPieceIcon = firstPieceSource ? firstPieceSource.querySelector('.move-source-option__piece') : null;
+     const firstPieceBody = firstPieceIcon ? firstPieceIcon.querySelector('.move-source-option__piece-body') : null;
+     const firstPiecePip = firstPieceIcon ? firstPieceIcon.querySelector('.move-source-option__piece-pip') : null;
+     const firstPieceBodyStyle = firstPieceBody ? getComputedStyle(firstPieceBody) : null;
      return {
        fallback: Boolean(document.querySelector('.board-fallback')),
        canvas: Boolean(canvas),
@@ -541,6 +553,10 @@
        firstPieceSourceVisible: Boolean(firstPieceSource),
        firstPieceSourceDisabled: firstPieceSource ? firstPieceSource.disabled : null,
        firstPieceSourceText: text(firstPieceSource),
+       firstPieceSourceIconShape: firstPieceIcon ? firstPieceIcon.dataset.pieceShape : null,
+       firstPieceSourceIconClipPath: firstPieceBodyStyle ? firstPieceBodyStyle.clipPath : null,
+       firstPieceSourceIconColor: firstPieceBodyStyle ? firstPieceBodyStyle.backgroundColor : null,
+       firstPieceSourceIconPipVisible: Boolean(firstPiecePip),
        pointerDragEnabled: board ? board.dataset.pointerDragEnabled === 'true' : null,
        dragActive: board ? board.dataset.dragActive === 'true' : null,
        dragGhostVisible: Boolean(document.querySelector('.board-three__drag-piece-ghost')),
@@ -1043,6 +1059,13 @@
        (true? (get stats "panelOpen"))
        (true? (get stats "panelActive"))))
 
+(defn- first-piece-source-icon-ready? [stats]
+  (and (= "small-pyramid" (get stats "firstPieceSourceIconShape"))
+       (str/includes? (or (get stats "firstPieceSourceIconClipPath") "")
+                      "polygon")
+       (= "rgb(232, 93, 117)" (get stats "firstPieceSourceIconColor"))
+       (true? (get stats "firstPieceSourceIconPipVisible"))))
+
 (defn direct-drop-fallback-ready? [stats]
   (and (true? (get stats "fallback"))
        (false? (get stats "canvas"))
@@ -1053,6 +1076,7 @@
        (false? (get stats "movePanelActive"))
        (true? (get stats "firstPieceSourceVisible"))
        (false? (get stats "firstPieceSourceDisabled"))
+       (first-piece-source-icon-ready? stats)
        (true? (get stats "pointerDragEnabled"))
        (= expected-table-surface-color (get stats "tableSurfaceColor"))
        (= expected-table-clear-color (get stats "tableClearColor"))
@@ -1066,6 +1090,7 @@
        (false? (get stats "movePanelActive"))
        (true? (get stats "firstPieceSourceVisible"))
        (false? (get stats "firstPieceSourceDisabled"))
+       (first-piece-source-icon-ready? stats)
        (true? (get stats "pointerDragEnabled"))))
 
 (defn direct-drop-confirmed? [stats]

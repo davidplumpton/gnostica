@@ -2190,13 +2190,39 @@ img {
 }
 
 .move-source-option__piece {
-  width: 1rem;
-  height: 1rem;
+  position: relative;
   display: inline-block;
+  width: 1.15rem;
+  height: 1.15rem;
+  flex: 0 0 auto;
+  filter: drop-shadow(0 0.08rem 0.1rem rgba(0, 0, 0, 0.42));
+}
+
+.move-source-option__piece-body {
+  position: absolute;
+  inset: 0;
   border: 1px solid rgba(255, 250, 240, 0.78);
   background: var(--piece-color);
-  clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%);
-  flex: 0 0 auto;
+  clip-path: polygon(50% 0, 100% 100%, 0 100%);
+  overflow: hidden;
+}
+
+.move-source-option__piece-pips {
+  position: absolute;
+  right: 0.18rem;
+  bottom: 0.13rem;
+  left: 0.18rem;
+  display: flex;
+  justify-content: center;
+}
+
+.move-source-option__piece-pip {
+  width: 0.18rem;
+  height: 0.25rem;
+  border-radius: 50% 50% 50% 0;
+  background: rgba(255, 250, 240, 0.92);
+  box-shadow: 0 0 0 1px rgba(38, 49, 47, 0.48);
+  transform: rotate(-45deg);
 }
 
 .move-source-option__summary {

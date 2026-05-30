@@ -32,6 +32,7 @@
          (when stash-source?
            [:span.move-source-option__piece
             {:aria-hidden "true"
+             :data-piece-shape "small-pyramid"
              :draggable (if (and enabled? stash-input) "true" "false")
              :on-drag-start (fn [event]
                               (when (and enabled? stash-input)
@@ -40,8 +41,12 @@
                                                                  stash-input)
                                 (rf/dispatch [events/start-gesture-intent
                                               stash-input])))
-             :style {"--piece-color" (get-in pieces/players-by-id
-                                             [(:id current-player) :css-color])}}])
+             :style {"--piece-color" (or (:css-color current-player)
+                                          (get-in pieces/players-by-id
+                                                  [(:id current-player) :css-color]))}}
+            [:span.move-source-option__piece-body]
+            [:span.move-source-option__piece-pips
+             [:span.move-source-option__piece-pip]]])
          label]
         [:span.move-source-option__summary (if enabled? summary reason)]]))])
 
