@@ -1631,6 +1631,29 @@ img {
   box-shadow: inset 0 0 0.7rem rgba(255, 138, 122, 0.1);
 }
 
+.board-card.is-drag-hover-target,
+.board-wasteland.is-drag-hover-target {
+  outline-width: 3px;
+  outline-offset: 4px;
+}
+
+.board-card.is-drag-hover-legal,
+.board-wasteland.is-drag-hover-legal {
+  border-color: rgba(255, 242, 166, 0.98);
+  box-shadow:
+    0 0 0 4px rgba(255, 224, 138, 0.2),
+    0 0 1.35rem rgba(255, 224, 138, 0.36);
+}
+
+.board-card.is-drag-hover-disabled,
+.board-wasteland.is-drag-hover-disabled {
+  border-color: rgba(255, 138, 122, 0.9);
+  outline-color: rgba(255, 138, 122, 0.58);
+  box-shadow:
+    0 0 0 3px rgba(255, 138, 122, 0.16),
+    0 0 1rem rgba(255, 138, 122, 0.22);
+}
+
 .board-wasteland.is-legal-target,
 .board-wasteland.is-disabled-target {
   pointer-events: auto;

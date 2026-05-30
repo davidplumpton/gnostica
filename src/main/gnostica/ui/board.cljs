@@ -5,7 +5,8 @@
             [gnostica.three-board :as three-board]
             [gnostica.ui.card :as card-ui]
             [gnostica.ui.common :as ui]
-            [re-frame.core :as rf]))
+            [re-frame.core :as rf]
+            [reagent.core :as r]))
 
 (defn- css-space-offset [step-count edge-offset]
   (str "calc(var(--board-void-margin) + "
@@ -40,16 +41,81 @@
 (defn- gesture-drag-event? [event]
   (gesture-input/gesture-data-transfer? (.-dataTransfer event)))
 
+(defn- board-piece-drag-input? [input]
+  (let [source-kind (get-in input [:source :kind])]
+    (or (contains? #{:piece :stash-piece} source-kind)
+        (some? (get-in input [:fields :piece-id])))))
+
+(defn- hoverable-board-drag? [input]
+  (or (nil? input)
+      (board-piece-drag-input? input)))
+
+(defn- target-key [{:keys [kind board-index row col piece-id]}]
+  (case kind
+    :territory [:territory board-index]
+    :wasteland [:wasteland row col]
+    :piece [:piece piece-id]
+    nil))
+
+(defn- drag-hover-record [target descriptor]
+  (when target
+    {:target target
+     :target-key (target-key target)
+     :target-status (:status descriptor)
+     :target-enabled? (:enabled? descriptor)}))
+
+(defn- set-drag-hover! [drag-hover input target descriptor]
+  (if (hoverable-board-drag? input)
+    (reset! drag-hover (drag-hover-record target descriptor))
+    (reset! drag-hover nil)))
+
+(defn- drag-hover-target? [drag-hover target]
+  (and (:target-key drag-hover)
+       (= (:target-key drag-hover) (target-key target))))
+
+(defn- drag-hover-status-class [drag-hover target descriptor]
+  (when (drag-hover-target? drag-hover target)
+    (case (or (:target-status drag-hover) (:status descriptor))
+      :legal " is-drag-hover-target is-drag-hover-legal"
+      :disabled " is-drag-hover-target is-drag-hover-disabled"
+      " is-drag-hover-target")))
+
 (defn- on-drag-over-gesture [event]
   (when (gesture-drag-event? event)
     (.preventDefault event)
     (when-let [data-transfer (.-dataTransfer event)]
       (set! (.-dropEffect data-transfer) "move"))))
 
-(defn- on-drop-gesture [event target]
+(defn- on-drag-over-target [event drag-hover target descriptor]
+  (when (gesture-drag-event? event)
+    (on-drag-over-gesture event)
+    (.stopPropagation event)
+    (set-drag-hover! drag-hover
+                     (gesture-input-from-event event)
+                     target
+                     descriptor)))
+
+(defn- on-drag-over-board-stage [event drag-hover]
+  (when (gesture-drag-event? event)
+    (on-drag-over-gesture event)
+    (when (= (.-currentTarget event) (.-target event))
+      (set-drag-hover! drag-hover
+                       (gesture-input-from-event event)
+                       nil
+                       nil))))
+
+(defn- on-board-stage-drag-leave [event drag-hover]
+  (let [current (.-currentTarget event)
+        related (.-relatedTarget event)]
+    (when (or (nil? related)
+              (not (.contains current related)))
+      (reset! drag-hover nil))))
+
+(defn- on-drop-gesture [event target drag-hover]
   (when-let [input (gesture-input-from-event event)]
     (.preventDefault event)
     (.stopPropagation event)
+    (reset! drag-hover nil)
     (rf/dispatch [events/start-gesture-intent (assoc input :target target)])))
 
 (defn- territory-targets-by-index [legal-targets]
@@ -176,7 +242,7 @@
 (defn- piece-drag-input [piece descriptor]
   (gesture-input/piece-drag-input piece descriptor))
 
-(defn- board-piece-marker [slot piece descriptor drag-enabled?]
+(defn- board-piece-marker [slot piece descriptor drag-enabled? drag-hover]
   (let [pips (pieces/pips piece)
         player (pieces/player-for piece)
         drag-input (when drag-enabled?
@@ -208,54 +274,72 @@
                          (gesture-input/set-gesture-data! (.-dataTransfer event)
                                                           drag-input)
                          (rf/dispatch [events/start-gesture-intent drag-input])))
+      :on-drag-end #(reset! drag-hover nil)
       :on-drag-over on-drag-over-gesture
       :on-drop #(on-drop-gesture % {:kind :piece
-                                    :piece-id (:id piece)})}
+                                    :piece-id (:id piece)}
+                                drag-hover)}
      [:span.board-piece__body
       [:span.board-piece__pips
        (for [pip (range pips)]
          ^{:key pip}
          [:span.board-piece__pip])]]]))
 
-(defn- board-piece-markers [board-pieces piece-targets drag-enabled?]
+(defn- board-piece-markers [board-pieces piece-targets drag-enabled? drag-hover]
   (when (seq board-pieces)
     [:div.board-card__pieces
      (for [[slot piece] (map-indexed vector
                                      (take pieces/max-pieces-per-space board-pieces))]
-       (board-piece-marker slot piece (get piece-targets (:id piece)) drag-enabled?))]))
+       (board-piece-marker slot
+                           piece
+                           (get piece-targets (:id piece))
+                           drag-enabled?
+                           drag-hover))]))
 
 (defn- pieces-label [board-pieces]
   (apply str (interpose "; " (map ui/piece-summary board-pieces))))
 
 (defn- board-wasteland [bounds {:keys [id orientation] :as space}
-                        board-pieces descriptor piece-targets drag-enabled?]
-  ^{:key id}
-  [:div.board-wasteland
-   {:class (str "is-" (name orientation)
-                (when (seq board-pieces) " has-pieces")
-                (target-status-class descriptor)
-                (when (:selected? descriptor) " is-selected-target"))
-    :style (board-space-style bounds space)
-    :data-piece-count (count board-pieces)
-    :data-move-target-status (some-> (:status descriptor) name)
-    :data-move-target-role (some-> (:role descriptor) name)
-    :title (target-reason descriptor)
-    :role (when (seq board-pieces) "img")
-    :aria-label (when (seq board-pieces)
-                  (str (ui/wasteland-label space)
-                       ", pieces: "
-                       (pieces-label board-pieces)))
-    :aria-hidden (when-not (seq board-pieces) "true")
-    :on-drag-over on-drag-over-gesture
-    :on-drop #(on-drop-gesture % {:kind :wasteland
-                                  :row (:row space)
-                                  :col (:col space)})}
-   (board-piece-markers board-pieces piece-targets drag-enabled?)])
+                        board-pieces descriptor piece-targets drag-enabled?
+                        drag-hover]
+  (let [target {:kind :wasteland
+                :row (:row space)
+                :col (:col space)}
+        hovered? (drag-hover-target? @drag-hover target)]
+    ^{:key id}
+    [:div.board-wasteland
+     {:class (str "is-" (name orientation)
+                  (when (seq board-pieces) " has-pieces")
+                  (target-status-class descriptor)
+                  (drag-hover-status-class @drag-hover target descriptor)
+                  (when (:selected? descriptor) " is-selected-target"))
+      :style (board-space-style bounds space)
+      :data-piece-count (count board-pieces)
+      :data-move-target-status (some-> (:status descriptor) name)
+      :data-move-target-role (some-> (:role descriptor) name)
+      :data-drag-hover (when hovered? "true")
+      :data-drag-hover-status (when hovered?
+                                (some-> (or (:target-status @drag-hover)
+                                            (:status descriptor))
+                                        name))
+      :title (target-reason descriptor)
+      :role (when (seq board-pieces) "img")
+      :aria-label (when (seq board-pieces)
+                    (str (ui/wasteland-label space)
+                         ", pieces: "
+                         (pieces-label board-pieces)))
+      :aria-hidden (when-not (seq board-pieces) "true")
+      :on-drag-over #(on-drag-over-target % drag-hover target descriptor)
+      :on-drop #(on-drop-gesture % target drag-hover)}
+     (board-piece-markers board-pieces piece-targets drag-enabled? drag-hover)]))
 
 (defn board-card [bounds {:keys [index row col orientation card] :as cell}
                   selected? board-pieces card-icon-mode descriptor piece-targets
-                  drag-enabled?]
+                  drag-enabled? drag-hover]
   (let [{:keys [title]} card
+        target {:kind :territory
+                :board-index index}
+        hovered? (drag-hover-target? @drag-hover target)
         drag-input (when drag-enabled?
                      (gesture-input/territory-drag-input cell descriptor))]
     [:button.board-card
@@ -265,10 +349,16 @@
                   " is-col-" col
                   (when selected? " is-selected")
                   (target-status-class descriptor)
+                  (drag-hover-status-class @drag-hover target descriptor)
                   (when (:selected? descriptor) " is-selected-target"))
       :style (board-space-style bounds cell)
       :data-move-target-status (some-> (:status descriptor) name)
       :data-move-target-role (some-> (:role descriptor) name)
+      :data-drag-hover (when hovered? "true")
+      :data-drag-hover-status (when hovered?
+                                (some-> (or (:target-status @drag-hover)
+                                            (:status descriptor))
+                                        name))
       :draggable (if drag-input "true" "false")
       :title (target-reason descriptor)
       :aria-label (str title
@@ -291,80 +381,104 @@
                          (gesture-input/set-gesture-data! (.-dataTransfer event)
                                                           drag-input)
                          (rf/dispatch [events/start-gesture-intent drag-input])))
-      :on-drag-over on-drag-over-gesture
-     :on-drop #(on-drop-gesture % {:kind :territory
-                                    :board-index index})}
+      :on-drag-end #(reset! drag-hover nil)
+      :on-drag-over #(on-drag-over-target % drag-hover target descriptor)
+      :on-drop #(on-drop-gesture % target drag-hover)}
      [card-ui/card-face card "board-card__face" card-icon-mode]
-     (board-piece-markers board-pieces piece-targets drag-enabled?)]))
+     (board-piece-markers board-pieces piece-targets drag-enabled? drag-hover)]))
 
 (defn board-stage []
-  (let [{:keys [cells board-pieces pieces-by-space wastelands space-bounds
-                selected-index card-icon-mode texture-errors three-revision
-                three-renderer-available? three-renderer-message legal-targets
-                move-preview direct-manipulation]}
-        @(rf/subscribe [events/board-view])]
-    [:section.board-area
-     {:data-three-revision (or three-revision "unavailable")}
-     (cond
-       (empty? cells)
-       [:div.board-empty
-        [:p "Board setup pending"]]
+  (r/with-let [drag-hover (r/atom nil)
+               clear-drag-hover! (fn [_] (reset! drag-hover nil))
+               _dragend-listener (.addEventListener js/window
+                                                     "dragend"
+                                                     clear-drag-hover!
+                                                     true)
+               _drop-listener (.addEventListener js/window
+                                                 "drop"
+                                                 clear-drag-hover!
+                                                 true)]
+    (let [{:keys [cells board-pieces pieces-by-space wastelands space-bounds
+                  selected-index card-icon-mode texture-errors three-revision
+                  three-renderer-available? three-renderer-message legal-targets
+                  move-preview direct-manipulation]}
+          @(rf/subscribe [events/board-view])]
+      [:section.board-area
+       {:data-three-revision (or three-revision "unavailable")}
+       (cond
+         (empty? cells)
+         [:div.board-empty
+          [:p "Board setup pending"]]
 
-       three-renderer-available?
-       [three-board/scene
-        cells
-        board-pieces
-        selected-index
-        card-icon-mode
-        texture-errors
-        legal-targets
-        move-preview
-        direct-manipulation
-        {:on-card-select #(rf/dispatch [events/select-board-card %])
-         :on-gesture-intent #(rf/dispatch [events/start-gesture-intent %])
-         :on-orientation-select #(rf/dispatch [events/set-move-orientation %])
-         :on-minion-orientation-select #(rf/dispatch [events/set-move-minion-orientation %])
-         :on-sun-disc-orientation-select #(rf/dispatch [events/set-move-sun-disc-orientation %])
-         :on-clear-texture-errors #(rf/dispatch [events/clear-three-texture-errors])
-         :on-renderer-error #(rf/dispatch [events/three-renderer-error %])
-         :on-texture-error #(rf/dispatch [events/three-texture-error %])}]
+         three-renderer-available?
+         [three-board/scene
+          cells
+          board-pieces
+          selected-index
+          card-icon-mode
+          texture-errors
+          legal-targets
+          move-preview
+          direct-manipulation
+          {:on-card-select #(rf/dispatch [events/select-board-card %])
+           :on-gesture-intent #(rf/dispatch [events/start-gesture-intent %])
+           :on-orientation-select #(rf/dispatch [events/set-move-orientation %])
+           :on-minion-orientation-select #(rf/dispatch [events/set-move-minion-orientation %])
+           :on-sun-disc-orientation-select #(rf/dispatch [events/set-move-sun-disc-orientation %])
+           :on-clear-texture-errors #(rf/dispatch [events/clear-three-texture-errors])
+           :on-renderer-error #(rf/dispatch [events/three-renderer-error %])
+           :on-texture-error #(rf/dispatch [events/three-texture-error %])}]
 
-       :else
-       [:div.board-fallback
-        [:p.board-3d-status.is-error
-         three-renderer-message]
-        (let [territory-targets (territory-targets-by-index legal-targets)
-              wasteland-targets (wasteland-targets-by-coordinate legal-targets)
-              piece-targets (piece-targets-by-id legal-targets)
-              drag-enabled? (true? (:pointer-drag-enabled? direct-manipulation))]
-          [:div.board-stage
-           {:role "group"
-            :aria-label "Gnostica board"
-            :data-wasteland-count (count wastelands)
-            :data-pointer-drag-enabled (true? (:pointer-drag-enabled?
-                                               direct-manipulation))
-            :data-detailed-entry-available (true? (:detailed-entry-available?
-                                                   direct-manipulation))
-            :data-table-surface-color three-board/table-surface-css-color
-            :data-table-clear-color three-board/table-clear-css-color
-            :style (board-stage-style space-bounds)}
-           (for [space wastelands]
-             (board-wasteland
-              space-bounds
-              space
-              (get pieces-by-space (pieces/wasteland-space (:row space) (:col space)))
-              (get wasteland-targets [(:row space) (:col space)])
-              piece-targets
-              drag-enabled?))
-           (for [cell cells]
-             ^{:key (:index cell)}
-             [board-card
-              space-bounds
-              cell
-              (= selected-index (:index cell))
-              (get pieces-by-space (pieces/territory-space (:index cell)))
-              card-icon-mode
-              (get territory-targets (:index cell))
-              piece-targets
-              drag-enabled?])
-           [board-move-preview space-bounds move-preview]])])]))
+         :else
+         [:div.board-fallback
+          [:p.board-3d-status.is-error
+           three-renderer-message]
+          (let [territory-targets (territory-targets-by-index legal-targets)
+                wasteland-targets (wasteland-targets-by-coordinate legal-targets)
+                piece-targets (piece-targets-by-id legal-targets)
+                drag-enabled? (true? (:pointer-drag-enabled? direct-manipulation))]
+            [:div.board-stage
+             {:role "group"
+              :aria-label "Gnostica board"
+              :data-wasteland-count (count wastelands)
+              :data-pointer-drag-enabled (true? (:pointer-drag-enabled?
+                                                 direct-manipulation))
+              :data-detailed-entry-available (true? (:detailed-entry-available?
+                                                     direct-manipulation))
+              :data-table-surface-color three-board/table-surface-css-color
+              :data-table-clear-color three-board/table-clear-css-color
+              :data-drag-hover-kind (some-> @drag-hover
+                                             :target
+                                             :kind
+                                             name)
+              :data-drag-hover-status (some-> @drag-hover
+                                               :target-status
+                                               name)
+              :style (board-stage-style space-bounds)
+              :on-drag-over #(on-drag-over-board-stage % drag-hover)
+              :on-drag-leave #(on-board-stage-drag-leave % drag-hover)}
+             (for [space wastelands]
+               (board-wasteland
+                space-bounds
+                space
+                (get pieces-by-space (pieces/wasteland-space (:row space) (:col space)))
+                (get wasteland-targets [(:row space) (:col space)])
+                piece-targets
+                drag-enabled?
+                drag-hover))
+             (for [cell cells]
+               ^{:key (:index cell)}
+               [board-card
+                space-bounds
+                cell
+                (= selected-index (:index cell))
+                (get pieces-by-space (pieces/territory-space (:index cell)))
+                card-icon-mode
+                (get territory-targets (:index cell))
+                piece-targets
+                drag-enabled?
+                drag-hover])
+             [board-move-preview space-bounds move-preview]])])])
+    (finally
+      (.removeEventListener js/window "dragend" clear-drag-hover! true)
+      (.removeEventListener js/window "drop" clear-drag-hover! true))))

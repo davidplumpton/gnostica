@@ -6,10 +6,16 @@
             [gnostica.three-board.scene-graph :as scene-graph]
             [reagent.core :as r]))
 
+(declare set-selection!)
+
 (defn assoc-component-state! [this key value]
   (let [state (r/state this)]
     (when (not= (get state key) value)
-      (r/replace-state this (assoc state key value)))))
+      (r/replace-state this (assoc state key value))
+      (when (= :drag-preview key)
+        (let [[_ _cells _board-pieces selected-index _card-icon-mode
+               _texture-errors legal-targets] (r/argv this)]
+          (set-selection! this selected-index legal-targets))))))
 
 (defn- territory-targets-by-index [legal-targets]
   (into {}
@@ -27,11 +33,32 @@
         (map (juxt :piece-id identity))
         (:pieces legal-targets)))
 
+(defn- board-space-drag-preview? [{:keys [source]}]
+  (contains? #{:piece :stash-piece} (:kind source)))
+
+(defn- drag-target-key [kind {:keys [target] :as drag-preview}]
+  (when (and (board-space-drag-preview? drag-preview)
+             (= kind (:kind target)))
+    (case kind
+      :territory (:board-index target)
+      :wasteland [(:row target) (:col target)]
+      nil)))
+
 (defn- target-mesh-style
   ([descriptor]
-   (target-mesh-style nil nil descriptor))
-  ([selected-key key descriptor]
+   (target-mesh-style nil nil nil nil descriptor))
+  ([selected-key key drag-key kind descriptor]
     (cond
+      (and (some? drag-key)
+           (= key drag-key))
+      (if (= :disabled (:status descriptor))
+        {:visible? true
+         :color 0xff8a7a
+         :opacity 0.56}
+        {:visible? true
+         :color 0xfff2a6
+         :opacity 0.9})
+
       (and (some? selected-key)
            (= key selected-key))
       {:visible? true
@@ -68,21 +95,29 @@
    (set-selection! this selected-index nil))
   ([this selected-index legal-targets]
    (let [{:keys [active? render! selection-meshes wasteland-selection-meshes
-                 piece-selection-meshes legal-targets-ref]} (r/state this)]
+                 piece-selection-meshes legal-targets-ref drag-preview]} (r/state this)]
      (when (and active? @active? selection-meshes)
        (when legal-targets-ref
          (reset! legal-targets-ref legal-targets))
        (let [territory-targets (territory-targets-by-index legal-targets)
              wasteland-targets (wasteland-targets-by-coordinate legal-targets)
-             piece-targets (piece-targets-by-id legal-targets)]
+             piece-targets (piece-targets-by-id legal-targets)
+             drag-territory-key (drag-target-key :territory drag-preview)
+             drag-wasteland-key (drag-target-key :wasteland drag-preview)]
          (doseq [[index mesh] selection-meshes]
            (style-highlight-mesh! mesh
                                   (target-mesh-style selected-index
                                                      index
+                                                     drag-territory-key
+                                                     :territory
                                                      (get territory-targets index))))
          (doseq [[coordinate mesh] wasteland-selection-meshes]
            (style-highlight-mesh! mesh
-                                  (target-mesh-style (get wasteland-targets coordinate))))
+                                  (target-mesh-style nil
+                                                     coordinate
+                                                     drag-wasteland-key
+                                                     :wasteland
+                                                     (get wasteland-targets coordinate))))
          (doseq [[piece-id mesh] piece-selection-meshes]
            (style-highlight-mesh! mesh
                                   (target-mesh-style (get piece-targets piece-id)))))
