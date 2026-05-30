@@ -46,3 +46,8 @@
   ([db] (app-state/start-lobby-game db))
   ([db injections]
    (app-state/start-lobby-game db (transition-options injections))))
+
+(defn start-lobby-bidding-db
+  ([db] (app-state/start-lobby-bidding db))
+  ([db injections]
+   (app-state/start-lobby-bidding db (transition-options injections))))

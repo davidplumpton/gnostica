@@ -508,6 +508,85 @@ img {
   width: min(14rem, 100%);
 }
 
+.starting-bid {
+  display: grid;
+  gap: 0.75rem;
+  min-width: 0;
+  padding: 0.85rem;
+  border: 1px solid rgba(255, 224, 138, 0.3);
+  border-radius: 8px;
+  background: rgba(18, 7, 15, 0.24);
+}
+
+.starting-bid__header,
+.starting-bid__actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+.starting-bid h2 {
+  margin: 0.12rem 0 0;
+  font-size: 1.15rem;
+  line-height: 1.15;
+}
+
+.starting-bid__round {
+  flex: 0 0 auto;
+  color: var(--accent);
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.starting-bid__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  gap: 0.65rem;
+  min-width: 0;
+}
+
+.starting-bid__history {
+  display: grid;
+  gap: 0.45rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.starting-bid__history-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 0.6rem;
+  align-items: center;
+  min-width: 0;
+  padding: 0.55rem 0.6rem;
+  border: 1px solid rgba(255, 250, 240, 0.14);
+  border-radius: 6px;
+  background: rgba(38, 49, 47, 0.5);
+  font-size: 0.82rem;
+}
+
+.starting-bid__history-round,
+.starting-bid__history-result {
+  white-space: nowrap;
+}
+
+.starting-bid__history-cards {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.starting-bid__winner {
+  margin: 0;
+  color: var(--accent);
+  font-weight: 800;
+}
+
 .lobby-player {
   display: grid;
   grid-template-columns: auto minmax(8rem, 1.2fr) minmax(8rem, 1fr) auto;
@@ -2282,6 +2361,17 @@ h1 {
   .lobby-field,
   .lobby-remove {
     grid-column: 1 / -1;
+  }
+
+  .starting-bid__history-row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.25rem;
+  }
+
+  .starting-bid__history-round,
+  .starting-bid__history-result,
+  .starting-bid__history-cards {
+    white-space: normal;
   }
 
   .card-zones {

@@ -420,6 +420,39 @@
     (is (= (count cards/deck) (count (set (all-card-ids state)))))
     (is (game-schema/valid-game? state))))
 
+(deftest starting-bid-round-preview-reuses-official-ranking-without_redraws
+  (let [deck-order (deck-with-cards-at {0 "cupsking"
+                                        1 "cupsqueen"
+                                        6 "swordsking"
+                                        7 "swords10"})
+        state (:state (game-state/create-game player-specs
+                                              {:deck-order deck-order}))
+        tied-result (game-state/resolve-starting-bid-rounds
+                     state
+                     {:rounds [{:rose "cupsking"
+                                :indigo "swordsking"}]})
+        resolved-result (game-state/resolve-starting-bid-rounds
+                         state
+                         {:rounds [{:rose "cupsking"
+                                    :indigo "swordsking"}
+                                   {:rose "cupsqueen"
+                                    :indigo "swords10"}]})]
+    (is (:ok? tied-result))
+    (is (false? (:resolved? tied-result)))
+    (is (= [:rose :indigo]
+           (get-in tied-result [:bid-history 0 :tied-player-ids])))
+    (is (= 5 (count (get-in tied-result
+                            [:state :players-by-id :rose :hand]))))
+    (is (not (some #{"cupsking"}
+                   (player-hand-ids (:state tied-result) :rose))))
+    (is (:ok? resolved-result))
+    (is (true? (:resolved? resolved-result)))
+    (is (= :rose (:winner-id resolved-result)))
+    (is (= [:indigo :rose] (:redraw-order resolved-result)))
+    (is (= 2 (count (:bid-history resolved-result))))
+    (is (= 4 (count (get-in resolved-result
+                            [:state :players-by-id :rose :hand]))))))
+
 (deftest official-starting-bid-rebids_after_tied_minors_and_redraws_counterclockwise
   (let [deck-order (deck-with-cards-at {0 "cupsking"
                                         1 "coins2"

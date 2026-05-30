@@ -548,46 +548,56 @@
              :bid-cards (mapv :card ranked-bids)
              :round-result (bid-round-result round-number ranked-bids)}))))))
 
-(defn- resolve-bid-rounds [state bid-rounds]
-  (cond
-    (not (sequential? bid-rounds))
-    (failure :invalid-bid-rounds
-             "Starting bids require a sequential collection of bid rounds."
-             {:bid-rounds bid-rounds})
+(defn- resolve-bid-rounds
+  ([state bid-rounds]
+   (resolve-bid-rounds state bid-rounds false))
+  ([state bid-rounds allow-unresolved?]
+   (cond
+     (not (sequential? bid-rounds))
+     (failure :invalid-bid-rounds
+              "Starting bids require a sequential collection of bid rounds."
+              {:bid-rounds bid-rounds})
 
-    (empty? bid-rounds)
-    (failure :missing-bid-rounds
-             "Starting bids require at least one bid round."
-             {})
+     (empty? bid-rounds)
+     (failure :missing-bid-rounds
+              "Starting bids require at least one bid round."
+              {})
 
-    :else
-    (loop [next-state state
-           rounds (seq bid-rounds)
-           round-number 1
-           bid-history []
-           bid-cards []]
-      (let [{:keys [ok? state round-result] round-bid-cards :bid-cards
-             :as round-resolution}
-            (resolve-bid-round next-state round-number (first rounds))]
-        (if-not ok?
-          round-resolution
-          (let [bid-history (conj bid-history round-result)
-                bid-cards (into bid-cards round-bid-cards)]
-            (if-let [winner-id (:winner-id round-result)]
-              {:ok? true
-               :state state
-               :winner-id winner-id
-               :bid-history bid-history
-               :bid-cards bid-cards}
-              (if-let [remaining-rounds (next rounds)]
-                (recur state
-                       remaining-rounds
-                       (inc round-number)
-                       bid-history
-                       bid-cards)
-                (failure :unresolved-bid-tie
-                         "Starting bids ended in a tie and require another bid round."
-                         {:bid-history bid-history})))))))))
+     :else
+     (loop [next-state state
+            rounds (seq bid-rounds)
+            round-number 1
+            bid-history []
+            bid-cards []]
+       (let [{:keys [ok? state round-result] round-bid-cards :bid-cards
+              :as round-resolution}
+             (resolve-bid-round next-state round-number (first rounds))]
+         (if-not ok?
+           round-resolution
+           (let [bid-history (conj bid-history round-result)
+                 bid-cards (into bid-cards round-bid-cards)]
+             (if-let [winner-id (:winner-id round-result)]
+               {:ok? true
+                :resolved? true
+                :state state
+                :winner-id winner-id
+                :bid-history bid-history
+                :bid-cards bid-cards}
+               (if-let [remaining-rounds (next rounds)]
+                 (recur state
+                        remaining-rounds
+                        (inc round-number)
+                        bid-history
+                        bid-cards)
+                 (if allow-unresolved?
+                   {:ok? true
+                    :resolved? false
+                    :state state
+                    :bid-history bid-history
+                    :bid-cards bid-cards}
+                   (failure :unresolved-bid-tie
+                            "Starting bids ended in a tie and require another bid round."
+                            {:bid-history bid-history})))))))))))
 
 (defn- player-index-in [players player-id]
   (first
@@ -603,6 +613,26 @@
     (mapv (fn [offset]
             (get player-ids (mod (- winner-index offset) player-count)))
           (range 1 (inc player-count)))))
+
+(defn resolve-starting-bid-rounds
+  [state {:keys [rounds bid-rounds] :as _command}]
+  (let [rounds (or rounds bid-rounds)
+        original-players (:players state)]
+    (cond
+      (some? (get-in state [:setup :starting-player-id]))
+      (failure :starting-bids-already-resolved
+               "The starting bid has already been resolved."
+               {:starting-player-id (get-in state [:setup :starting-player-id])})
+
+      :else
+      (let [{:keys [ok? winner-id] :as bid-result}
+            (resolve-bid-rounds state rounds true)]
+        (if-not ok?
+          bid-result
+          (cond-> bid-result
+            winner-id
+            (assoc :redraw-order
+                   (counterclockwise-redraw-order original-players winner-id))))))))
 
 (defn- redraw-card-ids-for [redraws player-id]
   (vec (get redraws player-id [])))

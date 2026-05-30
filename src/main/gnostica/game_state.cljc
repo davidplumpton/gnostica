@@ -105,6 +105,9 @@
 (defn apply-starting-bids [state command]
   (core/apply-starting-bids state command))
 
+(defn resolve-starting-bid-rounds [state command]
+  (core/resolve-starting-bid-rounds state command))
+
 (defn advance-turn [state]
   (core/advance-turn state))
 

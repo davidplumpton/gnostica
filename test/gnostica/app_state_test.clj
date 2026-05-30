@@ -454,6 +454,98 @@
            (mapv :id (app-state/current-player-hand started-db))))
     (is (game-schema/valid-game? (app-state/game started-db)))))
 
+(deftest lobby-starting-bid-stages-card-picks-before-confirming-game
+  (let [db (app-state/initialize
+            {:start-in-lobby? true
+             :player-specs test-player-specs
+             :game-options {:deck-order (deck-with-cards-at
+                                          {0 "cupsking"
+                                           6 "fool"})}})
+        bidding-db (app-state/start-lobby-bidding db)
+        bidding-view (app-state/lobby-view bidding-db)
+        selected-db (-> bidding-db
+                        (app-state/select-lobby-bid-card :rose "cupsking")
+                        (app-state/select-lobby-bid-card :indigo "fool"))
+        revealed-db (app-state/reveal-lobby-bids selected-db)
+        revealed-view (app-state/lobby-view revealed-db)
+        started-db (app-state/confirm-lobby-bidding revealed-db)
+        state (app-state/game started-db)]
+    (is (nil? (app-state/game bidding-db)))
+    (is (true? (get-in bidding-view [:starting-bid :active?])))
+    (is (= :choosing (get-in bidding-view [:starting-bid :stage])))
+    (is (= ["cupsking"]
+           (take 1 (mapv :id (:bid-card-options
+                              (first (:players bidding-view)))))))
+    (is (nil? (app-state/game revealed-db)))
+    (is (= :resolved (get-in revealed-view [:starting-bid :stage])))
+    (is (= :indigo (get-in revealed-view [:starting-bid :winner-id])))
+    (is (true? (get-in revealed-view [:starting-bid :can-confirm?])))
+    (is (nil? (app-state/lobby started-db)))
+    (is (= :indigo (get-in state [:setup :starting-player-id])))
+    (is (= [:indigo :rose] (get-in state [:turn :order])))
+    (is (= :indigo (get-in state [:turn :current-player-id])))
+    (is (= game-state/starting-hand-size
+           (count (get-in state [:players-by-id :rose :hand]))))
+    (is (= game-state/starting-hand-size
+           (count (get-in state [:players-by-id :indigo :hand]))))
+    (is (= [:rose :indigo]
+           (get-in state [:setup :bid-redraw-order])))
+    (is (= [{:player-id :rose
+             :card-ids ["cupsking"]}
+            {:player-id :indigo
+             :card-ids ["fool"]}]
+           (get-in state [:setup :bid-redraws])))
+    (is (game-schema/valid-game? state))))
+
+(deftest lobby-starting-bid-repeats-after-a-tied-round
+  (let [db (app-state/initialize
+            {:start-in-lobby? true
+             :player-specs test-player-specs
+             :game-options {:deck-order (deck-with-cards-at
+                                          {0 "cupsking"
+                                           1 "cupsqueen"
+                                           6 "swordsking"
+                                           7 "swords10"})}})
+        tie-db (-> db
+                   app-state/start-lobby-bidding
+                   (app-state/select-lobby-bid-card :rose "cupsking")
+                   (app-state/select-lobby-bid-card :indigo "swordsking")
+                   app-state/reveal-lobby-bids)
+        tie-view (app-state/lobby-view tie-db)
+        rose-options (-> tie-view :players first :bid-card-options)
+        resolved-db (-> tie-db
+                        (app-state/select-lobby-bid-card :rose "cupsqueen")
+                        (app-state/select-lobby-bid-card :indigo "swords10")
+                        app-state/reveal-lobby-bids)
+        started-db (app-state/confirm-lobby-bidding resolved-db)
+        state (app-state/game started-db)]
+    (is (nil? (app-state/game tie-db)))
+    (is (= :choosing (get-in tie-view [:starting-bid :stage])))
+    (is (= 2 (get-in tie-view [:starting-bid :round-number])))
+    (is (= [:rose :indigo]
+           (get-in tie-view [:starting-bid :history 0 :tied-player-ids])))
+    (is (not (some #(= "cupsking" (:id %)) rose-options)))
+    (is (= :rose (get-in (app-state/lobby-view resolved-db)
+                         [:starting-bid :winner-id])))
+    (is (= :rose (get-in state [:setup :starting-player-id])))
+    (is (= 2 (count (get-in state [:setup :bid-history]))))
+    (is (every? #(= game-state/starting-hand-size (count (:hand %)))
+                (:players state)))
+    (is (game-schema/valid-game? state))))
+
+(deftest lobby-bidding-handler-uses-injected-shuffle-for_initial_hands
+  (let [db (app-state/initialize {:start-in-lobby? true
+                                  :player-specs test-player-specs})
+        bidding-db (app-handlers/start-lobby-bidding-db db {:shuffle-seed 8675309})
+        seeded-deck (deterministic-shuffle/shuffle-with-seed 8675309 cards/deck)
+        rose-options (-> (app-state/lobby-view bidding-db)
+                         :players
+                         first
+                         :bid-card-options)]
+    (is (nil? (app-state/game bidding-db)))
+    (is (= (mapv :id (take game-state/starting-hand-size seeded-deck))
+           (mapv :id rose-options)))))
+
 (deftest lobby-target-score-flows-into-started-game
   (let [db (app-state/initialize {:start-in-lobby? true
                                   :player-specs test-player-specs})

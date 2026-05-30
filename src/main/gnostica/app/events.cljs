@@ -16,6 +16,11 @@
 (def set-lobby-player-colour :gnostica.app/set-lobby-player-colour)
 (def set-lobby-target-score :gnostica.app/set-lobby-target-score)
 (def start-lobby-game :gnostica.app/start-lobby-game)
+(def start-lobby-bidding :gnostica.app/start-lobby-bidding)
+(def select-lobby-bid-card :gnostica.app/select-lobby-bid-card)
+(def reveal-lobby-bids :gnostica.app/reveal-lobby-bids)
+(def confirm-lobby-bidding :gnostica.app/confirm-lobby-bidding)
+(def cancel-lobby-bidding :gnostica.app/cancel-lobby-bidding)
 (def select-board-card :gnostica.app/select-board-card)
 (def select-move-source :gnostica.app/select-move-source)
 (def select-move-piece :gnostica.app/select-move-piece)
@@ -211,6 +216,34 @@
  (fn [coeffects _]
    {:db (handlers/start-lobby-game-db (:db coeffects)
                                       {:shuffle-seed (get coeffects shuffle-seed)})}))
+
+(rf/reg-event-fx
+ start-lobby-bidding
+ [(rf/inject-cofx shuffle-seed)]
+ (fn [coeffects _]
+   {:db (handlers/start-lobby-bidding-db
+         (:db coeffects)
+         {:shuffle-seed (get coeffects shuffle-seed)})}))
+
+(rf/reg-event-db
+ select-lobby-bid-card
+ (fn [db [_ player-id card-id]]
+   (app-state/select-lobby-bid-card db player-id card-id)))
+
+(rf/reg-event-db
+ reveal-lobby-bids
+ (fn [db _]
+   (app-state/reveal-lobby-bids db)))
+
+(rf/reg-event-db
+ confirm-lobby-bidding
+ (fn [db _]
+   (app-state/confirm-lobby-bidding db)))
+
+(rf/reg-event-db
+ cancel-lobby-bidding
+ (fn [db _]
+   (app-state/cancel-lobby-bidding db)))
 
 (rf/reg-event-db
  select-board-card
