@@ -88,15 +88,19 @@
 (defn- state-with-pieces [pieces]
   (game-state/with-board-pieces (deterministic-game) pieces))
 
-(defn- state-with-board-cards [board-index->card-id]
-  (:state (game-state/create-game
-           player-specs
-           {:deck-order
-            (deck-with-cards-at
-             (into {}
-                   (map (fn [[board-index card-id]]
-                          [(board-deck-position board-index) card-id]))
-                   board-index->card-id))})))
+(defn- state-with-board-cards
+  ([board-index->card-id]
+   (state-with-board-cards board-index->card-id {}))
+  ([board-index->card-id opts]
+   (:state (game-state/create-game
+            player-specs
+            (assoc opts
+                   :deck-order
+                   (deck-with-cards-at
+                    (into {}
+                          (map (fn [[board-index card-id]]
+                                 [(board-deck-position board-index) card-id]))
+                          board-index->card-id)))))))
 
 (defn- state-with-board-card [state board-index card-id]
   (update state :board
@@ -536,6 +540,48 @@
     (is (= 5 (get-in state [:players-by-id :rose :score])))
     (is (game-schema/valid-game? state))))
 
+(defn- rose-nine-point-challenge-state
+  ([] (rose-nine-point-challenge-state {}))
+  ([opts]
+   (-> (state-with-board-cards {0 "cups2"
+                                1 "cupsking"
+                                2 "sun"
+                                3 "magician"
+                                4 "wheeloffortune"}
+                               opts)
+       (game-state/with-board-pieces
+        [{:id :rose-spot
+          :player-id :rose
+          :space-index 0
+          :size :small
+          :orientation :north}
+         {:id :rose-royalty
+          :player-id :rose
+          :space-index 1
+          :size :small
+          :orientation :north}
+         {:id :rose-major-a
+          :player-id :rose
+          :space-index 2
+          :size :small
+          :orientation :north}
+         {:id :rose-major-b
+          :player-id :rose
+          :space-index 3
+          :size :small
+          :orientation :north}
+         {:id :indigo-piece
+          :player-id :indigo
+          :space-index 4
+          :size :small
+          :orientation :north}]))))
+
+(defn- resolve-rose-challenge [state]
+  (let [announced (game-state/end-turn state {:player-id :rose
+                                              :announce-challenge? true})
+        indigo-ended (game-state/end-turn (:state announced) {:player-id :indigo})]
+    (game-state/end-turn (:state indigo-ended) {:player-id :rose})))
+
 (deftest end-turn-can-announce-and-resolve-a-winning-challenge
   (let [state (-> (state-with-board-cards {0 "cups2"
                                            1 "cupsking"
@@ -588,6 +634,62 @@
             :target-score 9}
            (:winner (:state resolved))))
     (is (game-schema/valid-game? (:state resolved)))))
+
+(deftest announce-challenge-facade-claims-at-end-of-turn
+  (let [state (rose-nine-point-challenge-state)
+        announced (game-state/announce-challenge state {:player-id :rose})
+        same-player-ended (game-state/end-turn (:state announced) {:player-id :rose})]
+    (is (:ok? announced))
+    (is (= [:challenge/announced :turn/advanced]
+           (mapv :type (:events announced))))
+    (is (= :indigo
+           (get-in announced [:state :turn :current-player-id])))
+    (is (= :rose
+           (game-state/active-challenge-player-id (:state announced))))
+    (is (= :not-current-player
+           (get-in same-player-ended [:error :code])))
+    (is (game-schema/valid-game? (:state announced)))))
+
+(deftest challenge-resolution-uses-configured-target-score
+  (let [short-game-result (resolve-rose-challenge
+                           (rose-nine-point-challenge-state {:target-score 8}))
+        long-game-result (resolve-rose-challenge
+                          (rose-nine-point-challenge-state {:target-score 10}))
+        long-game-state (:state long-game-result)]
+    (is (:ok? short-game-result))
+    (is (= {:player-id :rose
+            :reason :challenge
+            :score 9
+            :target-score 8}
+           (:winner (:state short-game-result))))
+    (is (:ok? long-game-result))
+    (is (= [:challenge/failed :game/won]
+           (mapv :type (:events long-game-result))))
+    (is (true? (get-in long-game-state [:players-by-id :rose :eliminated?])))
+    (is (= {:player-id :indigo
+            :reason :last-active-player
+            :score 3
+            :target-score 10}
+           (:winner long-game-state)))
+    (is (game-schema/valid-game? (:state short-game-result)))
+    (is (game-schema/valid-game? long-game-state))))
+
+(deftest end-turn-and-challenge-reject-after-game-is-finished
+  (let [resolved (resolve-rose-challenge (rose-nine-point-challenge-state))
+        finished-state (:state resolved)
+        ended (game-state/end-turn finished-state {:player-id :rose})
+        challenged (game-state/end-turn finished-state {:player-id :rose
+                                                        :announce-challenge? true})
+        announced (game-state/announce-challenge finished-state {:player-id :rose})]
+    (is (= game-state/finished-phase (:phase finished-state)))
+    (is (= :game-finished
+           (get-in ended [:error :code])))
+    (is (= :game-finished
+           (get-in challenged [:error :code])))
+    (is (= :game-finished
+           (get-in announced [:error :code])))
+    (is (false? (game-state/can-end-turn? finished-state :rose)))
+    (is (not (game-state/can-announce-challenge? finished-state :rose)))))
 
 (deftest failed-challenge-eliminates-player-and-discards-their-hand
   (let [state (-> (state-with-board-cards {0 "sun"

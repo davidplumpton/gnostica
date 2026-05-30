@@ -1038,7 +1038,9 @@
 (defn can-end-turn? [state player-id]
   (nil? (turn-action-unavailable-result state player-id :end-turn)))
 
-(defn announce-challenge [state {:keys [player-id]}]
+(declare end-turn)
+
+(defn- record-challenge [state {:keys [player-id]}]
   (let [state (with-current-scores state)]
     (if-let [reason (challenge-unavailable-reason state player-id)]
       (failure :challenge-unavailable
@@ -1059,6 +1061,9 @@
                            (update-player player-id assoc :challenge challenge)
                            (append-history event))]
         (success next-state [event])))))
+
+(defn announce-challenge [state command]
+  (end-turn state (assoc command :announce-challenge? true)))
 
 (defn- active-players [state]
   (filterv (comp not :eliminated?) (:players state)))
@@ -1305,8 +1310,8 @@
       (resolve-challenge state player-id)
 
       announce-challenge?
-      (let [{:keys [ok? state events error]} (announce-challenge state
-                                                                  {:player-id player-id})]
+      (let [{:keys [ok? state events error]} (record-challenge state
+                                                                {:player-id player-id})]
         (if ok?
           (let [{advanced-ok? :ok?
                  advanced-state :state
