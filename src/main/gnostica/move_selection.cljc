@@ -4713,14 +4713,18 @@
         {:keys [active? role options disabled-error]} (or (piece-descriptor-context db)
                                                           {})
         legal-piece-ids (set (map :id options))
-        selected-ids (selected-piece-ids params)]
+        selected-ids (selected-piece-ids params)
+        source-enabled? (nil? (source-unavailable-reason db :orient-piece))]
     (mapv (fn [{:keys [id player-id space-index space size orientation] :as piece}]
-            (let [enabled? (contains? legal-piece-ids id)
+            (let [current-player? (current-player-piece? db piece)
+                  enabled? (contains? legal-piece-ids id)
                   status (target-status active? enabled?)]
               (cond-> {:kind :piece
                        :role role
                        :piece-id id
                        :player-id player-id
+                       :current-player? current-player?
+                       :source-enabled? (and current-player? source-enabled?)
                        :space-key (pieces/piece-space-key piece)
                        :space-index space-index
                        :space space
@@ -5279,6 +5283,21 @@
                           "Move selection is complete, but this gameplay rule transition is not implemented yet."
                           {:command command}))))
 
+(defn- previewable-move? [db]
+  (let [source (move-source db)
+        power (transition-power db)]
+    (or (contains? #{:orient-piece :place-initial-small} source)
+        (contains? #{:rod :hermit :emperor :lovers :chariot :hanged-man :moon}
+                   power))))
+
+(defn move-preview-result
+  ([db] (move-preview-result db {}))
+  ([db transition-options]
+   (when (and (move-ready? db)
+              (previewable-move? db))
+     (let [result (confirmed-move-result db (move-command db) transition-options)]
+       (dissoc result :state)))))
+
 (defn- consumed-turn-action [db state]
   {:consumed? true
    :turn-key (game-turn-key state)
@@ -5312,6 +5331,6 @@
         (game-state/failure :move-source-unavailable
                             reason
                             {:source (move-source db)}))
-       (let [command (move-command db)
-             result (confirmed-move-result db command transition-options)]
+      (let [command (move-command db)
+            result (confirmed-move-result db command transition-options)]
          (apply-confirmed-move-result db result))))))

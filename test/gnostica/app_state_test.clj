@@ -936,6 +936,240 @@
            (app-state/move-selection cancelled-db)))
     (is (false? (get-in cancelled-db [:gesture-intent :active?])))))
 
+(deftest gesture-intent-stages-initial-placement-from-stash-piece
+  (let [db (app-state/initialize {:player-specs test-player-specs
+                                  :game-options {:shuffle-fn identity}
+                                  :demo-board-pieces []})
+        original-game (app-state/game db)
+        pending-db (app-state/start-gesture-intent
+                    db
+                    {:source {:kind :stash-piece
+                              :player-id :rose
+                              :size :small}
+                     :target {:kind :wasteland
+                              :row 0
+                              :col 3}
+                     :fields {:orientation :north}})
+        confirmed-db (app-state/confirm-move pending-db)
+        created-piece (piece-by-id confirmed-db :rose-small-1)]
+    (is (= original-game (app-state/game pending-db)))
+    (is (= :place-initial-small
+           (get-in pending-db [:gesture-intent :move-source])))
+    (is (= {:target-wasteland {:kind :wasteland
+                               :row 0
+                               :col 3}
+            :orientation :north}
+           (app-state/move-params pending-db)))
+    (is (= {:source :place-initial-small
+            :player-id :rose
+            :target {:kind :wasteland
+                     :row 0
+                     :col 3}
+            :orientation :north}
+           (app-state/move-command pending-db)))
+    (is (true? (:can-confirm? (app-state/pending-move-tray-view pending-db))))
+    (is (:ok? (get-in confirmed-db [:move-selection :last-result])))
+    (is (= {:id :rose-small-1
+            :player-id :rose
+            :space {:kind :wasteland
+                    :row 0
+                    :col 3}
+            :size :small
+            :orientation :north}
+           created-piece))
+    (is (game-schema/valid-game? (app-state/game confirmed-db)))))
+
+(deftest gesture-intent-stages-direct-rod-piece-movement
+  (let [enemy-db (app-state/initialize
+                  {:player-specs test-player-specs
+                   :game-options {:deck-order (deck-starting-with ["wands2"])}
+                   :demo-board-pieces [rose-rod-minion
+                                       indigo-rod-target]})
+        enemy-active-db (-> enemy-db
+                            (app-state/select-move-source :play-hand-card)
+                            (app-state/select-move-hand-card "wands2")
+                            (app-state/select-move-piece :rose-rod-minion)
+                            (app-state/select-move-rod-mode :push-piece))
+        enemy-pending-db (app-state/start-gesture-intent
+                          enemy-active-db
+                          {:preserve-selection? true
+                           :fields {:target-piece-id :indigo-rod-target}
+                           :target {:kind :territory
+                                    :board-index 5}})
+        enemy-confirmed-db (app-state/confirm-move enemy-pending-db)
+        enemy-piece (piece-by-id enemy-confirmed-db :indigo-rod-target)
+        own-db (app-state/initialize
+                {:player-specs test-player-specs
+                 :game-options {:deck-order (deck-starting-with ["wands2"])}
+                 :demo-board-pieces [rose-rod-minion
+                                     (assoc rose-rod-target :space-index 4)]})
+        own-active-db (-> own-db
+                          (app-state/select-move-source :play-hand-card)
+                          (app-state/select-move-hand-card "wands2")
+                          (app-state/select-move-piece :rose-rod-minion)
+                          (app-state/select-move-rod-mode :push-piece))
+        own-pending-db (app-state/start-gesture-intent
+                        own-active-db
+                        {:preserve-selection? true
+                         :fields {:target-piece-id :rose-rod-target
+                                  :orientation :south}
+                         :target {:kind :territory
+                                  :board-index 5}})
+        own-confirmed-db (app-state/confirm-move own-pending-db)
+        own-piece (piece-by-id own-confirmed-db :rose-rod-target)]
+    (is (= {:hand-card-id "wands2"
+            :piece-id :rose-rod-minion
+            :rod-mode :push-piece
+            :target-piece-id :indigo-rod-target
+            :distance 1}
+           (app-state/move-params enemy-pending-db)))
+    (is (= {:player-id :rose
+            :source {:kind :hand-card
+                     :card-id "wands2"
+                     :piece-id :rose-rod-minion}
+            :rod-variant :rod
+            :mode :push-piece
+            :distance 1
+            :target {:kind :piece
+                     :piece-id :indigo-rod-target}}
+           (app-state/move-command enemy-pending-db)))
+    (is (:ok? (get-in enemy-confirmed-db [:move-selection :last-result])))
+    (is (= :north (:orientation enemy-piece)))
+    (is (= 5 (:space-index enemy-piece)))
+    (is (= {:player-id :rose
+            :source {:kind :hand-card
+                     :card-id "wands2"
+                     :piece-id :rose-rod-minion}
+            :rod-variant :rod
+            :mode :push-piece
+            :distance 1
+            :target {:kind :piece
+                     :piece-id :rose-rod-target}
+            :orientation :south}
+           (app-state/move-command own-pending-db)))
+    (is (:ok? (get-in own-confirmed-db [:move-selection :last-result])))
+    (is (= :south (:orientation own-piece)))
+    (is (= 5 (:space-index own-piece)))
+    (is (game-schema/valid-game? (app-state/game enemy-confirmed-db)))
+    (is (game-schema/valid-game? (app-state/game own-confirmed-db)))))
+
+(deftest gesture-intent-previews-rod-destination-rejections
+  (let [full-pieces [rose-rod-minion
+                     {:id :rose-full-small
+                      :player-id :rose
+                      :space-index 4
+                      :size :small
+                      :orientation :up}
+                     {:id :indigo-full-small
+                      :player-id :indigo
+                      :space-index 4
+                      :size :small
+                      :orientation :north}
+                     {:id :indigo-full-medium
+                      :player-id :indigo
+                      :space-index 4
+                      :size :medium
+                      :orientation :south}]
+        db (app-state/initialize
+            {:player-specs test-player-specs
+             :game-options {:deck-order
+                            (deck-with-card-at
+                             (board-card-position test-player-specs 3)
+                             "wands2")}
+             :demo-board-pieces full-pieces})
+        original-game (app-state/game db)
+        pending-db (app-state/start-gesture-intent
+                    db
+                    {:source {:kind :territory
+                              :board-index 3}
+                     :fields {:piece-id :rose-rod-minion
+                              :rod-mode :move-minion
+                              :distance 1
+                              :orientation :south}})
+        tray (app-state/pending-move-tray-view pending-db)
+        confirmed-db (app-state/confirm-move pending-db)]
+    (is (= :confirm (:stage (app-state/move-selection pending-db))))
+    (is (= :target-territory-full
+           (get-in tray [:preview-result :error :code])))
+    (is (= :target-territory-full
+           (get-in tray [:error :code])))
+    (is (false? (:can-confirm? tray)))
+    (is (= original-game (app-state/game pending-db)))
+    (is (= :rejected (:stage (app-state/move-selection confirmed-db))))
+    (is (= :target-territory-full
+           (get-in confirmed-db [:move-selection :error :code])))
+    (is (= original-game (app-state/game confirmed-db)))))
+
+(deftest gesture-intent-stages-hermit-piece-and-territory-relocation
+  (let [enemy-target (assoc indigo-rod-target :space-index 1)
+        piece-db (app-state/initialize
+                  {:player-specs test-player-specs
+                   :game-options {:deck-order (deck-starting-with ["hermit"])}
+                   :demo-board-pieces [rose-source-piece
+                                       enemy-target]})
+        piece-pending-db (app-state/start-gesture-intent
+                          piece-db
+                          {:source {:kind :hand-card
+                                    :card-id "hermit"}
+                           :fields {:piece-id :rose-scout
+                                    :power :hermit
+                                    :target-piece-id :indigo-rod-target}
+                           :target {:kind :territory
+                                    :board-index 3}})
+        piece-confirmed-db (app-state/confirm-move piece-pending-db)
+        moved-piece (piece-by-id piece-confirmed-db :indigo-rod-target)
+        territory-db (app-state/initialize
+                      {:player-specs test-player-specs
+                       :game-options {:deck-order (deck-starting-with ["hermit"])}
+                       :demo-board-pieces [(assoc rose-rod-minion
+                                                  :space-index 3
+                                                  :orientation :east)]})
+        target-card (get-in territory-db [:game :board 4 :card])
+        territory-pending-db (app-state/start-gesture-intent
+                              territory-db
+                              {:source {:kind :hand-card
+                                        :card-id "hermit"}
+                               :fields {:piece-id :rose-rod-minion
+                                        :power :hermit
+                                        :target-board-index 4}
+                               :target {:kind :wasteland
+                                        :row 1
+                                        :col 3}})
+        territory-confirmed-db (app-state/confirm-move territory-pending-db)
+        moved-cell (board-cell-by-index territory-confirmed-db 4)]
+    (is (= {:player-id :rose
+            :source {:kind :hand-card
+                     :card-id "hermit"
+                     :piece-id :rose-scout}
+            :target {:kind :piece
+                     :piece-id :indigo-rod-target}
+            :destination {:kind :territory
+                          :board-index 3}}
+           (app-state/move-command piece-pending-db)))
+    (is (:ok? (get-in piece-confirmed-db [:move-selection :last-result])))
+    (is (= :north (:orientation moved-piece)))
+    (is (= 3 (:space-index moved-piece)))
+    (is (= {:player-id :rose
+            :source {:kind :hand-card
+                     :card-id "hermit"
+                     :piece-id :rose-rod-minion}
+            :target {:kind :territory
+                     :board-index 4}
+            :destination {:kind :wasteland
+                          :row 1
+                          :col 3}}
+           (app-state/move-command territory-pending-db)))
+    (is (:ok? (get-in territory-confirmed-db [:move-selection :last-result])))
+    (is (= {:index 4
+            :row 1
+            :col 3
+            :orientation :portrait
+            :face :up
+            :card target-card}
+           moved-cell))
+    (is (game-schema/valid-game? (app-state/game piece-confirmed-db)))
+    (is (game-schema/valid-game? (app-state/game territory-confirmed-db)))))
+
 (deftest move-panel-view-control-groups-track-staged-powers
   (let [composite-db (app-state/initialize
                       {:player-specs test-player-specs

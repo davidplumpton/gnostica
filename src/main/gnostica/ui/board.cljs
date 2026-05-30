@@ -41,6 +41,17 @@
   {:source {:kind :territory
             :board-index (:index cell)}})
 
+(defn- piece-source-input [piece]
+  {:source {:kind :piece
+            :piece-id (:id piece)}})
+
+(defn- territory-drag-input [cell descriptor]
+  (if (and (:active? descriptor)
+           (= :target (:role descriptor)))
+    {:preserve-selection? true
+     :fields {:target-board-index (:index cell)}}
+    (territory-source-input cell)))
+
 (defn- gesture-input-from-event [event]
   (let [payload (some-> (.-dataTransfer event)
                         (.getData "application/gnostica-gesture"))]
@@ -79,6 +90,11 @@
                [[row col] descriptor]))
         (:wastelands legal-targets)))
 
+(defn- piece-targets-by-id [legal-targets]
+  (into {}
+        (map (juxt :piece-id identity))
+        (:pieces legal-targets)))
+
 (defn- board-space-style [{:keys [min-row min-col]} {:keys [row col orientation]}]
   (let [relative-row (- row min-row)
         relative-col (- col min-col)]
@@ -91,33 +107,81 @@
                                "var(--card-offset)"
                                "0px"))}))
 
-(defn- board-piece-marker [slot piece]
+(defn- piece-action-event [piece descriptor]
+  (case (:role descriptor)
+    :minion [events/select-move-piece (:id piece)]
+    :target [events/select-move-target-piece (:id piece)]
+    (when (:source-enabled? descriptor)
+      [events/start-gesture-intent (piece-source-input piece)])))
+
+(defn- piece-drag-input [piece descriptor]
+  (case (:role descriptor)
+    :minion
+    (when (:enabled? descriptor)
+      {:preserve-selection? true
+       :fields {:piece-id (:id piece)}})
+
+    :target
+    (when (:enabled? descriptor)
+      {:preserve-selection? true
+       :fields {:target-piece-id (:id piece)}})
+
+    (when (:source-enabled? descriptor)
+      (piece-source-input piece))))
+
+(defn- board-piece-marker [slot piece descriptor]
   (let [pips (pieces/pips piece)
-        player (pieces/player-for piece)]
+        player (pieces/player-for piece)
+        drag-input (piece-drag-input piece descriptor)
+        draggable? (some? drag-input)
+        action-event (piece-action-event piece descriptor)]
     ^{:key (:id piece)}
     [:span.board-piece
      {:class (str "is-slot-" slot
                   " is-" (name (:size piece))
-                  " is-" (name (:orientation piece)))
-      :style {"--piece-color" (:css-color player)}}
+                  " is-" (name (:orientation piece))
+                  (when draggable? " is-draggable")
+                  (target-status-class descriptor)
+                  (when (:selected? descriptor) " is-selected-target"))
+      :style {"--piece-color" (:css-color player)}
+      :title (target-reason descriptor)
+      :data-piece-id (name (:id piece))
+      :data-move-target-status (some-> (:status descriptor) name)
+      :data-move-target-role (some-> (:role descriptor) name)
+      :draggable (if draggable? "true" "false")
+      :on-click (fn [event]
+                  (when action-event
+                    (.preventDefault event)
+                    (.stopPropagation event)
+                    (rf/dispatch action-event)))
+      :on-drag-start (fn [event]
+                       (when draggable?
+                         (.stopPropagation event)
+                         (some-> (.-dataTransfer event)
+                                 (.setData "application/gnostica-gesture"
+                                           (gesture-input-string drag-input)))
+                         (some-> (.-dataTransfer event)
+                                 (.setData "text/plain"
+                                           (ui/piece-summary piece)))
+                         (rf/dispatch [events/start-gesture-intent drag-input])))}
      [:span.board-piece__body
       [:span.board-piece__pips
        (for [pip (range pips)]
          ^{:key pip}
          [:span.board-piece__pip])]]]))
 
-(defn- board-piece-markers [board-pieces]
+(defn- board-piece-markers [board-pieces piece-targets]
   (when (seq board-pieces)
     [:div.board-card__pieces
-     {:aria-hidden "true"}
      (for [[slot piece] (map-indexed vector
                                      (take pieces/max-pieces-per-space board-pieces))]
-       (board-piece-marker slot piece))]))
+       (board-piece-marker slot piece (get piece-targets (:id piece))))]))
 
 (defn- pieces-label [board-pieces]
   (apply str (interpose "; " (map ui/piece-summary board-pieces))))
 
-(defn- board-wasteland [bounds {:keys [id orientation] :as space} board-pieces descriptor]
+(defn- board-wasteland [bounds {:keys [id orientation] :as space}
+                        board-pieces descriptor piece-targets]
   ^{:key id}
   [:div.board-wasteland
    {:class (str "is-" (name orientation)
@@ -139,10 +203,10 @@
     :on-drop #(on-drop-gesture % {:kind :wasteland
                                   :row (:row space)
                                   :col (:col space)})}
-   (board-piece-markers board-pieces)])
+   (board-piece-markers board-pieces piece-targets)])
 
 (defn board-card [bounds {:keys [index row col orientation card] :as cell}
-                  selected? board-pieces card-icon-mode descriptor]
+                  selected? board-pieces card-icon-mode descriptor piece-targets]
   (let [{:keys [title]} card]
     [:button.board-card
      {:type "button"
@@ -173,7 +237,7 @@
       :on-double-click #(rf/dispatch [events/start-gesture-intent
                                       (territory-source-input cell)])
       :on-drag-start (fn [event]
-                       (let [input (territory-source-input cell)]
+                       (let [input (territory-drag-input cell descriptor)]
                          (some-> (.-dataTransfer event)
                                  (.setData "application/gnostica-gesture"
                                            (gesture-input-string input)))
@@ -182,10 +246,10 @@
                                            title))
                          (rf/dispatch [events/start-gesture-intent input])))
       :on-drag-over on-drag-over-gesture
-      :on-drop #(on-drop-gesture % {:kind :territory
+     :on-drop #(on-drop-gesture % {:kind :territory
                                     :board-index index})}
      [card-ui/card-face card "board-card__face" card-icon-mode]
-     (board-piece-markers board-pieces)]))
+     (board-piece-markers board-pieces piece-targets)]))
 
 (defn board-stage []
   (let [{:keys [cells board-pieces pieces-by-space wastelands space-bounds
@@ -217,7 +281,8 @@
         [:p.board-3d-status.is-error
          three-renderer-message]
         (let [territory-targets (territory-targets-by-index legal-targets)
-              wasteland-targets (wasteland-targets-by-coordinate legal-targets)]
+              wasteland-targets (wasteland-targets-by-coordinate legal-targets)
+              piece-targets (piece-targets-by-id legal-targets)]
           [:div.board-stage
            {:role "group"
             :aria-label "Gnostica board"
@@ -230,7 +295,8 @@
               space-bounds
               space
               (get pieces-by-space (pieces/wasteland-space (:row space) (:col space)))
-              (get wasteland-targets [(:row space) (:col space)])))
+              (get wasteland-targets [(:row space) (:col space)])
+              piece-targets))
            (for [cell cells]
              ^{:key (:index cell)}
              [board-card
@@ -239,4 +305,5 @@
               (= selected-index (:index cell))
               (get pieces-by-space (pieces/territory-space (:index cell)))
               card-icon-mode
-              (get territory-targets (:index cell))])])])]))
+              (get territory-targets (:index cell))
+              piece-targets])])])]))

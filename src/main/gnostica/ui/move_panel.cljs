@@ -5,18 +5,45 @@
             [gnostica.ui.common :as ui]
             [re-frame.core :as rf]))
 
-(defn- move-source-picker [options selected-source]
+(defn- gesture-input-string [input]
+  (pr-str input))
+
+(defn- stash-piece-source-input [current-player]
+  {:source {:kind :stash-piece
+            :player-id (:id current-player)
+            :size :small}})
+
+(defn- move-source-picker [options selected-source current-player]
   [:div.move-source-list
    (for [{:keys [id label summary enabled? reason]} options]
-     ^{:key id}
-     [:button.move-source-option
-      {:type "button"
-       :class (when (= selected-source id) "is-selected")
-       :disabled (not enabled?)
-       :aria-pressed (= selected-source id)
-       :on-click #(rf/dispatch [events/select-move-source id])}
-      [:span.move-source-option__label label]
-      [:span.move-source-option__summary (if enabled? summary reason)]])])
+     (let [stash-source? (and (= :place-initial-small id)
+                              current-player)
+           stash-input (when stash-source?
+                         (stash-piece-source-input current-player))]
+       ^{:key id}
+       [:button.move-source-option
+        {:type "button"
+         :class (when (= selected-source id) "is-selected")
+         :disabled (not enabled?)
+         :aria-pressed (= selected-source id)
+         :draggable (if (and enabled? stash-source?) "true" "false")
+         :on-click #(rf/dispatch [events/select-move-source id])
+         :on-drag-start (fn [event]
+                          (when (and enabled? stash-input)
+                            (some-> (.-dataTransfer event)
+                                    (.setData "application/gnostica-gesture"
+                                              (gesture-input-string stash-input)))
+                            (some-> (.-dataTransfer event)
+                                    (.setData "text/plain" label))
+                            (rf/dispatch [events/start-gesture-intent stash-input])))}
+        [:span.move-source-option__label
+         (when stash-source?
+           [:span.move-source-option__piece
+            {:aria-hidden "true"
+             :style {"--piece-color" (get-in pieces/players-by-id
+                                             [(:id current-player) :css-color])}}])
+         label]
+        [:span.move-source-option__summary (if enabled? summary reason)]]))])
 
 (defn- board-cell-label [{:keys [row col card]}]
   (str (:title card)
@@ -1087,7 +1114,7 @@
          :aria-label "Close move panel"
          :on-click #(rf/dispatch [events/set-panel-open :move false])}
         "Close"]]]
-     [move-source-picker source-options source]
+     [move-source-picker source-options source current-player]
      [:p.move-panel__prompt prompt]
      (when source
        [move-active-controls selection controls control-groups])
