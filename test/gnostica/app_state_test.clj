@@ -1629,6 +1629,12 @@
                                   :game-options {:shuffle-fn identity}
                                   :demo-board-pieces []})
         original-game (app-state/game db)
+        source-only-db (app-state/start-gesture-intent
+                        db
+                        {:source {:kind :stash-piece
+                                  :player-id :rose
+                                  :size :small}})
+        source-only-targets (app-state/move-legal-targets source-only-db)
         partial-db (app-state/start-gesture-intent
                     db
                     {:source {:kind :stash-piece
@@ -1659,6 +1665,13 @@
                                :fields {:orientation :west}})
         territory-confirmed-db (app-state/confirm-move territory-pending-db)
         territory-piece (piece-by-id territory-confirmed-db :rose-small-1)]
+    (is (= original-game (app-state/game source-only-db)))
+    (is (= :target (:stage (app-state/move-selection source-only-db))))
+    (is (= {} (app-state/move-params source-only-db)))
+    (is (= 9 (count (filter :enabled? (:territories source-only-targets)))))
+    (is (= 12 (count (filter :enabled? (:wastelands source-only-targets)))))
+    (is (= source-only-targets
+           (:legal-targets (app-state/board-view source-only-db))))
     (is (= original-game (app-state/game pending-db)))
     (is (= :place-initial-small
            (get-in pending-db [:gesture-intent :move-source])))

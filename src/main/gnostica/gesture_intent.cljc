@@ -107,8 +107,18 @@
     (move-selection/select-move-wasteland-target db row col)
     db))
 
+(defn- select-source-for-gesture [db move-source source]
+  (if (and (= :place-initial-small move-source)
+           (= :stash-piece (:kind source)))
+    (let [selected-index (:selected-board-index db)]
+      (assoc (move-selection/select-move-source
+              (assoc db :selected-board-index nil)
+              move-source)
+             :selected-board-index selected-index))
+    (move-selection/select-move-source db move-source)))
+
 (defn- start-source [db {:keys [move-source source]}]
-  (let [db (move-selection/select-move-source db move-source)]
+  (let [db (select-source-for-gesture db move-source source)]
     (case move-source
       :play-hand-card
       (apply-while-valid db move-selection/select-move-hand-card (:card-id source))
