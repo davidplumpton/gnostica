@@ -175,6 +175,10 @@
   (mapv #(select-keys % [:power :status :board-index :compound?])
         (get-in view [:action-ribbon :steps])))
 
+(defn- alternative-by-field [tray field]
+  (some #(when (= field (:field %)) %)
+        (:alternatives tray)))
+
 (defn- remove-board-cell [db board-index]
   (let [cell (board-cell-by-index db board-index)]
     (cond-> (update-in db [:game :board]
@@ -982,12 +986,15 @@
                               :board-index 3}})
         detailed-db (app-state/open-gesture-detailed-entry pending-db)
         completed-db (app-state/set-move-orientation detailed-db :east)
-        cancelled-db (app-state/cancel-move pending-db)]
+        cancelled-db (app-state/cancel-move pending-db)
+        tray (app-state/pending-move-tray-view pending-db)]
     (is (= :orientation (:stage (app-state/move-selection pending-db))))
     (is (= [:target-resolution]
-           (:missing-fields (app-state/pending-move-tray-view pending-db))))
-    (is (seq (get-in (app-state/pending-move-tray-view pending-db)
-                     [:alternatives 0 :options])))
+           (:missing-fields tray)))
+    (is (= [:orientation]
+           (mapv :field (:alternatives tray))))
+    (is (= [:up :north :east :south :west]
+           (mapv :id (:options (alternative-by-field tray :orientation)))))
     (is (true? (app-state/panel-open? detailed-db :move)))
     (is (true? (get-in detailed-db [:gesture-intent :detailed?])))
     (is (= {:hand-card-id "cups2"
@@ -1001,6 +1008,102 @@
     (is (= (app-state/empty-move-selection)
            (app-state/move-selection cancelled-db)))
     (is (false? (get-in cancelled-db [:gesture-intent :active?])))))
+
+(deftest gesture-intent-maps-cup-wasteland-resolution-to-one-point-card
+  (let [db (app-state/initialize
+            {:player-specs test-player-specs
+             :game-options {:deck-order (deck-starting-with ["cups2" "coins2"])}
+             :demo-board-pieces [rose-hand-piece]})
+        pending-db (app-state/start-gesture-intent
+                    db
+                    {:source {:kind :hand-card
+                              :card-id "cups2"}
+                     :fields {:piece-id :rose-striker}
+                     :target {:kind :wasteland
+                              :row 3
+                              :col 2}})
+        tray (app-state/pending-move-tray-view pending-db)]
+    (is (= :one-point-card (:stage (app-state/move-selection pending-db))))
+    (is (= [:target-resolution]
+           (:missing-fields tray)))
+    (is (= [:one-point-card-id]
+           (mapv :field (:alternatives tray))))
+    (is (some #{"coins2"}
+              (mapv :id (:options (alternative-by-field
+                                    tray
+                                    :one-point-card-id)))))
+    (is (not (some #{"cups2"}
+                   (mapv :id (:options (alternative-by-field
+                                         tray
+                                         :one-point-card-id))))))))
+
+(deftest gesture-intent-maps-sun-disc-pending-requirements-to-concrete-choices
+  (let [piece-db (app-state/initialize
+                  {:player-specs test-player-specs
+                   :game-options {:deck-order (deck-starting-with ["sun"])}
+                   :demo-board-pieces [rose-hand-cup-enemy-piece
+                                       rose-rod-target
+                                       indigo-rod-target]})
+        piece-mode-db (-> piece-db
+                          (app-state/select-move-source :play-hand-card)
+                          (app-state/select-move-hand-card "sun")
+                          (app-state/select-move-piece :rose-striker)
+                          (app-state/select-move-power :sun)
+                          (app-state/select-move-target-piece :indigo-rod-target)
+                          (app-state/select-move-sun-disc-mode :piece))
+        piece-pending-db (app-state/start-gesture-intent
+                          piece-mode-db
+                          {:preserve-selection? true})
+        piece-tray (app-state/pending-move-tray-view piece-pending-db)
+        territory-db (app-state/initialize
+                      {:player-specs test-player-specs
+                       :game-options {:deck-order
+                                      (deck-with-cards-at
+                                       {0 "sun"
+                                        1 "cupsking"
+                                        (board-card-position test-player-specs 4) "cups2"})}
+                       :demo-board-pieces [rose-rod-minion]})
+        territory-mode-db (-> territory-db
+                              (app-state/select-move-source :play-hand-card)
+                              (app-state/select-move-hand-card "sun")
+                              (app-state/select-move-piece :rose-rod-minion)
+                              (app-state/select-move-power :sun)
+                              (app-state/select-board-card 4)
+                              (app-state/set-move-orientation :north)
+                              (app-state/select-move-sun-disc-mode :territory))
+        territory-pending-db (app-state/start-gesture-intent
+                              territory-mode-db
+                              {:preserve-selection? true})
+        territory-tray (app-state/pending-move-tray-view territory-pending-db)
+        replacement-pending-db (-> territory-mode-db
+                                   (app-state/select-board-card 4)
+                                   (app-state/start-gesture-intent
+                                    {:preserve-selection? true}))
+        replacement-tray (app-state/pending-move-tray-view replacement-pending-db)]
+    (is (= [:sun-disc-target-piece-id]
+           (:missing-fields piece-tray)))
+    (is (= [:target-piece-id]
+           (mapv :field (:alternatives piece-tray))))
+    (is (some #{:rose-striker}
+              (mapv :id (:options (alternative-by-field
+                                    piece-tray
+                                    :target-piece-id)))))
+    (is (= [:sun-disc-target-board-index :sun-disc-replacement-card-id]
+           (:missing-fields territory-tray)))
+    (is (= [:target-board-index]
+           (mapv :field (:alternatives territory-tray))))
+    (is (= [4]
+           (mapv :index (:options (alternative-by-field
+                                    territory-tray
+                                    :target-board-index)))))
+    (is (= [:sun-disc-replacement-card-id]
+           (:missing-fields replacement-tray)))
+    (is (= [:replacement-card-id]
+           (mapv :field (:alternatives replacement-tray))))
+    (is (= ["cupsking"]
+           (mapv :id (:options (alternative-by-field
+                                 replacement-tray
+                                 :replacement-card-id)))))))
 
 (deftest gesture-intent-stages-initial-placement-from-stash-piece
   (let [db (app-state/initialize {:player-specs test-player-specs

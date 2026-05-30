@@ -200,6 +200,9 @@
     :target-board-index
     (move-selection/select-board-for-active-move db value)
 
+    :sun-disc-target-piece-id
+    (move-selection/select-move-target-piece db value)
+
     :sun-disc-target-board-index
     (move-selection/select-board-for-active-move db value)
 
@@ -222,6 +225,9 @@
     (move-selection/select-move-one-point-card db value)
 
     :replacement-card-id
+    (move-selection/select-move-replacement-card db value)
+
+    :sun-disc-replacement-card-id
     (move-selection/select-move-replacement-card db value)
 
     :orientation
@@ -257,7 +263,9 @@
    :minion-orientation
    :sun-disc-mode
    :target-piece-id
-   :target-board-index])
+   :sun-disc-target-piece-id
+   :target-board-index
+   :sun-disc-target-board-index])
 
 (def ^:private post-target-field-order
   [:territory-card-source
@@ -266,6 +274,7 @@
    :distance
    :replacement-card-source
    :replacement-card-id
+   :sun-disc-replacement-card-id
    :hermit-destination-board-index
    :target-wasteland
    :hermit-destination-wasteland
@@ -477,22 +486,59 @@
     :damage
     (move-selection/move-damage-options db)
 
-    :target-resolution
-    (move-selection/move-orientation-options db)
-
     :draw-count
     (move-selection/draw-count-options db)
 
     []))
 
+(defn- concrete-target-resolution-field [db]
+  (case (:stage (move-selection/move-selection db))
+    :territory-card-source :territory-card-source
+    :one-point-card :one-point-card-id
+    :orientation :orientation
+    nil))
+
+(defn- concrete-alternative-field [db field]
+  (case field
+    :target-resolution
+    (concrete-target-resolution-field db)
+
+    :sun-disc-target-piece-id
+    :target-piece-id
+
+    :sun-disc-target-board-index
+    :target-board-index
+
+    :sun-disc-replacement-card-id
+    :replacement-card-id
+
+    field))
+
+(defn- alternative-prompt-field [db source-field field]
+  (case source-field
+    :target-space
+    (if (= :place-initial-small (move-selection/move-source db))
+      :initial-target-space
+      :target-space)
+
+    field))
+
+(defn- alternative [db source-field]
+  (when-let [field (concrete-alternative-field db source-field)]
+    (let [prompt-field (alternative-prompt-field db source-field field)]
+      {:field field
+       :source-field source-field
+       :prompt (get move-selection/requirement-prompts
+                    prompt-field
+                    "Complete this choice.")
+       :options (alternative-options db field)})))
+
 (defn- alternatives [db missing-fields]
-  (mapv (fn [field]
-          {:field field
-           :prompt (get move-selection/requirement-prompts
-                        field
-                        "Complete this choice.")
-           :options (alternative-options db field)})
-        missing-fields))
+  (if-let [field (first missing-fields)]
+    (if-let [choice (alternative db field)]
+      [choice]
+      [])
+    []))
 
 (defn- pending-record [db input inferred-source detailed?]
   (let [selection (move-selection/move-selection db)
