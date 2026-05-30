@@ -1648,7 +1648,17 @@
                               :col 3}
                      :fields {:orientation :north}})
         confirmed-db (app-state/confirm-move pending-db)
-        created-piece (piece-by-id confirmed-db :rose-small-1)]
+        created-piece (piece-by-id confirmed-db :rose-small-1)
+        territory-pending-db (app-state/start-gesture-intent
+                              db
+                              {:source {:kind :stash-piece
+                                        :player-id :rose
+                                        :size :small}
+                               :target {:kind :territory
+                                        :board-index 3}
+                               :fields {:orientation :west}})
+        territory-confirmed-db (app-state/confirm-move territory-pending-db)
+        territory-piece (piece-by-id territory-confirmed-db :rose-small-1)]
     (is (= original-game (app-state/game pending-db)))
     (is (= :place-initial-small
            (get-in pending-db [:gesture-intent :move-source])))
@@ -1683,7 +1693,27 @@
             :size :small
             :orientation :north}
            created-piece))
-    (is (game-schema/valid-game? (app-state/game confirmed-db)))))
+    (is (= original-game (app-state/game territory-pending-db)))
+    (is (= {:target-board-index 3
+            :orientation :west}
+           (app-state/move-params territory-pending-db)))
+    (is (= {:source :place-initial-small
+            :player-id :rose
+            :target {:kind :territory
+                     :board-index 3}
+            :orientation :west}
+           (app-state/move-command territory-pending-db)))
+    (is (true? (:can-confirm? (app-state/pending-move-tray-view
+                               territory-pending-db))))
+    (is (:ok? (get-in territory-confirmed-db [:move-selection :last-result])))
+    (is (= {:id :rose-small-1
+            :player-id :rose
+            :space-index 3
+            :size :small
+            :orientation :west}
+           territory-piece))
+    (is (game-schema/valid-game? (app-state/game confirmed-db)))
+    (is (game-schema/valid-game? (app-state/game territory-confirmed-db)))))
 
 (deftest gesture-intent-stages-direct-rod-piece-movement
   (let [enemy-db (app-state/initialize
