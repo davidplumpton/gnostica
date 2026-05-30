@@ -286,7 +286,12 @@
                 {"width" width
                  "height" height
                  "deviceScaleFactor" 1
-                 "mobile" (boolean mobile)}))
+                 "mobile" (boolean mobile)})
+  (cdp-command! client
+                "Emulation.setTouchEmulationEnabled"
+                (cond-> {"enabled" (boolean mobile)}
+                  mobile
+                  (assoc "maxTouchPoints" 1))))
 
 (defn open-page!
   [http-client chrome viewport {:keys [url blocked-urls init-script
@@ -364,6 +369,43 @@
                    "y" end-y
                    "button" "left"
                    "clickCount" 1})))
+
+(defn- touch-point
+  ([point]
+   (touch-point point 1))
+  ([point id]
+   {"x" (double (get point "x"))
+    "y" (double (get point "y"))
+    "radiusX" 6
+    "radiusY" 6
+    "rotationAngle" 0
+    "force" 1
+    "id" id}))
+
+(defn- dispatch-touch-event! [client event-type points]
+  (cdp-command! client
+                "Input.dispatchTouchEvent"
+                {"type" event-type
+                 "touchPoints" (vec points)}))
+
+(defn dispatch-touch-tap! [client point]
+  (dispatch-touch-event! client "touchStart" [(touch-point point)])
+  (Thread/sleep 50)
+  (dispatch-touch-event! client "touchEnd" []))
+
+(defn dispatch-touch-drag! [client start-point end-point]
+  (let [start-x (double (get start-point "x"))
+        start-y (double (get start-point "y"))
+        end-x (double (get end-point "x"))
+        end-y (double (get end-point "y"))
+        mid-point {"x" (/ (+ start-x end-x) 2)
+                   "y" (/ (+ start-y end-y) 2)}]
+    (dispatch-touch-event! client "touchStart" [(touch-point start-point)])
+    (Thread/sleep 50)
+    (doseq [point [mid-point end-point]]
+      (dispatch-touch-event! client "touchMove" [(touch-point point)])
+      (Thread/sleep 50))
+    (dispatch-touch-event! client "touchEnd" [])))
 
 (defn dispatch-wheel! [client {:strs [centerX centerY]} delta-y]
   (cdp-command! client

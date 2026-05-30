@@ -26,6 +26,11 @@
     (throw (ex-info (str description " did not write a gesture payload.")
                     {:result result}))))
 
+(defn- assert-touch-input! [description result ready?]
+  (when-not (ready? result)
+    (throw (ex-info (str description " did not produce touch input events.")
+                    {:touch-input result}))))
+
 (defn- cancel-pending-tray! [client description]
   (browser/evaluate! client stats/cancel-pending-move-js)
   (browser/wait-for! client
@@ -48,6 +53,24 @@
       (cancel-pending-tray! client (str (:name viewport) " Three.js piece drag"))
       pending)))
 
+(defn- run-three-touch-direct-gesture-smoke! [client viewport]
+  (let [points (browser/evaluate! client stats/three-piece-drag-points-js)]
+    (when-not (true? (get points "ok"))
+      (throw (ex-info "Could not calculate an in-canvas Three.js touch piece drag path."
+                      {:viewport viewport
+                       :points points})))
+    (browser/evaluate! client stats/reset-touch-input-probe-js)
+    (browser/dispatch-touch-drag! client (get points "source") (get points "target"))
+    (let [pending (browser/wait-for! client
+                                     (str (:name viewport) " Three.js touch piece drag pending tray")
+                                     stats/pending-tray-stats-js
+                                     stats/pending-tray-needs-choice-ready?)
+          touch-input (browser/evaluate! client stats/touch-input-probe-stats-js)]
+      (assert-touch-input! "Three.js touch piece drag" touch-input stats/touch-drag-input-ready?)
+      (cancel-pending-tray! client (str (:name viewport) " Three.js touch piece drag"))
+      {:pending pending
+       :touch-input touch-input})))
+
 (defn- run-hand-card-direct-gesture-smoke! [client viewport]
   (let [drag-result (browser/evaluate! client stats/hand-card-drag-js)]
     (assert-drag-started! "Hand-card drag" drag-result)
@@ -65,6 +88,31 @@
          :pending pending
          :detailed detailed}))))
 
+(defn- run-hand-card-touch-gesture-smoke! [client viewport]
+  (let [point (browser/evaluate! client stats/hand-card-touch-point-js)]
+    (when-not (true? (get point "ok"))
+      (throw (ex-info "Could not calculate a hand-card touch point."
+                      {:viewport viewport
+                       :point point})))
+    (browser/evaluate! client stats/reset-touch-input-probe-js)
+    (browser/dispatch-touch-tap! client point)
+    (let [pending (browser/wait-for! client
+                                     (str (:name viewport) " hand-card touch pending tray")
+                                     stats/pending-tray-stats-js
+                                     stats/pending-tray-needs-choice-ready?)
+          touch-input (browser/evaluate! client stats/touch-input-probe-stats-js)]
+      (assert-touch-input! "Hand-card touch" touch-input stats/touch-input-ready?)
+      (browser/evaluate! client stats/open-detailed-entry-js)
+      (let [detailed (browser/wait-for! client
+                                        (str (:name viewport) " hand-card touch Detailed entry")
+                                        stats/pending-tray-stats-js
+                                        stats/pending-tray-detailed-open-ready?)]
+        (cancel-pending-tray! client (str (:name viewport) " hand-card touch"))
+        {:point point
+         :pending pending
+         :detailed detailed
+         :touch-input touch-input}))))
+
 (defn- run-happy-viewport! [http-client chrome url viewport]
   (println (format "Smoke checking %s viewport at %dx%d."
                    (:name viewport)
@@ -74,7 +122,9 @@
                                     chrome
                                     viewport
                                     (stats/major-icons-smoke-url url)
-                                    nil)]
+                                    nil
+                                    (when (:mobile viewport)
+                                      stats/touch-input-probe-init-js))]
     (try
       (let [initial-stats (browser/wait-for! client
                                              (str (:name viewport) " Three.js board render")
@@ -93,83 +143,89 @@
                            :stats initial-stats
                            :pixel-stats pixel-stats})))
         (let [three-piece-drag (run-three-direct-gesture-smoke! client viewport)
-              hand-card-drag (run-hand-card-direct-gesture-smoke! client viewport)]
-        (stats/focus-three-board! client)
-        (browser/dispatch-w-key! client)
-        (let [wasd-stats (browser/wait-for! client
-                                            (str (:name viewport) " WASD board movement")
-                                            stats/happy-stats-js
-                                            #(and (stats/happy-ready? %)
-                                                  (stats/camera-target-y-changed? initial-stats %)))
-              _ (browser/dispatch-arrow-right-key! client)
-              keyboard-stats (browser/wait-for! client
-                                                (str (:name viewport) " arrow-key board movement")
-                                                stats/happy-stats-js
-                                                #(and (stats/happy-ready? %)
-                                                      (stats/camera-target-x-changed? wasd-stats %)))]
-          (browser/dispatch-wheel! client rect -720)
-          (let [zoomed-stats (browser/wait-for! client
-                                                (str (:name viewport) " changed 3D camera distance")
-                                                stats/happy-stats-js
-                                                #(and (stats/happy-ready? %)
-                                                      (stats/camera-distance-changed? keyboard-stats %)))]
-            (browser/dispatch-question-mark-key! client)
-            (let [hotkey-help (browser/wait-for! client
-                                                 (str (:name viewport) " hotkey help dialog")
-                                                 stats/hotkey-help-js
-                                                 stats/hotkey-help-open-ready?)]
-              (browser/dispatch-escape-key! client)
-              (browser/wait-for! client
-                                 (str (:name viewport) " hotkey help close")
-                                 stats/hotkey-help-js
-                                 stats/hotkey-help-closed-ready?)
-              (browser/dispatch-g-key! client)
-              (let [icon-help (browser/wait-for! client
-                                                 (str (:name viewport) " icon help dialog")
-                                                 stats/icon-help-js
-                                                 stats/icon-help-open-ready?)]
+              hand-card-drag (run-hand-card-direct-gesture-smoke! client viewport)
+              touch-piece-drag (when (:mobile viewport)
+                                 (run-three-touch-direct-gesture-smoke! client viewport))
+              touch-hand-card (when (:mobile viewport)
+                                (run-hand-card-touch-gesture-smoke! client viewport))]
+          (stats/focus-three-board! client)
+          (browser/dispatch-w-key! client)
+          (let [wasd-stats (browser/wait-for! client
+                                              (str (:name viewport) " WASD board movement")
+                                              stats/happy-stats-js
+                                              #(and (stats/happy-ready? %)
+                                                    (stats/camera-target-y-changed? initial-stats %)))
+                _ (browser/dispatch-arrow-right-key! client)
+                keyboard-stats (browser/wait-for! client
+                                                  (str (:name viewport) " arrow-key board movement")
+                                                  stats/happy-stats-js
+                                                  #(and (stats/happy-ready? %)
+                                                        (stats/camera-target-x-changed? wasd-stats %)))]
+            (browser/dispatch-wheel! client rect -720)
+            (let [zoomed-stats (browser/wait-for! client
+                                                  (str (:name viewport) " changed 3D camera distance")
+                                                  stats/happy-stats-js
+                                                  #(and (stats/happy-ready? %)
+                                                        (stats/camera-distance-changed? keyboard-stats %)))]
+              (browser/dispatch-question-mark-key! client)
+              (let [hotkey-help (browser/wait-for! client
+                                                   (str (:name viewport) " hotkey help dialog")
+                                                   stats/hotkey-help-js
+                                                   stats/hotkey-help-open-ready?)]
                 (browser/dispatch-escape-key! client)
                 (browser/wait-for! client
-                                   (str (:name viewport) " icon help close")
-                                   stats/icon-help-js
-                                   stats/icon-help-closed-ready?)
-                (browser/dispatch-i-key! client)
-                (let [popup-stats (browser/wait-for! client
-                                                     (str (:name viewport) " popup icon mode")
-                                                     stats/popup-mode-js
-                                                     stats/popup-mode-ready?)
-                      updated-rect (browser/evaluate! client stats/canvas-rect-js)]
-                  (when-not (stats/camera-distance-preserved? zoomed-stats popup-stats)
-                    (throw (ex-info "The I hotkey reset the 3D camera view."
-                                    {:viewport viewport
-                                     :zoomed-stats zoomed-stats
-                                     :popup-stats popup-stats})))
-                  (when-not updated-rect
-                    (throw (ex-info "Three.js canvas bounds could not be remeasured after popup mode."
-                                    {:viewport viewport
-                                     :stats initial-stats
-                                     :popup-stats popup-stats})))
-                  (browser/dispatch-center-click! client updated-rect)
-                  (let [selection (browser/wait-for! client
-                                                      (str (:name viewport) " center-card selection")
-                                                      stats/selection-js
-                                                      stats/center-card-selected?)
-                        move-panel (browser/wait-for! client
-                                                      (str (:name viewport) " move-panel hand-card controls")
-                                                      stats/move-panel-hand-card-step-js
-                                                      stats/move-panel-hand-card-step-ready?)]
-                    {:viewport (:name viewport)
-                     :stats initial-stats
-                     :keyboard-stats keyboard-stats
-                     :zoomed-stats zoomed-stats
-                     :hotkey-help hotkey-help
-                     :icon-help icon-help
-                     :popup-stats popup-stats
-                     :pixel-stats pixel-stats
-                     :three-piece-drag three-piece-drag
-                     :hand-card-drag hand-card-drag
-                     :selection selection
-                     :move-panel move-panel}))))))))
+                                   (str (:name viewport) " hotkey help close")
+                                   stats/hotkey-help-js
+                                   stats/hotkey-help-closed-ready?)
+                (browser/dispatch-g-key! client)
+                (let [icon-help (browser/wait-for! client
+                                                   (str (:name viewport) " icon help dialog")
+                                                   stats/icon-help-js
+                                                   stats/icon-help-open-ready?)]
+                  (browser/dispatch-escape-key! client)
+                  (browser/wait-for! client
+                                     (str (:name viewport) " icon help close")
+                                     stats/icon-help-js
+                                     stats/icon-help-closed-ready?)
+                  (browser/dispatch-i-key! client)
+                  (let [popup-stats (browser/wait-for! client
+                                                       (str (:name viewport) " popup icon mode")
+                                                       stats/popup-mode-js
+                                                       stats/popup-mode-ready?)
+                        updated-rect (browser/evaluate! client stats/canvas-rect-js)]
+                    (when-not (stats/camera-distance-preserved? zoomed-stats popup-stats)
+                      (throw (ex-info "The I hotkey reset the 3D camera view."
+                                      {:viewport viewport
+                                       :zoomed-stats zoomed-stats
+                                       :popup-stats popup-stats})))
+                    (when-not updated-rect
+                      (throw (ex-info "Three.js canvas bounds could not be remeasured after popup mode."
+                                      {:viewport viewport
+                                       :stats initial-stats
+                                       :popup-stats popup-stats})))
+                    (browser/dispatch-center-click! client updated-rect)
+                    (let [selection (browser/wait-for! client
+                                                        (str (:name viewport) " center-card selection")
+                                                        stats/selection-js
+                                                        stats/center-card-selected?)
+                          move-panel (browser/wait-for! client
+                                                        (str (:name viewport) " move-panel hand-card controls")
+                                                        stats/move-panel-hand-card-step-js
+                                                        stats/move-panel-hand-card-step-ready?)]
+                      {:viewport (:name viewport)
+                       :stats initial-stats
+                       :keyboard-stats keyboard-stats
+                       :zoomed-stats zoomed-stats
+                       :hotkey-help hotkey-help
+                       :icon-help icon-help
+                       :popup-stats popup-stats
+                       :pixel-stats pixel-stats
+                       :three-piece-drag three-piece-drag
+                       :hand-card-drag hand-card-drag
+                       :touch-piece-drag touch-piece-drag
+                       :touch-hand-card touch-hand-card
+                       :selection selection
+                       :move-panel move-panel}))))))))
       (catch Exception error
         (throw (ex-info (str "3D board smoke failed in the " (:name viewport) " viewport.")
                         {:viewport viewport

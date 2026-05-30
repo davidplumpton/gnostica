@@ -371,6 +371,54 @@
      return Boolean(detailed);
    })()")
 
+(def touch-input-probe-init-js
+  "(() => {
+     window.__gnosticaSmokeTouchEvents = [];
+     const classText = (node) => node && node.className ? String(node.className) : '';
+     const record = (event) => {
+       const events = window.__gnosticaSmokeTouchEvents || (window.__gnosticaSmokeTouchEvents = []);
+       events.push({
+         type: event.type,
+         pointerType: event.pointerType || null,
+         targetClass: classText(event.target),
+         touchCount: event.touches ? event.touches.length : null,
+         changedTouchCount: event.changedTouches ? event.changedTouches.length : null
+       });
+       if (events.length > 120) events.shift();
+     };
+     ['touchstart', 'touchmove', 'touchend', 'touchcancel']
+       .forEach((type) => window.addEventListener(type, record, true));
+     ['pointerdown', 'pointermove', 'pointerup', 'pointercancel']
+       .forEach((type) => window.addEventListener(type, record, true));
+   })();")
+
+(def reset-touch-input-probe-js
+  "(() => {
+     window.__gnosticaSmokeTouchEvents = [];
+     return true;
+   })()")
+
+(def touch-input-probe-stats-js
+  "(() => {
+     const events = window.__gnosticaSmokeTouchEvents || [];
+     const counts = events.reduce((acc, event) => {
+       acc[event.type] = (acc[event.type] || 0) + 1;
+       return acc;
+     }, {});
+     const pointerTypes = Array.from(new Set(events
+       .map((event) => event.pointerType)
+       .filter(Boolean)));
+     return {
+       eventCount: events.length,
+       touchStartCount: counts.touchstart || 0,
+       touchMoveCount: counts.touchmove || 0,
+       touchEndCount: counts.touchend || 0,
+       pointerTouchCount: events.filter((event) => event.pointerType === 'touch').length,
+       pointerTypes,
+       recent: events.slice(-12)
+     };
+   })()")
+
 (def cancel-pending-move-js
   "(() => {
      const buttons = Array.from(document.querySelectorAll('.pending-move-tray button'));
@@ -384,6 +432,22 @@
      const close = document.querySelector('.move-panel .panel-close');
      if (close) close.click();
      return Boolean(close);
+   })()")
+
+(def hand-card-touch-point-js
+  "(() => {
+     const card = document.querySelector('.hand-card[draggable=\"true\"]');
+     if (!card) {
+       return {ok: false, reason: 'No draggable hand card found.'};
+     }
+     const rect = card.getBoundingClientRect();
+     return {
+       ok: rect.width > 0 && rect.height > 0,
+       x: rect.left + rect.width / 2,
+       y: rect.top + rect.height / 2,
+       cardTitle: card.querySelector('.hand-card__title') ? card.querySelector('.hand-card__title').textContent.trim() : null,
+       rect: {x: rect.left, y: rect.top, width: rect.width, height: rect.height}
+     };
    })()")
 
 (def hand-card-drag-js
@@ -780,6 +844,15 @@
        (= "true" (get stats "detailedPressed"))
        (true? (get stats "panelOpen"))
        (true? (get stats "panelActive"))))
+
+(defn touch-input-ready? [stats]
+  (and (map? stats)
+       (pos? (long (or (get stats "touchStartCount") 0)))
+       (pos? (long (or (get stats "touchEndCount") 0)))))
+
+(defn touch-drag-input-ready? [stats]
+  (and (touch-input-ready? stats)
+       (pos? (long (or (get stats "touchMoveCount") 0)))))
 
 (defn pending-tray-closed? [stats]
   (false? (get stats "active")))
