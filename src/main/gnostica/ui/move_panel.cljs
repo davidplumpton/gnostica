@@ -3,6 +3,7 @@
             [gnostica.board-layout :as layout]
             [gnostica.gesture-input :as gesture-input]
             [gnostica.pieces :as pieces]
+            [gnostica.ui.card :as card-ui]
             [gnostica.ui.common :as ui]
             [re-frame.core :as rf]))
 
@@ -536,6 +537,59 @@
 (defn- fool-reveal-count-choices [options selected-count]
   [count-choices "Reveals" events/set-move-fool-reveal-count options selected-count])
 
+(defn- fool-reveal-card-control [{:keys [completed-count can-reveal?]}]
+  [:div.move-step
+   [:div.move-step__header
+    [:span (str "Reveal " (inc (or completed-count 0)))]
+    [:strong "Next card"]]
+   [:div.move-choice-list.is-compact
+    [:button.move-chip
+     {:type "button"
+      :disabled (not can-reveal?)
+      :on-click #(rf/dispatch [events/reveal-move-fool-card])}
+     "Reveal"]]])
+
+(defn- fool-reveal-decision-control [{:keys [active-card active-reveal]}]
+  [:div.move-step
+   [:div.move-step__header
+    [:span (str "Reveal " (:index active-reveal))]
+    [:strong (:title active-card)]]
+   (when active-card
+     [:div.fool-reveal-card
+      [card-ui/card-face active-card "fool-reveal-card__face" :always]
+      [:div.fool-reveal-card__meta
+       [:strong (:title active-card)]
+       [:span (name (:arcana active-card))]]])
+   [:div.move-choice-list.is-compact
+    [:button.move-chip
+     {:type "button"
+      :class (when (= :skip (:choice active-reveal)) "is-selected")
+      :aria-pressed (= :skip (:choice active-reveal))
+      :on-click #(rf/dispatch [events/skip-move-fool-reveal])}
+     "Skip"]
+    [:button.move-chip
+     {:type "button"
+      :class (when (= :play (:choice active-reveal)) "is-selected")
+      :aria-pressed (= :play (:choice active-reveal))
+      :on-click #(rf/dispatch [events/play-move-fool-reveal])}
+     "Play"]]])
+
+(defn- fool-play-power-choices [options selected-power]
+  (let [selected-option (some #(when (= selected-power (:id %)) %) options)]
+    [:div.move-step
+     [:div.move-step__header
+      [:span "Revealed power"]
+      [:strong (or (:label selected-option) "None")]]
+     [:div.move-choice-list.is-compact
+      (for [{:keys [id label]} options]
+        ^{:key id}
+        [:button.move-chip
+         {:type "button"
+          :class (when (= selected-power id) "is-selected")
+          :aria-pressed (= selected-power id)
+          :on-click #(rf/dispatch [events/select-move-fool-play-power id])}
+         label])]]))
+
 (defn- high-priestess-redraw-count-choices [options selected-count]
   [count-choices "Redraw passes" events/set-move-high-priestess-redraw-count options selected-count])
 
@@ -885,7 +939,9 @@
                 disc-action-count-options major-action-count-options major-action-count
                 sword-action-count-options devil-action-count-options
                 sun-disc-mode-options
-                fool-reveal-count-options high-priestess-redraw-count-options
+                fool-reveal-count-options fool-reveal-state
+                fool-play-power-options fool-play-power
+                high-priestess-redraw-count-options
                 high-priestess-redraw-options judgement-card-options
                 judgement-card-maximum
                 disc-minion-orientation-required?
@@ -990,6 +1046,15 @@
       [fool-reveal-count-choices
        fool-reveal-count-options
        (:fool-reveal-count params)]
+
+      :fool-reveal-card
+      [fool-reveal-card-control fool-reveal-state]
+
+      :fool-reveal-decision
+      [fool-reveal-decision-control fool-reveal-state]
+
+      :fool-play-power
+      [fool-play-power-choices fool-play-power-options fool-play-power]
 
       :high-priestess-redraw-count
       [high-priestess-redraw-count-choices

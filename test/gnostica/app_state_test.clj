@@ -2541,7 +2541,7 @@
                        [:move-selection :last-result :events 0 :reshuffled-discard?])))
     (is (game-schema/valid-game? (app-state/game first-confirmed-db)))))
 
-(deftest fool-hand-card-can_stage_reveals_with_injected_shuffle
+(deftest fool-hand-card-can_skip_two_reveals_with_injected_shuffle
   (let [seed 20260528
         initial-db (app-state/initialize {:player-specs test-player-specs
                                           :game-options {:deck-order (deck-starting-with ["fool"])}
@@ -2554,23 +2554,35 @@
                      (app-state/select-move-source :play-hand-card)
                      (app-state/select-move-hand-card "fool")
                      (app-state/select-move-piece :rose-striker))
-        reveal-db (app-state/set-move-fool-reveal-count piece-db 2)
-        confirmed-db (app-handlers/confirm-move-db reveal-db {:shuffle-seed seed})
-        repeated-confirmed-db (app-handlers/confirm-move-db reveal-db {:shuffle-seed seed})
+        count-db (app-state/set-move-fool-reveal-count piece-db 2)
+        first-reveal-db (app-handlers/reveal-move-fool-card-db count-db {:shuffle-seed seed})
+        first-skip-db (app-state/skip-move-fool-reveal first-reveal-db)
+        second-reveal-db (app-handlers/reveal-move-fool-card-db first-skip-db
+                                                                 {:shuffle-seed (inc seed)})
+        reveal-db (app-state/skip-move-fool-reveal second-reveal-db)
+        confirmed-db (app-handlers/confirm-move-db reveal-db {:shuffle-seed (+ seed 2)})
+        repeated-confirmed-db (app-handlers/confirm-move-db reveal-db {:shuffle-seed (+ seed 3)})
         expected-shuffled (deterministic-shuffle/shuffle-with-seed
                            seed
                            (conj prepared-discard (cards/card-by-id "fool")))
         events (get-in confirmed-db [:move-selection :last-result :events])
+        command (app-state/move-command reveal-db)
         zones (app-state/card-zones confirmed-db)]
     (is (= :fool-reveal-count (:stage (app-state/move-selection piece-db))))
     (is (= [0 1 2] (app-state/move-fool-reveal-count-options piece-db)))
+    (is (= :fool-reveal-card (:stage (app-state/move-selection count-db))))
+    (is (= (-> expected-shuffled first :id)
+           (get-in first-reveal-db [:move-selection :params :fool-active-reveal :card-id])))
+    (is (= :fool-reveal-card (:stage (app-state/move-selection first-skip-db))))
+    (is (= (-> expected-shuffled second :id)
+           (get-in second-reveal-db [:move-selection :params :fool-active-reveal :card-id])))
     (is (= :confirm (:stage (app-state/move-selection reveal-db))))
     (is (= {:player-id :rose
             :source {:kind :hand-card
                      :card-id "fool"
                      :piece-id :rose-striker}
             :reveals [{} {}]}
-           (app-state/move-command reveal-db)))
+           (dissoc command :shuffle-fn)))
     (is (= (app-state/game confirmed-db)
            (app-state/game repeated-confirmed-db)))
     (is (:ok? (get-in confirmed-db [:move-selection :last-result])))
@@ -2579,6 +2591,189 @@
     (is (= (mapv :id (take 2 expected-shuffled))
            (mapv :card-id events)))
     (is (not (some #{"fool"} (map :id (:hand zones)))))
+    (is (game-schema/valid-game? (app-state/game confirmed-db)))))
+
+(deftest fool-hand-card-can_play_first_reveal_and_skip_second
+  (let [draw-start (+ (* game-state/starting-hand-size (count test-player-specs))
+                      board/board-card-count)
+        db (app-state/initialize
+            {:player-specs test-player-specs
+             :game-options {:deck-order (deck-with-cards-at {0 "fool"
+                                                              draw-start "cups2"
+                                                              (inc draw-start) "wands2"})}
+             :demo-board-pieces [rose-hand-cup-territory-piece]})
+        ready-db (-> db
+                     (app-state/select-move-source :play-hand-card)
+                     (app-state/select-move-hand-card "fool")
+                     (app-state/select-move-piece :rose-striker)
+                     (app-state/set-move-fool-reveal-count 2)
+                     app-state/reveal-move-fool-card
+                     app-state/play-move-fool-reveal
+                     (app-state/select-board-card 3)
+                     (app-state/set-move-orientation :north)
+                     app-state/reveal-move-fool-card
+                     app-state/skip-move-fool-reveal)
+        command (app-state/move-command ready-db)
+        confirmed-db (app-handlers/confirm-move-db ready-db {:shuffle-seed 20260528})
+        events (get-in confirmed-db [:move-selection :last-result :events])
+        created-piece (piece-by-id confirmed-db :rose-small-1)]
+    (is (= :confirm (:stage (app-state/move-selection ready-db))))
+    (is (= {:player-id :rose
+            :source {:kind :hand-card
+                     :card-id "fool"
+                     :piece-id :rose-striker}
+            :reveals [{:power :cup
+                       :piece-id :rose-striker
+                       :play-command {:target {:kind :territory
+                                               :board-index 3}
+                                      :orientation :north
+                                      :cup-variant :cup}}
+                      {}]}
+           command))
+    (is (:ok? (get-in confirmed-db [:move-selection :last-result])))
+    (is (= [:fool/card-revealed
+            :cup/small-piece-created
+            :fool/card-revealed]
+           (mapv :type events)))
+    (is (= 3 (:space-index created-piece)))
+    (is (= :north (:orientation created-piece)))
+    (is (game-schema/valid-game? (app-state/game confirmed-db)))))
+
+(deftest fool-hand-card-can_skip_first_reveal_and_play_second
+  (let [draw-start (+ (* game-state/starting-hand-size (count test-player-specs))
+                      board/board-card-count)
+        db (app-state/initialize
+            {:player-specs test-player-specs
+             :game-options {:deck-order (deck-with-cards-at {0 "fool"
+                                                              draw-start "wands2"
+                                                              (inc draw-start) "cups2"})}
+             :demo-board-pieces [rose-hand-cup-territory-piece]})
+        ready-db (-> db
+                     (app-state/select-move-source :play-hand-card)
+                     (app-state/select-move-hand-card "fool")
+                     (app-state/select-move-piece :rose-striker)
+                     (app-state/set-move-fool-reveal-count 2)
+                     app-state/reveal-move-fool-card
+                     app-state/skip-move-fool-reveal
+                     app-state/reveal-move-fool-card
+                     app-state/play-move-fool-reveal
+                     (app-state/select-board-card 3)
+                     (app-state/set-move-orientation :east))
+        command (app-state/move-command ready-db)
+        confirmed-db (app-handlers/confirm-move-db ready-db {:shuffle-seed 20260528})
+        events (get-in confirmed-db [:move-selection :last-result :events])]
+    (is (= :confirm (:stage (app-state/move-selection ready-db))))
+    (is (= [{} {:power :cup
+                :piece-id :rose-striker
+                :play-command {:target {:kind :territory
+                                        :board-index 3}
+                               :orientation :east
+                               :cup-variant :cup}}]
+           (:reveals command)))
+    (is (:ok? (get-in confirmed-db [:move-selection :last-result])))
+    (is (= [false true]
+           (mapv :played? (filter #(= :fool/card-revealed (:type %)) events))))
+    (is (game-schema/valid-game? (app-state/game confirmed-db)))))
+
+(deftest fool-hand-card-can_play_two_reveals
+  (let [draw-start (+ (* game-state/starting-hand-size (count test-player-specs))
+                      board/board-card-count)
+        db (app-state/initialize
+            {:player-specs test-player-specs
+             :game-options {:deck-order (deck-with-cards-at {0 "fool"
+                                                              draw-start "cups2"
+                                                              (inc draw-start) "wands2"})}
+             :demo-board-pieces [rose-hand-cup-territory-piece]})
+        ready-db (-> db
+                     (app-state/select-move-source :play-hand-card)
+                     (app-state/select-move-hand-card "fool")
+                     (app-state/select-move-piece :rose-striker)
+                     (app-state/set-move-fool-reveal-count 2)
+                     app-state/reveal-move-fool-card
+                     app-state/play-move-fool-reveal
+                     (app-state/select-board-card 3)
+                     (app-state/set-move-orientation :north)
+                     app-state/reveal-move-fool-card
+                     app-state/play-move-fool-reveal
+                     (app-state/select-move-rod-mode :move-minion)
+                     (app-state/set-move-distance 1)
+                     (app-state/set-move-orientation :east))
+        confirmed-db (app-handlers/confirm-move-db ready-db {:shuffle-seed 20260528})
+        events (get-in confirmed-db [:move-selection :last-result :events])
+        moved-piece (piece-by-id confirmed-db :rose-striker)]
+    (is (= :confirm (:stage (app-state/move-selection ready-db))))
+    (is (= [:fool/card-revealed
+            :cup/small-piece-created
+            :fool/card-revealed
+            :rod/minion-moved]
+           (mapv :type events)))
+    (is (= 3 (:space-index moved-piece)))
+    (is (= :east (:orientation moved-piece)))
+    (is (game-schema/valid-game? (app-state/game confirmed-db)))))
+
+(deftest fool-hand-card-can_play_revealed_major
+  (let [draw-start (+ (* game-state/starting-hand-size (count test-player-specs))
+                      board/board-card-count)
+        db (app-state/initialize
+            {:player-specs test-player-specs
+             :game-options {:deck-order (deck-with-cards-at {0 "fool"
+                                                              draw-start "hangedman"})}
+             :demo-board-pieces [rose-rod-minion indigo-rod-target]})
+        rose-hand-before (mapv :id (get-in db [:game :players-by-id :rose :hand]))
+        indigo-hand-before (mapv :id (get-in db [:game :players-by-id :indigo :hand]))
+        ready-db (-> db
+                     (app-state/select-move-source :play-hand-card)
+                     (app-state/select-move-hand-card "fool")
+                     (app-state/select-move-piece :rose-rod-minion)
+                     (app-state/set-move-fool-reveal-count 1)
+                     app-state/reveal-move-fool-card
+                     app-state/play-move-fool-reveal
+                     (app-state/select-move-fool-play-power :hanged-man)
+                     (app-state/set-move-major-action-count 1)
+                     (app-state/select-move-target-piece :indigo-rod-target))
+        command (app-state/move-command ready-db)
+        confirmed-db (app-handlers/confirm-move-db ready-db {:shuffle-seed 20260528})
+        events (get-in confirmed-db [:move-selection :last-result :events])]
+    (is (= :confirm (:stage (app-state/move-selection ready-db))))
+    (is (= :hangedman (get-in command [:reveals 0 :power])))
+    (is (= [:fool/card-revealed :hanged-man/hands-traded]
+           (mapv :type events)))
+    (is (= indigo-hand-before
+           (mapv :id (get-in confirmed-db [:game :players-by-id :rose :hand]))))
+    (is (= (vec (remove #{"fool"} rose-hand-before))
+           (mapv :id (get-in confirmed-db [:game :players-by-id :indigo :hand]))))
+    (is (game-schema/valid-game? (app-state/game confirmed-db)))))
+
+(deftest world-copy-of-fool_uses_reveal_play_flow
+  (let [draw-start (+ (* game-state/starting-hand-size (count test-player-specs))
+                      board/board-card-count)
+        world-index 0
+        fool-index 1
+        db (app-state/initialize
+            {:player-specs test-player-specs
+             :game-options {:deck-order (deck-with-cards-at
+                                          {(board-card-position test-player-specs world-index) "world"
+                                           (board-card-position test-player-specs fool-index) "fool"
+                                           draw-start "cups2"})}
+             :demo-board-pieces [rose-source-piece]})
+        ready-db (-> db
+                     (app-state/select-move-source :activate-territory)
+                     (app-state/select-board-card world-index)
+                     (app-state/select-move-piece :rose-scout)
+                     (app-state/select-move-world-copy fool-index)
+                     (app-state/set-move-fool-reveal-count 1)
+                     app-state/reveal-move-fool-card
+                     app-state/play-move-fool-reveal
+                     (app-state/select-board-card fool-index)
+                     (app-state/set-move-orientation :east))
+        command (app-state/move-command ready-db)
+        confirmed-db (app-handlers/confirm-move-db ready-db {:shuffle-seed 20260528})
+        created-piece (piece-by-id confirmed-db :rose-small-1)]
+    (is (= :confirm (:stage (app-state/move-selection ready-db))))
+    (is (= fool-index (:copied-board-index command)))
+    (is (= :cup (get-in command [:reveals 0 :power])))
+    (is (:ok? (get-in confirmed-db [:move-selection :last-result])))
+    (is (= fool-index (:space-index created-piece)))
     (is (game-schema/valid-game? (app-state/game confirmed-db)))))
 
 (deftest high-priestess-hand-card-can_stage_two_redraw_passes

@@ -42,6 +42,11 @@
   ([db injections]
    (app-state/confirm-move db (transition-options injections))))
 
+(defn reveal-move-fool-card-db
+  ([db] (app-state/reveal-move-fool-card db))
+  ([db injections]
+   (app-state/reveal-move-fool-card db (transition-options injections))))
+
 (defn start-lobby-game-db
   ([db] (app-state/start-lobby-game db))
   ([db injections]

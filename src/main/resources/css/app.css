@@ -2269,6 +2269,46 @@ img {
   overflow-wrap: anywhere;
 }
 
+.fool-reveal-card {
+  display: grid;
+  grid-template-columns: 4.2rem minmax(0, 1fr);
+  align-items: center;
+  gap: 0.65rem;
+  min-width: 0;
+}
+
+.fool-reveal-card__face {
+  display: block;
+  width: 4.2rem;
+  aspect-ratio: 0.58;
+}
+
+.fool-reveal-card__meta {
+  display: grid;
+  gap: 0.2rem;
+  min-width: 0;
+}
+
+.fool-reveal-card__meta strong,
+.fool-reveal-card__meta span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.fool-reveal-card__meta strong {
+  color: var(--ink);
+  font-size: 0.86rem;
+  line-height: 1.2;
+}
+
+.fool-reveal-card__meta span {
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 800;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+
 .move-error {
   padding: 0.65rem 0.7rem;
   border: 1px solid rgba(255, 138, 122, 0.72);

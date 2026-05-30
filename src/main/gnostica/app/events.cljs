@@ -40,6 +40,10 @@
 (def set-move-sword-action-count :gnostica.app/set-move-sword-action-count)
 (def set-move-devil-action-count :gnostica.app/set-move-devil-action-count)
 (def set-move-fool-reveal-count :gnostica.app/set-move-fool-reveal-count)
+(def reveal-move-fool-card :gnostica.app/reveal-move-fool-card)
+(def skip-move-fool-reveal :gnostica.app/skip-move-fool-reveal)
+(def play-move-fool-reveal :gnostica.app/play-move-fool-reveal)
+(def select-move-fool-play-power :gnostica.app/select-move-fool-play-power)
 (def set-move-high-priestess-redraw-count :gnostica.app/set-move-high-priestess-redraw-count)
 (def toggle-move-high-priestess-discard-card :gnostica.app/toggle-move-high-priestess-discard-card)
 (def set-move-high-priestess-draw-count :gnostica.app/set-move-high-priestess-draw-count)
@@ -116,6 +120,9 @@
 (def move-devil-action-count-options :gnostica.app/move-devil-action-count-options)
 (def move-sun-disc-mode-options :gnostica.app/move-sun-disc-mode-options)
 (def move-fool-reveal-count-options :gnostica.app/move-fool-reveal-count-options)
+(def move-fool-reveal-state :gnostica.app/move-fool-reveal-state)
+(def move-fool-play-power-options :gnostica.app/move-fool-play-power-options)
+(def move-fool-play-power :gnostica.app/move-fool-play-power)
 (def move-high-priestess-redraw-count-options :gnostica.app/move-high-priestess-redraw-count-options)
 (def move-high-priestess-redraw-options :gnostica.app/move-high-priestess-redraw-options)
 (def move-judgement-card-options :gnostica.app/move-judgement-card-options)
@@ -340,6 +347,29 @@ select-move-rod-mode
  set-move-fool-reveal-count
  (fn [db [_ reveal-count]]
    (app-state/set-move-fool-reveal-count db reveal-count)))
+
+(rf/reg-event-fx
+ reveal-move-fool-card
+ [(rf/inject-cofx shuffle-seed)]
+ (fn [coeffects _]
+   {:db (handlers/reveal-move-fool-card-db
+         (:db coeffects)
+         {:shuffle-seed (get coeffects shuffle-seed)})}))
+
+(rf/reg-event-db
+ skip-move-fool-reveal
+ (fn [db _]
+   (app-state/skip-move-fool-reveal db)))
+
+(rf/reg-event-db
+ play-move-fool-reveal
+ (fn [db _]
+   (app-state/play-move-fool-reveal db)))
+
+(rf/reg-event-db
+ select-move-fool-play-power
+ (fn [db [_ power]]
+   (app-state/select-move-fool-play-power db power)))
 
 (rf/reg-event-db
  set-move-high-priestess-redraw-count
@@ -737,6 +767,21 @@ move-rod-mode-options
    (app-state/move-fool-reveal-count-options db)))
 
 (rf/reg-sub
+ move-fool-reveal-state
+ (fn [db _]
+   (app-state/move-fool-reveal-state db)))
+
+(rf/reg-sub
+ move-fool-play-power-options
+ (fn [db _]
+   (app-state/move-fool-play-power-options db)))
+
+(rf/reg-sub
+ move-fool-play-power
+ (fn [db _]
+   (app-state/move-fool-play-power db)))
+
+(rf/reg-sub
  move-high-priestess-redraw-count-options
  (fn [db _]
    (app-state/move-high-priestess-redraw-count-options db)))
@@ -950,6 +995,9 @@ move-rod-orientation-required?
  :<- [move-devil-action-count-options]
  :<- [move-sun-disc-mode-options]
  :<- [move-fool-reveal-count-options]
+ :<- [move-fool-reveal-state]
+ :<- [move-fool-play-power-options]
+ :<- [move-fool-play-power]
  :<- [move-high-priestess-redraw-count-options]
  :<- [move-high-priestess-redraw-options]
  :<- [move-judgement-card-options]
@@ -983,6 +1031,7 @@ move-rod-orientation-required?
        major-action-count-options major-action-count
        sword-action-count-options devil-action-count-options
        sun-disc-mode-options fool-reveal-count-options
+       fool-reveal-state fool-play-power-options fool-play-power
        high-priestess-redraw-count-options high-priestess-redraw-options
        judgement-card-options judgement-card-maximum
        disc-minion-orientation-required? disc-target-kind-options
@@ -1016,6 +1065,9 @@ move-rod-orientation-required?
      :devil-action-count-options devil-action-count-options
      :sun-disc-mode-options sun-disc-mode-options
      :fool-reveal-count-options fool-reveal-count-options
+     :fool-reveal-state fool-reveal-state
+     :fool-play-power-options fool-play-power-options
+     :fool-play-power fool-play-power
      :high-priestess-redraw-count-options high-priestess-redraw-count-options
      :high-priestess-redraw-options high-priestess-redraw-options
      :judgement-card-options judgement-card-options

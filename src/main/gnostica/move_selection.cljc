@@ -233,6 +233,9 @@
    :disc-target-kind "Choose piece or territory growth."
    :sword-target-kind "Choose piece or territory attack."
    :fool-reveal-count "Choose how many cards Fool reveals."
+   :fool-reveal-card "Reveal the next Fool card."
+   :fool-reveal-choice "Choose whether to skip or play the revealed card."
+   :fool-play-power "Choose the revealed card power."
    :high-priestess-redraw-count "Choose how many redraw passes High Priestess applies."
    :high-priestess-redraws "Choose cards and draw counts for each redraw pass."
    :judgement-card-selection "Choose discard-pile cards for Judgement."
@@ -375,6 +378,36 @@
     :play-hand-card (hand-card-by-id db (:hand-card-id params))
     nil))
 
+(def ^:private fool-play-param-keys
+  [:target-board-index
+   :target-wasteland
+   :target-piece-id
+   :territory-card-source
+   :one-point-card-id
+   :replacement-card-source
+   :replacement-card-id
+   :orientation
+   :distance
+   :damage
+   :rod-mode
+   :disc-target-kind
+   :sword-target-kind
+   :disc-action-count
+   :sword-action-count
+   :devil-action-count
+   :major-action-count
+   :minion-orientation
+   :sun-disc-mode
+   :sun-disc-target-piece-id
+   :sun-disc-target-board-index
+   :sun-disc-replacement-card-id
+   :sun-disc-orientation
+   :major-actions
+   :fool-play-power])
+
+(defn- clear-fool-play-params [params]
+  (apply dissoc params fool-play-param-keys))
+
 (defn- source-command [source params]
   (case source
     :activate-territory
@@ -407,23 +440,26 @@
       (= "devil" (:id card)) (conj :devil)
       (= "world" (:id card)) (conj :world))))
 
+(defn- selected-power-for-card [card selected]
+  (let [power-options (move-power-ids-for-card card)]
+    (cond
+      (contains? (set power-options) selected)
+      selected
+
+      (= 1 (count power-options))
+      (first power-options)
+
+      (and card (empty? power-options))
+      :unavailable
+
+      :else
+      nil)))
+
 (defn- selected-power [db source-id params]
   (when (gameplay-move-source? source-id)
     (let [card (source-card db source-id params)
-          power-options (move-power-ids-for-card card)
           selected (:power params)]
-      (cond
-        (contains? (set power-options) selected)
-        selected
-
-        (= 1 (count power-options))
-        (first power-options)
-
-        (and card (empty? power-options))
-        :unavailable
-
-        :else
-        nil))))
+      (selected-power-for-card card selected))))
 
 (defn- world-move? [db source-id params]
   (= :world (selected-power db source-id params)))
@@ -459,15 +495,69 @@
         :else
         nil))))
 
+(defn- parent-fool-move? [db source-id params]
+  (or (= :fool (selected-power db source-id params))
+      (and (world-move? db source-id params)
+           (= :fool (selected-world-copied-power db source-id params)))))
+
+(defn- fool-completed-reveals [params]
+  (vec (:fool-reveals params)))
+
+(defn- fool-completed-reveal-count [params]
+  (count (fool-completed-reveals params)))
+
+(defn- selected-fool-reveal-count [params]
+  (when (some #{(:fool-reveal-count params)} fool-reveal-count-order)
+    (:fool-reveal-count params)))
+
+(defn- fool-active-reveal [params]
+  (:fool-active-reveal params))
+
+(defn- fool-active-reveal-card [params]
+  (some-> (fool-active-reveal params)
+          :card-id
+          cards/card-by-id))
+
+(defn- fool-play-power-options [params]
+  (vec (remove #{:fool :world}
+               (move-power-ids-for-card (fool-active-reveal-card params)))))
+
+(defn- fool-active-play? [db source-id params]
+  (and (parent-fool-move? db source-id params)
+       (= :play (:choice (fool-active-reveal params)))))
+
+(defn- selected-fool-play-power [db source-id params]
+  (when (fool-active-play? db source-id params)
+    (let [power-options (fool-play-power-options params)
+          selected (:fool-play-power params)]
+      (cond
+        (contains? (set power-options) selected)
+        selected
+
+        (= 1 (count power-options))
+        (first power-options)
+
+        (and (fool-active-reveal-card params)
+             (empty? power-options))
+        :unavailable
+
+        :else
+        nil))))
+
 (defn- active-power [db source-id params]
-  (if (world-move? db source-id params)
-    (selected-world-copied-power db source-id params)
-    (selected-power db source-id params)))
+  (if-let [fool-power (selected-fool-play-power db source-id params)]
+    fool-power
+    (if (world-move? db source-id params)
+      (selected-world-copied-power db source-id params)
+      (selected-power db source-id params))))
 
 (defn- active-card [db source-id params]
-  (if (world-move? db source-id params)
-    (world-copied-card db params)
-    (source-card db source-id params)))
+  (if-let [card (and (fool-active-play? db source-id params)
+                     (fool-active-reveal-card params))]
+    card
+    (if (world-move? db source-id params)
+      (world-copied-card db params)
+      (source-card db source-id params))))
 
 (defn- world-source-opts [db source-id params]
   (when (world-move? db source-id params)
@@ -690,7 +780,7 @@
     2))
 
 (defn- fool-move? [db source-id params]
-  (= :fool (active-power db source-id params)))
+  (parent-fool-move? db source-id params))
 
 (defn- high-priestess-move? [db source-id params]
   (= :high-priestess (active-power db source-id params)))
@@ -1949,6 +2039,46 @@
       fool-reveal-count-order
       [])))
 
+(defn move-fool-play-power-options [db]
+  (let [{:keys [source params]} (move-selection db)
+        options (fool-play-power-options params)]
+    (if (and (fool-active-play? db source params)
+             (seq options))
+      (mapv move-power-definitions
+            (filter #(contains? (set options) %)
+                    move-power-order))
+      [])))
+
+(defn move-fool-play-power [db]
+  (let [{:keys [source params]} (move-selection db)]
+    (selected-fool-play-power db source params)))
+
+(defn move-fool-reveal-state [db]
+  (let [{:keys [source params]} (move-selection db)
+        reveal-count (selected-fool-reveal-count params)
+        completed (fool-completed-reveals params)
+        active-reveal (fool-active-reveal params)
+        active-card (fool-active-reveal-card params)]
+    (when (fool-move? db source params)
+      (cond-> {:selected-count reveal-count
+               :completed-count (count completed)
+               :remaining-count (when reveal-count
+                                  (max 0 (- reveal-count
+                                            (count completed)
+                                            (if active-reveal 1 0))))
+               :completed-reveals completed
+               :active-reveal active-reveal
+               :active-card active-card
+               :play-power-options (move-fool-play-power-options db)
+               :play-power (move-fool-play-power db)
+               :can-reveal? (and reveal-count
+                                  (not active-reveal)
+                                  (< (count completed) reveal-count))}
+        active-card
+        (assoc :active-card-id (:id active-card)
+               :active-card-title (:title active-card)
+               :active-card-image (:image active-card))))))
+
 (defn move-high-priestess-redraw-count-options [db]
   (let [{:keys [source params]} (move-selection db)]
     (if (high-priestess-move? db source params)
@@ -2046,6 +2176,41 @@
           :sword [(major-action-control-group power action-power :sword)]
           []))))))
 
+(defn- fool-play-power-choice-needed? [params]
+  (< 1 (count (fool-play-power-options params))))
+
+(defn- fool-control-groups [db source-id params]
+  (let [reveal-count (selected-fool-reveal-count params)
+        completed-count (fool-completed-reveal-count params)
+        active-reveal (fool-active-reveal params)
+        child-power (selected-fool-play-power db source-id params)]
+    (vec
+     (concat
+      [(power-control-group :fool :fool-reveal-count)]
+      (cond
+        (nil? reveal-count)
+        []
+
+        (zero? reveal-count)
+        []
+
+        active-reveal
+        (concat
+         [(power-control-group :fool :fool-reveal-decision)]
+         (when (= :play (:choice active-reveal))
+           (concat
+            (when (and (fool-play-power-choice-needed? params)
+                       (nil? child-power))
+              [(power-control-group :fool :fool-play-power)])
+            (when child-power
+              (power-control-groups db source-id params child-power)))))
+
+        (< completed-count reveal-count)
+        [(power-control-group :fool :fool-reveal-card)]
+
+        :else
+        [])))))
+
 (defn- world-control-groups [db source-id params]
   (vec
    (concat
@@ -2062,7 +2227,7 @@
     :disc [(power-control-group power :disc)]
     :sun [(power-control-group power :sun)]
     :sword [(power-control-group power :sword)]
-    :fool [(power-control-group power :fool-reveal-count)]
+    :fool (fool-control-groups db source-id params)
     :high-priestess [(power-control-group power :high-priestess-redraw-count)
                      (power-control-group power :high-priestess-redraws)]
     :judgement [(power-control-group power :judgement-card-selection)]
@@ -2305,6 +2470,19 @@
     (and (fool-move? db source-id params)
          (some #{(:fool-reveal-count params)} fool-reveal-count-order))
 
+    :fool-reveal-card
+    (and (fool-move? db source-id params)
+         (some? (fool-active-reveal params)))
+
+    :fool-reveal-choice
+    (and (fool-move? db source-id params)
+         (contains? #{:skip :play} (:choice (fool-active-reveal params))))
+
+    :fool-play-power
+    (and (fool-active-play? db source-id params)
+         (some? (selected-fool-play-power db source-id params))
+         (not= :unavailable (selected-fool-play-power db source-id params)))
+
     :high-priestess-redraw-count
     (and (high-priestess-move? db source-id params)
          (some #{(:high-priestess-redraw-count params)}
@@ -2529,8 +2707,40 @@
                     (sword-requirements db source-id params)))
     []))
 
-(defn- fool-requirements [_db _source-id _params]
-  [:fool-reveal-count])
+(declare power-requirements)
+
+(defn- fool-play-requirements [db source-id params]
+  (let [child-power (selected-fool-play-power db source-id params)]
+    (vec
+     (concat (when (or (fool-play-power-choice-needed? params)
+                       (nil? child-power)
+                       (= :unavailable child-power))
+               [:fool-play-power])
+             (when (and child-power
+                        (not= :unavailable child-power))
+               (power-requirements db source-id params child-power))))))
+
+(defn- fool-requirements [db source-id params]
+  (let [reveal-count (selected-fool-reveal-count params)
+        completed-count (fool-completed-reveal-count params)
+        active-reveal (fool-active-reveal params)]
+    (vec
+     (concat [:fool-reveal-count]
+             (when (some? reveal-count)
+               (cond
+                 (zero? reveal-count)
+                 []
+
+                 active-reveal
+                 (concat [:fool-reveal-choice]
+                         (when (= :play (:choice active-reveal))
+                           (fool-play-requirements db source-id params)))
+
+                 (< completed-count reveal-count)
+                 [:fool-reveal-card]
+
+                 :else
+                 []))))))
 
 (defn- high-priestess-requirements [_db _source-id params]
   (vec
@@ -2651,6 +2861,9 @@
     :disc-target-kind :disc-target-kind
     :sword-target-kind :sword-target-kind
     :fool-reveal-count :fool-reveal-count
+    :fool-reveal-card :fool-reveal-card
+    :fool-reveal-choice :fool-reveal-choice
+    :fool-play-power :fool-play-power
     :high-priestess-redraw-count :high-priestess-redraw-count
     :high-priestess-redraws :high-priestess-redraw
     :judgement-card-selection :judgement-card-selection
@@ -2683,7 +2896,11 @@
     :draw-count :draw-count
     :confirm))
 
-(declare cup-target-command rod-command sword-target-command select-move-world-copy)
+(declare cup-target-command
+         gameplay-power-command-for-power
+         rod-command
+         sword-target-command
+         select-move-world-copy)
 
 (def ^:private current-major-action-param-keys
   [:target-board-index
@@ -2816,6 +3033,40 @@
             :piece-id (:target-piece-id params)}
    :orientation (:orientation params)})
 
+(defn- reveal-action-command [reveal]
+  (:action reveal {}))
+
+(defn- stored-fool-reveal-actions [params]
+  (mapv reveal-action-command (fool-completed-reveals params)))
+
+(defn- fool-commit-active-reveal [params reveal]
+  (-> params
+      clear-fool-play-params
+      (dissoc :fool-active-reveal)
+      (update :fool-reveals (fnil conj []) reveal)))
+
+(defn- fool-current-play-complete? [db source-id params]
+  (and (fool-active-play? db source-id params)
+       (every? #(requirement-complete? db source-id params %)
+               (fool-play-requirements db source-id params))))
+
+(defn- fool-current-play-reveal [db source-id params]
+  (when (fool-current-play-complete? db source-id params)
+    (let [power (selected-fool-play-power db source-id params)
+          card (fool-active-reveal-card params)
+          action-power (if (contains? copied-suit-powers power)
+                         power
+                         (keyword (:id card)))]
+      {:card-id (:card-id (fool-active-reveal params))
+       :choice :play
+       :action {:power action-power
+                :piece-id (:piece-id params)
+                :play-command (gameplay-power-command-for-power
+                               db
+                               source-id
+                               params
+                               power)}})))
+
 (defn- advance-composite-steps [db]
   (loop [db db]
     (let [{:keys [source params]} (move-selection db)
@@ -2869,6 +3120,17 @@
                                           action))))))
         db))))
 
+(defn- advance-fool-steps [db]
+  (loop [db db]
+    (let [{:keys [source params]} (move-selection db)]
+      (if-let [reveal (and (fool-move? db source params)
+                           (fool-current-play-reveal db source params))]
+        (recur (update-in db
+                          [:move-selection :params]
+                          fool-commit-active-reveal
+                          reveal))
+        db))))
+
 (defn- refresh-move-selection [db]
   (let [{:keys [source params] :as selection} (move-selection db)]
     (assoc db :move-selection
@@ -2889,15 +3151,16 @@
 
 (defn- update-move-selection-success [db f & args]
   (refresh-move-selection
-   (advance-devil-steps
-    (advance-sword-major-steps
-     (advance-composite-steps
-      (update db :move-selection
-              (fnil (fn [selection]
-                      (assoc (apply f selection args)
-                             :error nil
-                             :last-result nil))
-                    (empty-move-selection))))))))
+   (advance-fool-steps
+    (advance-devil-steps
+     (advance-sword-major-steps
+      (advance-composite-steps
+       (update db :move-selection
+               (fnil (fn [selection]
+                       (assoc (apply f selection args)
+                              :error nil
+                              :last-result nil))
+                     (empty-move-selection)))))))))
 
 (defn move-ready? [db]
   (= :confirm (:stage (move-selection db))))
@@ -2954,6 +3217,9 @@
                   :disc-target-kind (:disc-target-kind requirement-prompts)
                   :sword-target-kind (:sword-target-kind requirement-prompts)
                   :fool-reveal-count (:fool-reveal-count requirement-prompts)
+                  :fool-reveal-card (:fool-reveal-card requirement-prompts)
+                  :fool-reveal-choice (:fool-reveal-choice requirement-prompts)
+                  :fool-play-power (:fool-play-power requirement-prompts)
                   :high-priestess-redraw-count (:high-priestess-redraw-count requirement-prompts)
                   :high-priestess-redraw (:high-priestess-redraws requirement-prompts)
                   :judgement-card-selection (:judgement-card-selection requirement-prompts)
@@ -3266,20 +3532,41 @@
                 disc-mode (get-in sun-disc-mode-definitions [disc-mode :label])
                 :else "Optional Disc step")}]))
 
+(defn- fool-reveal-detail [reveal]
+  (let [card (some-> (:card-id reveal) cards/card-by-id)
+        title (:title card)]
+    (case (:choice reveal)
+      :skip (str (or title "Revealed card") " skipped")
+      :play (str (or title "Revealed card")
+                 " played"
+                 (when-let [power (:power (:action reveal))]
+                   (str " as " (power-label power))))
+      (or title "Choose skip or play"))))
+
 (defn- fool-action-steps [params]
-  (let [selected (:fool-reveal-count params)]
+  (let [selected (selected-fool-reveal-count params)
+        completed (fool-completed-reveals params)
+        active-reveal (fool-active-reveal params)]
     (mapv (fn [n]
-            {:id (str "fool-reveal-" n)
-             :power :fool-reveal
-             :label (str "Reveal " n)
-             :status (cond
-                       (nil? selected) (if (= 1 n) :active :pending)
-                       (<= n selected) :ready
-                       :else :skipped)
-             :detail (cond
-                       (nil? selected) "Choose reveal count"
-                       (<= n selected) "Will reveal"
-                       :else "Skipped")})
+            (let [completed-reveal (nth completed (dec n) nil)
+                  active? (= n (:index active-reveal))]
+              {:id (str "fool-reveal-" n)
+               :power :fool-reveal
+               :label (str "Reveal " n)
+               :status (cond
+                         (nil? selected) (if (= 1 n) :active :pending)
+                         (< selected n) :skipped
+                         completed-reveal :done
+                         active? :active
+                         (= n (inc (count completed))) :active
+                         :else :pending)
+               :detail (cond
+                         (nil? selected) "Choose reveal count"
+                         (< selected n) "Skipped"
+                         completed-reveal (fool-reveal-detail completed-reveal)
+                         active? (fool-reveal-detail active-reveal)
+                         (= n (inc (count completed))) "Ready to reveal"
+                         :else "Pending")}))
           [1 2])))
 
 (defn- high-priestess-redraw-pass-complete? [db source-id params pass-index]
@@ -3339,6 +3626,9 @@
 
 (defn- non-world-action-steps [db source-id params power]
   (cond
+    (= :fool power)
+    (fool-action-steps params)
+
     (composite-major-move? db source-id params)
     (sequence-action-steps db
                            source-id
@@ -3365,9 +3655,6 @@
 
     (= :sun power)
     (sun-action-steps db source-id params)
-
-    (= :fool power)
-    (fool-action-steps params)
 
     (= :high-priestess power)
     (high-priestess-action-steps db source-id params)
@@ -3417,7 +3704,7 @@
       (let [world? (= :world selected)
             steps (if world?
                     (world-action-steps db source params)
-                    (non-world-action-steps db source params power))]
+                    (non-world-action-steps db source params selected))]
         {:visible? true
          :power selected
          :power-label (power-label selected)
@@ -3498,6 +3785,10 @@
             :devil-action-count
             :major-action-count
             :fool-reveal-count
+            :fool-reveals
+            :fool-active-reveal
+            :fool-shuffle-fn
+            :fool-play-power
             :high-priestess-redraw-count
             :redraws
             :judgement-card-ids
@@ -3515,6 +3806,10 @@
               :major-action-count
               :minion-orientation
               :fool-reveal-count
+              :fool-reveals
+              :fool-active-reveal
+              :fool-shuffle-fn
+              :fool-play-power
               :high-priestess-redraw-count
               :redraws
               :judgement-card-ids
@@ -3539,6 +3834,10 @@
                   :major-action-count
                   :minion-orientation
                   :fool-reveal-count
+                  :fool-reveals
+                  :fool-active-reveal
+                  :fool-shuffle-fn
+                  :fool-play-power
                   :high-priestess-redraw-count
                   :redraws
                   :judgement-card-ids
@@ -3585,6 +3884,10 @@
               :devil-action-count
               :minion-orientation
               :fool-reveal-count
+              :fool-reveals
+              :fool-active-reveal
+              :fool-shuffle-fn
+              :fool-play-power
               :high-priestess-redraw-count
               :redraws
               :judgement-card-ids
@@ -3613,6 +3916,10 @@
                   :major-action-count
                   :minion-orientation
                   :fool-reveal-count
+                  :fool-reveals
+                  :fool-active-reveal
+                  :fool-shuffle-fn
+                  :fool-play-power
                   :high-priestess-redraw-count
                   :redraws
                   :judgement-card-ids
@@ -4289,17 +4596,196 @@
                                          {:action-count action-count
                                           :options options})))))
 
+(defn- set-fool-reveal-count-param [params reveal-count]
+  (let [next-params (assoc params :fool-reveal-count reveal-count)]
+    (if (= (:fool-reveal-count params) reveal-count)
+      next-params
+      (-> next-params
+          clear-fool-play-params
+          (dissoc :fool-reveals
+                  :fool-active-reveal
+                  :fool-shuffle-fn)))))
+
+(defn- fool-command-map [params reveal-actions]
+  (cond-> {:reveals (vec reveal-actions)}
+    (:fool-shuffle-fn params)
+    (assoc :shuffle-fn (:fool-shuffle-fn params))))
+
+(defn- fool-preview-command [db source params reveal-actions]
+  (cond-> (merge {:player-id (current-player-id db)
+                  :source (source-command source params)}
+                 (fool-command-map params reveal-actions))
+    (world-move? db source params)
+    (assoc :copied-board-index (:copied-board-index params))))
+
+(defn- fool-preview-result [db source params reveal-actions transition-options]
+  (let [command (cond-> (fool-preview-command db source params reveal-actions)
+                  (and (:shuffle-fn transition-options)
+                       (not (contains? params :fool-shuffle-fn)))
+                  (assoc :shuffle-fn (:shuffle-fn transition-options)))]
+    (if (world-move? db source params)
+      (game-state/apply-world-move (game db) command)
+      (game-state/apply-fool-move (game db) command))))
+
+(defn- fool-revealed-card-id [result reveal-index]
+  (some #(when (and (= :fool/card-revealed (:type %))
+                    (= reveal-index (:reveal-index %)))
+           (:card-id %))
+        (:events result)))
+
 (defn set-move-fool-reveal-count [db reveal-count]
   (let [{:keys [source params]} (move-selection db)]
     (if (and (fool-move? db source params)
              (some #{reveal-count} fool-reveal-count-order))
-      (update-move-selection-success db assoc-in [:params :fool-reveal-count] reveal-count)
+      (update-move-selection-success db update :params set-fool-reveal-count-param reveal-count)
       (update-move-selection db assoc
                              :error
                              (move-error :invalid-fool-reveal-count
                                          "Choose a supported Fool reveal count."
                                          {:reveal-count reveal-count
                                           :options fool-reveal-count-order})))))
+
+(defn reveal-move-fool-card
+  ([db]
+   (reveal-move-fool-card db {}))
+  ([db transition-options]
+   (let [{:keys [source params]} (move-selection db)
+         reveal-count (selected-fool-reveal-count params)
+         completed-actions (stored-fool-reveal-actions params)
+         reveal-index (inc (count completed-actions))]
+     (cond
+       (not (fool-move? db source params))
+       (update-move-selection db assoc
+                              :error
+                              (move-error :invalid-fool-reveal
+                                          "Fool reveal choices are only available for Fool moves."
+                                          {:source source}))
+
+       (nil? reveal-count)
+       (update-move-selection db assoc
+                              :error
+                              (move-error :missing-fool-reveal-count
+                                          "Choose how many cards Fool reveals first."
+                                          {}))
+
+       (or (fool-active-reveal params)
+           (<= reveal-count (count completed-actions)))
+       (update-move-selection db assoc
+                              :error
+                              (move-error :invalid-fool-reveal
+                                          "There is no pending Fool reveal to turn over."
+                                          {:reveal-count reveal-count
+                                           :completed-count (count completed-actions)}))
+
+       :else
+       (let [result (fool-preview-result db
+                                         source
+                                         params
+                                         (conj completed-actions {})
+                                         transition-options)]
+         (if-not (:ok? result)
+           (assoc db :move-selection
+                  (assoc (move-selection db)
+                         :stage :rejected
+                         :error (:error result)
+                         :last-result result))
+           (let [card-id (fool-revealed-card-id result reveal-index)]
+             (if-not card-id
+               (update-move-selection db assoc
+                                      :error
+                                      (move-error :missing-fool-reveal-card
+                                                  "Fool reveal preview did not identify a card."
+                                                  {:reveal-index reveal-index}))
+               (update-move-selection-success
+                db
+                update
+                :params
+                (fn [params]
+                  (cond-> (assoc params
+                                 :fool-active-reveal {:index reveal-index
+                                                      :card-id card-id})
+                    (and (:shuffle-fn transition-options)
+                         (not (:fool-shuffle-fn params)))
+                    (assoc :fool-shuffle-fn (:shuffle-fn transition-options)))))))))))))
+
+(defn skip-move-fool-reveal [db]
+  (let [{:keys [source params]} (move-selection db)
+        active-reveal (fool-active-reveal params)]
+    (cond
+      (not (fool-move? db source params))
+      (update-move-selection db assoc
+                             :error
+                             (move-error :invalid-fool-reveal
+                                         "Fool reveal choices are only available for Fool moves."
+                                         {:source source}))
+
+      (nil? active-reveal)
+      (update-move-selection db assoc
+                             :error
+                             (move-error :missing-fool-reveal
+                                         "Reveal a Fool card before choosing skip."
+                                         {}))
+
+      :else
+      (update-move-selection-success db
+                                     update
+                                     :params
+                                     fool-commit-active-reveal
+                                     {:card-id (:card-id active-reveal)
+                                      :choice :skip
+                                      :action {}}))))
+
+(defn play-move-fool-reveal [db]
+  (let [{:keys [source params]} (move-selection db)]
+    (cond
+      (not (fool-move? db source params))
+      (update-move-selection db assoc
+                             :error
+                             (move-error :invalid-fool-reveal
+                                         "Fool reveal choices are only available for Fool moves."
+                                         {:source source}))
+
+      (nil? (fool-active-reveal params))
+      (update-move-selection db assoc
+                             :error
+                             (move-error :missing-fool-reveal
+                                         "Reveal a Fool card before choosing play."
+                                         {}))
+
+      (= :unavailable (selected-fool-play-power db source (assoc-in params [:fool-active-reveal :choice] :play)))
+      (update-move-selection db assoc
+                             :error
+                             (move-error :fool-play-unavailable
+                                         "The revealed card does not have a browser-playable power."
+                                         {:card-id (:card-id (fool-active-reveal params))}))
+
+      :else
+      (update-move-selection-success db
+                                     update
+                                     :params
+                                     (fn [params]
+                                       (-> params
+                                           clear-fool-play-params
+                                           (assoc-in [:fool-active-reveal :choice] :play)))))))
+
+(defn select-move-fool-play-power [db power]
+  (let [{:keys [source params]} (move-selection db)
+        power-ids (set (map :id (move-fool-play-power-options db)))]
+    (if (and (fool-active-play? db source params)
+             (contains? power-ids power))
+      (update-move-selection-success db
+                                     update
+                                     :params
+                                     (fn [params]
+                                       (-> params
+                                           clear-fool-play-params
+                                           (assoc :fool-play-power power))))
+      (update-move-selection db assoc
+                             :error
+                             (move-error :invalid-fool-play-power
+                                         "Choose a power provided by the revealed card."
+                                         {:power power
+                                          :options (vec power-ids)})))))
 
 (defn set-move-high-priestess-redraw-count [db redraw-count]
   (let [{:keys [source params]} (move-selection db)]
@@ -5757,7 +6243,7 @@
       {})))
 
 (defn- fool-command [_db _source params]
-  {:reveals (vec (repeat (or (:fool-reveal-count params) 0) {}))})
+  (fool-command-map params (stored-fool-reveal-actions params)))
 
 (defn- high-priestess-command [db source params]
   {:redraws (vec (:redraws (normalize-high-priestess-redraws db source params)))})

@@ -1167,6 +1167,9 @@
 (def move-devil-action-count-options move-selection/move-devil-action-count-options)
 (def move-sun-disc-mode-options move-selection/move-sun-disc-mode-options)
 (def move-fool-reveal-count-options move-selection/move-fool-reveal-count-options)
+(def move-fool-play-power-options move-selection/move-fool-play-power-options)
+(def move-fool-play-power move-selection/move-fool-play-power)
+(def move-fool-reveal-state move-selection/move-fool-reveal-state)
 (def move-high-priestess-redraw-count-options move-selection/move-high-priestess-redraw-count-options)
 (def move-high-priestess-redraw-options move-selection/move-high-priestess-redraw-options)
 (def move-judgement-card-options move-selection/move-judgement-card-options)
@@ -1268,6 +1271,10 @@
 (def set-move-sword-action-count move-selection/set-move-sword-action-count)
 (def set-move-devil-action-count move-selection/set-move-devil-action-count)
 (def set-move-fool-reveal-count move-selection/set-move-fool-reveal-count)
+(def reveal-move-fool-card move-selection/reveal-move-fool-card)
+(def skip-move-fool-reveal move-selection/skip-move-fool-reveal)
+(def play-move-fool-reveal move-selection/play-move-fool-reveal)
+(def select-move-fool-play-power move-selection/select-move-fool-play-power)
 (def set-move-high-priestess-redraw-count move-selection/set-move-high-priestess-redraw-count)
 (def toggle-move-high-priestess-discard-card move-selection/toggle-move-high-priestess-discard-card)
 (def set-move-high-priestess-draw-count move-selection/set-move-high-priestess-draw-count)
@@ -1302,7 +1309,8 @@
            major-action-count-options major-action-count
            world-copy-options world-copied-power-options world-copied-power
            sword-action-count-options devil-action-count-options
-           sun-disc-mode-options fool-reveal-count-options
+           sun-disc-mode-options fool-reveal-count-options fool-reveal-state
+           fool-play-power-options fool-play-power
            high-priestess-redraw-count-options high-priestess-redraw-options
            judgement-card-options judgement-card-maximum
            disc-minion-orientation-required? disc-target-kind-options
@@ -1337,6 +1345,9 @@
               :devil-action-count-options devil-action-count-options
               :sun-disc-mode-options sun-disc-mode-options
               :fool-reveal-count-options fool-reveal-count-options
+              :fool-reveal-state fool-reveal-state
+              :fool-play-power-options fool-play-power-options
+              :fool-play-power fool-play-power
               :high-priestess-redraw-count-options high-priestess-redraw-count-options
               :high-priestess-redraw-options high-priestess-redraw-options
               :judgement-card-options judgement-card-options
@@ -1388,6 +1399,9 @@
     :devil-action-count-options (move-devil-action-count-options db)
     :sun-disc-mode-options (move-sun-disc-mode-options db)
     :fool-reveal-count-options (move-fool-reveal-count-options db)
+    :fool-reveal-state (move-fool-reveal-state db)
+    :fool-play-power-options (move-fool-play-power-options db)
+    :fool-play-power (move-fool-play-power db)
     :high-priestess-redraw-count-options (move-high-priestess-redraw-count-options db)
     :high-priestess-redraw-options (move-high-priestess-redraw-options db)
     :judgement-card-options (move-judgement-card-options db)
