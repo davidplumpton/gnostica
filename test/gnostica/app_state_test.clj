@@ -1,5 +1,6 @@
 (ns gnostica.app-state-test
-  (:require [clojure.test :refer [deftest is]]
+  (:require [clojure.java.io :as io]
+            [clojure.test :refer [deftest is]]
             [gnostica.app.handlers :as app-handlers]
             [gnostica.app-state :as app-state]
             [gnostica.board :as board]
@@ -125,6 +126,50 @@
 (defn- move-control-group-summary [db]
   (mapv #(select-keys % [:type :power :action-power])
         (:control-groups (app-state/move-panel-view db))))
+
+(defn- read-source-forms [path]
+  (with-open [reader (java.io.PushbackReader. (io/reader path))]
+    (loop [forms []]
+      (let [form (read {:eof ::eof} reader)]
+        (if (= ::eof form)
+          forms
+          (recur (conj forms form)))))))
+
+(defn- form-nodes [form]
+  (tree-seq coll? seq form))
+
+(defn- move-selection-emitted-control-group-types []
+  (->> (read-source-forms "src/main/gnostica/move_selection.cljc")
+       (mapcat form-nodes)
+       (keep (fn [node]
+               (when (seq? node)
+                 (case (first node)
+                   control-group (let [type (second node)]
+                                   (when (keyword? type) type))
+                   power-control-group (let [type (nth node 2 nil)]
+                                         (when (keyword? type) type))
+                   major-action-control-group (let [type (nth node 3 nil)]
+                                                (when (keyword? type) type))
+                   nil))))
+       set))
+
+(defn- move-panel-render-control-group-branches []
+  (let [forms (read-source-forms "src/main/gnostica/ui/move_panel.cljs")
+        render-form (some #(when (and (seq? %)
+                                      (= 'defn- (first %))
+                                      (= 'render-control-group (second %)))
+                             %)
+                          forms)
+        case-form (some #(when (and (seq? %)
+                                    (= 'case (first %))
+                                    (= 'type (second %)))
+                           %)
+                        (form-nodes render-form))
+        clauses (drop 2 case-form)
+        branch-clauses (if (odd? (count clauses))
+                         (butlast clauses)
+                         clauses)]
+    (into {} (map vec (partition 2 branch-clauses)))))
 
 (defn- action-ribbon-step-summary [view]
   (mapv #(select-keys % [:power :status :board-index :compound?])
@@ -1498,6 +1543,20 @@
              :power :empress
              :action-power :cup}]
            (move-control-group-summary world-cup-db)))))
+
+(deftest move-panel-renderer-covers-emitted-control-groups
+  (let [emitted-types (move-selection-emitted-control-group-types)
+        rendered-branches (move-panel-render-control-group-branches)
+        rendered-types (set (keys rendered-branches))
+        missing-types (sort (remove rendered-types emitted-types))
+        nil-render-types (sort (keep (fn [[type rendered-form]]
+                                       (when (and (contains? emitted-types type)
+                                                  (nil? rendered-form))
+                                         type))
+                                     rendered-branches))]
+    (is (seq emitted-types))
+    (is (= [] missing-types))
+    (is (= [] nil-render-types))))
 
 (deftest action-ribbon-tracks-ordered-major-steps
   (let [db (app-state/initialize

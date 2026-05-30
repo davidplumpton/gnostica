@@ -900,6 +900,9 @@
       :major-action-count
       [major-action-count-choices major-action-count-options major-action-count]
 
+      :sword-action-count
+      [sword-action-count-choices sword-action-count-options (:sword-action-count params)]
+
       :world-copy
       [world-copy-choices world-copy-options (:copied-board-index params)
        (:territories legal-targets)]
