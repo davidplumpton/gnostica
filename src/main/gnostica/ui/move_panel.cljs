@@ -1048,6 +1048,54 @@
 
       nil)))
 
+(defn- action-ribbon-status-label [status]
+  (case status
+    :done "Done"
+    :ready "Ready"
+    :active "Active"
+    :pending "Next"
+    :skipped "Skipped"
+    "Step"))
+
+(defn- action-ribbon-step [{:keys [id label status detail board-index]}]
+  ^{:key id}
+  [:li.action-ribbon__step
+   {:class (str "is-" (name status))}
+   [:span.action-ribbon__status
+    (action-ribbon-status-label status)]
+   [:span.action-ribbon__label label]
+   [:span.action-ribbon__detail
+    (cond-> (or detail "")
+      board-index
+      (str " · board " board-index))]])
+
+(defn- action-ribbon-view
+  ([ribbon]
+   (action-ribbon-view ribbon nil))
+  ([{:keys [visible? summary steps prompt ready?]} {:keys [actions?]}]
+   (when visible?
+     [:section.action-ribbon
+      {:aria-label "Action sequence"}
+      [:div.action-ribbon__heading
+       [:p.eyebrow "Sequence"]
+       [:strong (or summary "Major power")]]
+      [:ol.action-ribbon__steps
+       (for [step steps]
+         [action-ribbon-step step])]
+      [:p.action-ribbon__prompt
+       (if ready? "Ready to confirm." prompt)]
+      (when actions?
+        [:div.move-actions.action-ribbon__actions
+         [:button.move-action
+          {:type "button"
+           :on-click #(rf/dispatch [events/cancel-move])}
+          "Cancel"]
+         [:button.move-action.is-primary
+          {:type "button"
+           :disabled (not ready?)
+           :on-click #(rf/dispatch [events/confirm-move])}
+          "Confirm"]])])))
+
 (defn- move-active-controls [selection controls control-groups]
   [:<>
    (for [[index group] (map-indexed vector control-groups)]
@@ -1063,6 +1111,7 @@
 
 (defn pending-move-tray []
   (let [{:keys [active? summary alternatives error ready? can-confirm?
+                action-ribbon
                 can-cancel? detailed-entry-label detailed-open?]}
         @(rf/subscribe [events/pending-move-tray-view])]
     (when active?
@@ -1073,6 +1122,7 @@
         [:span.pending-move-tray__status
          (if ready? "Ready" "Needs choice")]]
        [:p.pending-move-tray__summary summary]
+       [action-ribbon-view action-ribbon]
        (when (and (not ready?) (seq alternatives))
          [pending-missing-fields alternatives])
        (when error
@@ -1097,7 +1147,8 @@
          "Confirm"]]])))
 
 (defn move-panel []
-  (let [{:keys [current-player selection source-options prompt ready? controls control-groups]}
+  (let [{:keys [current-player selection source-options prompt ready? controls
+                control-groups action-ribbon]}
         @(rf/subscribe [events/move-panel-view])
         {:keys [source error]} selection]
     [:section.move-panel
@@ -1116,6 +1167,7 @@
         "Close"]]]
      [move-source-picker source-options source current-player]
      [:p.move-panel__prompt prompt]
+     [action-ribbon-view action-ribbon {:actions? true}]
      (when source
        [move-active-controls selection controls control-groups])
      (when error

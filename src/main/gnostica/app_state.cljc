@@ -693,6 +693,7 @@
 (def move-selection move-selection/move-selection)
 (def move-params move-selection/move-params)
 (def move-control-groups move-selection/move-control-groups)
+(def move-action-ribbon move-selection/move-action-ribbon)
 (def move-power-options move-selection/move-power-options)
 (def move-power move-selection/move-power)
 (def move-world-copy-options move-selection/move-world-copy-options)
@@ -744,7 +745,8 @@
       (set-panel-open :move true)))
 
 (defn pending-move-tray-view [db]
-  (gesture-intent/pending-move-tray-view db))
+  (assoc (gesture-intent/pending-move-tray-view db)
+         :action-ribbon (move-action-ribbon db)))
 
 (defn cancel-move [db]
   (cancel-gesture-intent db))
@@ -825,6 +827,7 @@
 
 (defn move-panel-view-model
   [{:keys [current-player selection source-options prompt ready? control-groups
+           action-ribbon
            board power power-options rod-mode-options disc-action-count-options
            major-action-count-options major-action-count
            world-copy-options world-copied-power-options world-copied-power
@@ -847,6 +850,7 @@
    :prompt prompt
    :ready? ready?
    :control-groups control-groups
+   :action-ribbon action-ribbon
    :controls {:board board
               :power power
               :power-options power-options
@@ -896,6 +900,7 @@
     :prompt (move-prompt db)
     :ready? (move-ready? db)
     :control-groups (move-control-groups db)
+    :action-ribbon (move-action-ribbon db)
     :board (board db)
     :power (move-power db)
     :power-options (move-power-options db)

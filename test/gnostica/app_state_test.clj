@@ -126,6 +126,10 @@
   (mapv #(select-keys % [:type :power :action-power])
         (:control-groups (app-state/move-panel-view db))))
 
+(defn- action-ribbon-step-summary [view]
+  (mapv #(select-keys % [:power :status :board-index :compound?])
+        (get-in view [:action-ribbon :steps])))
+
 (defn- remove-board-cell [db board-index]
   (let [cell (board-cell-by-index db board-index)]
     (cond-> (update-in db [:game :board]
@@ -1481,6 +1485,150 @@
              :power :empress
              :action-power :cup}]
            (move-control-group-summary world-cup-db)))))
+
+(deftest action-ribbon-tracks-ordered-major-steps
+  (let [db (app-state/initialize
+            {:player-specs test-player-specs
+             :game-options {:deck-order (deck-starting-with ["empress"])}
+             :demo-board-pieces [rose-hand-piece]})
+        power-db (-> db
+                     (app-state/select-move-source :play-hand-card)
+                     (app-state/select-move-hand-card "empress")
+                     (app-state/select-move-piece :rose-striker)
+                     (app-state/select-move-power :empress))
+        orient-db (app-state/set-move-minion-orientation power-db :north)
+        target-db (app-state/select-board-card orient-db 5)
+        ready-db (app-state/set-move-orientation target-db :north)]
+    (is (= {:visible? true
+            :power :empress
+            :power-label "Empress"
+            :summary "Empress"
+            :ready? false}
+           (select-keys (:action-ribbon (app-state/move-panel-view power-db))
+                        [:visible? :power :power-label :summary :ready?])))
+    (is (= [{:power :orient-minion
+             :status :active}
+            {:power :cup
+             :status :pending}]
+           (action-ribbon-step-summary (app-state/move-panel-view power-db))))
+    (is (= [{:power :orient-minion
+             :status :done}
+            {:power :cup
+             :status :active}]
+           (action-ribbon-step-summary (app-state/move-panel-view orient-db))))
+    (is (= [{:power :orient-minion
+             :status :done}
+            {:power :cup
+             :status :ready}]
+           (action-ribbon-step-summary (app-state/move-panel-view ready-db))))
+    (is (true? (get-in (app-state/move-panel-view ready-db)
+                       [:action-ribbon :ready?])))))
+
+(deftest action-ribbon-represents-trade-only-major-paths
+  (let [justice-db (app-state/initialize
+                    {:player-specs test-player-specs
+                     :game-options {:deck-order (deck-starting-with ["justice"])}
+                     :demo-board-pieces [rose-rod-minion
+                                         indigo-rod-target]})
+        justice-power-db (-> justice-db
+                             (app-state/select-move-source :play-hand-card)
+                             (app-state/select-move-hand-card "justice")
+                             (app-state/select-move-piece :rose-rod-minion)
+                             (app-state/select-move-power :justice))
+        justice-trade-only-db (app-state/set-move-major-action-count
+                               justice-power-db
+                               1)
+        justice-ready-db (app-state/select-move-target-piece
+                          justice-trade-only-db
+                          :indigo-rod-target)
+        hanged-target {:id :indigo-hanged-target
+                       :player-id :indigo
+                       :space-index 4
+                       :size :small
+                       :orientation :north}
+        hanged-db (app-state/initialize
+                   {:player-specs test-player-specs
+                    :game-options {:deck-order (deck-starting-with ["hangedman"])}
+                    :demo-board-pieces [rose-rod-minion
+                                        hanged-target]})
+        hanged-trade-only-db (-> hanged-db
+                                 (app-state/select-move-source :play-hand-card)
+                                 (app-state/select-move-hand-card "hangedman")
+                                 (app-state/select-move-piece :rose-rod-minion)
+                                 (app-state/select-move-power :hanged-man)
+                                 (app-state/set-move-major-action-count 1))]
+    (is (= [{:power :trade-hand
+             :status :active}
+            {:power :sword
+             :status :skipped}]
+           (action-ribbon-step-summary
+            (app-state/move-panel-view justice-trade-only-db))))
+    (is (= [{:power :trade-hand
+             :status :done}
+            {:power :sword
+             :status :skipped}]
+           (action-ribbon-step-summary
+            (app-state/move-panel-view justice-ready-db))))
+    (is (= [{:power :rod
+             :status :skipped}
+            {:power :trade-hand
+             :status :active}]
+           (action-ribbon-step-summary
+            (app-state/move-panel-view hanged-trade-only-db))))
+    (is (= [{:id 1 :label "Trade only"}
+            {:id 2 :label "Use both"}]
+           (get-in (app-state/move-panel-view justice-power-db)
+                   [:controls :major-action-count-options])))))
+
+(deftest action-ribbon-reuses-current-staging-for-gestures-and-world-copies
+  (let [gesture-db (app-state/initialize
+                    {:player-specs test-player-specs
+                     :game-options {:deck-order (deck-starting-with ["empress"])}
+                     :demo-board-pieces [rose-hand-piece]})
+        pending-db (app-state/start-gesture-intent
+                    gesture-db
+                    {:source {:kind :hand-card
+                              :card-id "empress"}
+                     :fields {:piece-id :rose-striker
+                              :power :empress
+                              :minion-orientation :east}
+                     :target {:kind :territory
+                              :board-index 3}})
+        world-db (app-state/initialize
+                  {:player-specs test-player-specs
+                   :game-options
+                   {:deck-order
+                    (deck-with-cards-at
+                     {0 "world"
+                      (board-card-position test-player-specs 3) "empress"})}
+                   :demo-board-pieces [(assoc rose-source-piece
+                                              :orientation :north)]})
+        world-copy-db (-> world-db
+                          (app-state/select-move-source :play-hand-card)
+                          (app-state/select-move-hand-card "world")
+                          (app-state/select-move-piece :rose-scout)
+                          (app-state/select-move-world-copy 3)
+                          (app-state/select-move-power :empress))
+        world-ribbon (:action-ribbon (app-state/move-panel-view world-copy-db))]
+    (is (= [{:power :orient-minion
+             :status :done}
+            {:power :cup
+             :status :active}]
+           (action-ribbon-step-summary
+            (app-state/pending-move-tray-view pending-db))))
+    (is (= "World copies Empress"
+           (:summary world-ribbon)))
+    (is (= [{:power :world-copy
+             :status :done
+             :board-index 3}
+            {:power :world-power
+             :status :done}
+            {:power :orient-minion
+             :status :active}
+            {:power :cup
+             :status :pending}]
+           (action-ribbon-step-summary
+            (app-state/move-panel-view world-copy-db))))))
 
 (deftest no-piece-player-with-hand-room-must-place-initial-small
   (let [initial-db (app-state/initialize {:player-specs test-player-specs

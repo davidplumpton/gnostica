@@ -87,6 +87,7 @@
 (def move-prompt :gnostica.app/move-prompt)
 (def move-ready? :gnostica.app/move-ready?)
 (def move-control-groups :gnostica.app/move-control-groups)
+(def move-action-ribbon :gnostica.app/move-action-ribbon)
 (def move-piece-options :gnostica.app/move-piece-options)
 (def move-hand-card-options :gnostica.app/move-hand-card-options)
 (def move-source-board-options :gnostica.app/move-source-board-options)
@@ -101,6 +102,8 @@
 (def move-world-copied-power :gnostica.app/move-world-copied-power)
 (def move-rod-mode-options :gnostica.app/move-rod-mode-options)
 (def move-disc-action-count-options :gnostica.app/move-disc-action-count-options)
+(def move-major-action-count-options :gnostica.app/move-major-action-count-options)
+(def move-major-action-count :gnostica.app/move-major-action-count)
 (def move-sword-action-count-options :gnostica.app/move-sword-action-count-options)
 (def move-devil-action-count-options :gnostica.app/move-devil-action-count-options)
 (def move-sun-disc-mode-options :gnostica.app/move-sun-disc-mode-options)
@@ -572,6 +575,11 @@ select-move-rod-mode
    (app-state/move-control-groups db)))
 
 (rf/reg-sub
+ move-action-ribbon
+ (fn [db _]
+   (app-state/move-action-ribbon db)))
+
+(rf/reg-sub
  move-piece-options
  (fn [db _]
    (app-state/move-piece-options db)))
@@ -645,6 +653,16 @@ move-rod-mode-options
  move-disc-action-count-options
  (fn [db _]
    (app-state/move-disc-action-count-options db)))
+
+(rf/reg-sub
+ move-major-action-count-options
+ (fn [db _]
+   (app-state/move-major-action-count-options db)))
+
+(rf/reg-sub
+ move-major-action-count
+ (fn [db _]
+   (app-state/move-major-action-count db)))
 
 (rf/reg-sub
  move-sword-action-count-options
@@ -853,6 +871,7 @@ move-rod-orientation-required?
  :<- [move-prompt]
  :<- [move-ready?]
  :<- [move-control-groups]
+ :<- [move-action-ribbon]
  :<- [board]
  :<- [move-power]
  :<- [move-power-options]
@@ -861,6 +880,8 @@ move-rod-orientation-required?
  :<- [move-world-copied-power]
  :<- [move-rod-mode-options]
  :<- [move-disc-action-count-options]
+ :<- [move-major-action-count-options]
+ :<- [move-major-action-count]
  :<- [move-sword-action-count-options]
  :<- [move-devil-action-count-options]
  :<- [move-sun-disc-mode-options]
@@ -891,9 +912,11 @@ move-rod-orientation-required?
  :<- [move-damage-options]
  :<- [draw-count-options]
  :<- [move-legal-targets]
-(fn [[current-player selection source-options prompt ready? control-groups board power
+(fn [[current-player selection source-options prompt ready? control-groups
+       action-ribbon board power
        power-options world-copy-options world-copied-power-options world-copied-power
        rod-mode-options disc-action-count-options
+       major-action-count-options major-action-count
        sword-action-count-options devil-action-count-options
        sun-disc-mode-options fool-reveal-count-options
        high-priestess-redraw-count-options high-priestess-redraw-options
@@ -913,6 +936,7 @@ move-rod-orientation-required?
      :prompt prompt
      :ready? ready?
      :control-groups control-groups
+     :action-ribbon action-ribbon
      :board board
      :power power
      :power-options power-options
@@ -921,6 +945,8 @@ move-rod-orientation-required?
      :world-copied-power world-copied-power
      :rod-mode-options rod-mode-options
      :disc-action-count-options disc-action-count-options
+     :major-action-count-options major-action-count-options
+     :major-action-count major-action-count
      :sword-action-count-options sword-action-count-options
      :devil-action-count-options devil-action-count-options
      :sun-disc-mode-options sun-disc-mode-options
