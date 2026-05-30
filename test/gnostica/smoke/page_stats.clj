@@ -493,6 +493,109 @@
      };
    })()")
 
+(def direct-drop-fallback-stats-js
+  "(() => {
+     const text = (node) => node ? node.textContent.trim() : '';
+     const status = document.querySelector('.board-3d-status');
+     const stage = document.querySelector('.board-fallback .board-stage');
+     const movePanel = document.querySelector('.move-panel');
+     const sourceButtons = Array.from(document.querySelectorAll('.move-source-option'));
+     const firstPieceSource = sourceButtons.find((button) => text(button).includes('Place first piece'));
+     return {
+       fallback: Boolean(document.querySelector('.board-fallback')),
+       canvas: Boolean(document.querySelector('.board-three__canvas')),
+       cssCards: document.querySelectorAll('.board-fallback .board-card').length,
+       cssWastelands: document.querySelectorAll('.board-fallback .board-wasteland').length,
+       pieceCount: document.querySelectorAll('.board-fallback .board-piece').length,
+       northPieceCount: document.querySelectorAll('.board-fallback .board-piece.is-north').length,
+       smallPieceCount: document.querySelectorAll('.board-fallback .board-piece.is-small').length,
+       rosePieceCount: document.querySelectorAll('.board-fallback .board-piece[data-piece-id^=\"rose-\"]').length,
+       pendingActive: Boolean(document.querySelector('.pending-move-tray')),
+       movePanelOpen: Boolean(movePanel),
+       movePanelActive: Boolean(movePanel && movePanel.classList.contains('is-active')),
+       firstPieceSourceVisible: Boolean(firstPieceSource),
+       firstPieceSourceDisabled: firstPieceSource ? firstPieceSource.disabled : null,
+       firstPieceSourceText: text(firstPieceSource),
+       pointerDragEnabled: stage ? stage.dataset.pointerDragEnabled === 'true' : null,
+       tableSurfaceColor: stage ? stage.dataset.tableSurfaceColor : null,
+       tableClearColor: stage ? stage.dataset.tableClearColor : null,
+       statusText: status ? status.textContent.trim() : ''
+     };
+   })()")
+
+(def initial-placement-drop-js
+  "(() => {
+     const text = (node) => node ? node.textContent.trim() : '';
+     const sourceButtons = Array.from(document.querySelectorAll('.move-source-option'));
+     const source = sourceButtons.find((button) => text(button).includes('Place first piece'));
+     const target = document.querySelector('.board-fallback .board-card');
+     if (!source || !target) {
+       return {
+         dropped: false,
+         reason: source ? 'No CSS fallback board-card drop target found.' : 'No Place first piece source found.',
+         sourceCount: sourceButtons.length,
+         targetCount: document.querySelectorAll('.board-fallback .board-card').length
+       };
+     }
+     const dataTransfer = new DataTransfer();
+     const dragStart = new DragEvent('dragstart', {
+       bubbles: true,
+       cancelable: true,
+       dataTransfer
+     });
+     const dragStartDispatched = source.dispatchEvent(dragStart);
+     const dragOver = new DragEvent('dragover', {
+       bubbles: true,
+       cancelable: true,
+       dataTransfer
+     });
+     const dragOverDispatched = target.dispatchEvent(dragOver);
+     const drop = new DragEvent('drop', {
+       bubbles: true,
+       cancelable: true,
+       dataTransfer
+     });
+     const dropDispatched = target.dispatchEvent(drop);
+     return {
+       dropped: true,
+       dragStartDispatched,
+       dragOverDispatched,
+       dropDispatched,
+       sourceText: text(source),
+       targetText: text(target),
+       payload: dataTransfer.getData('application/gnostica-gesture')
+     };
+   })()")
+
+(def choose-north-orientation-js
+  "(() => {
+     const text = (node) => node ? node.textContent.trim() : '';
+     const steps = Array.from(document.querySelectorAll('.move-panel .move-step'));
+     const step = steps.find((node) => text(node.querySelector('.move-step__header span')) === 'Orientation');
+     const choices = Array.from(step ? step.querySelectorAll('button.move-chip') : []);
+     const north = choices.find((button) => text(button) === 'North');
+     if (north) north.click();
+     return {
+       selected: Boolean(north),
+       stepText: text(step),
+       choiceLabels: choices.map(text)
+     };
+   })()")
+
+(def confirm-pending-move-js
+  "(() => {
+     const text = (node) => node ? node.textContent.trim() : '';
+     const buttons = Array.from(document.querySelectorAll('.pending-move-tray button'));
+     const confirm = buttons.find((button) => text(button) === 'Confirm');
+     const canConfirm = Boolean(confirm && !confirm.disabled);
+     if (canConfirm) confirm.click();
+     return {
+       clicked: canConfirm,
+       confirmVisible: Boolean(confirm),
+       confirmDisabled: confirm ? confirm.disabled : null
+     };
+   })()")
+
 (def three-piece-drag-points-js
   "(() => {
      const canvas = document.querySelector('.board-three__canvas');
@@ -537,6 +640,13 @@
        fixtures/smoke-query-param
        "="
        fixtures/smoke-major-icons-mode))
+
+(defn direct-drop-smoke-url [url]
+  (str url
+       (if (str/includes? url "?") "&" "?")
+       fixtures/smoke-query-param
+       "="
+       fixtures/smoke-direct-drop-mode))
 
 (defn velvet-pixel? [argb]
   (let [r (bit-and (bit-shift-right argb 16) 0xff)
@@ -839,11 +949,44 @@
        (true? (get stats "cancelVisible"))
        (true? (get stats "detailedVisible"))))
 
+(defn pending-tray-ready? [stats]
+  (and (true? (get stats "active"))
+       (= "Ready" (get stats "status"))
+       (seq (get stats "summary"))
+       (true? (get stats "confirmVisible"))
+       (true? (get stats "canConfirm"))
+       (true? (get stats "cancelVisible"))))
+
 (defn pending-tray-detailed-open-ready? [stats]
   (and (pending-tray-needs-choice-ready? stats)
        (= "true" (get stats "detailedPressed"))
        (true? (get stats "panelOpen"))
        (true? (get stats "panelActive"))))
+
+(defn direct-drop-fallback-ready? [stats]
+  (and (true? (get stats "fallback"))
+       (false? (get stats "canvas"))
+       (= 9 (long (or (get stats "cssCards") -1)))
+       (= 12 (long (or (get stats "cssWastelands") -1)))
+       (zero? (long (or (get stats "pieceCount") -1)))
+       (true? (get stats "movePanelOpen"))
+       (false? (get stats "movePanelActive"))
+       (true? (get stats "firstPieceSourceVisible"))
+       (false? (get stats "firstPieceSourceDisabled"))
+       (true? (get stats "pointerDragEnabled"))
+       (= expected-table-surface-color (get stats "tableSurfaceColor"))
+       (= expected-table-clear-color (get stats "tableClearColor"))
+       (str/includes? (or (get stats "statusText") "") "Three.js is unavailable")))
+
+(defn direct-drop-confirmed? [stats]
+  (and (true? (get stats "fallback"))
+       (false? (get stats "canvas"))
+       (= 1 (long (or (get stats "pieceCount") -1)))
+       (= 1 (long (or (get stats "northPieceCount") -1)))
+       (= 1 (long (or (get stats "smallPieceCount") -1)))
+       (= 1 (long (or (get stats "rosePieceCount") -1)))
+       (false? (get stats "pendingActive"))
+       (true? (get stats "firstPieceSourceDisabled"))))
 
 (defn touch-input-ready? [stats]
   (and (map? stats)

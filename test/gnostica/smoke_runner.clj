@@ -26,6 +26,24 @@
     (throw (ex-info (str description " did not write a gesture payload.")
                     {:result result}))))
 
+(defn- assert-drop-started! [description result]
+  (when-not (true? (get result "dropped"))
+    (throw (ex-info (str description " did not drop.")
+                    {:result result})))
+  (when-not (seq (get result "payload"))
+    (throw (ex-info (str description " did not carry a gesture payload.")
+                    {:result result}))))
+
+(defn- assert-clicked! [description result]
+  (when-not (true? (get result "clicked"))
+    (throw (ex-info (str description " was not clicked.")
+                    {:result result}))))
+
+(defn- assert-selected! [description result]
+  (when-not (true? (get result "selected"))
+    (throw (ex-info (str description " was not selected.")
+                    {:result result}))))
+
 (defn- assert-touch-input! [description result ready?]
   (when-not (ready? result)
     (throw (ex-info (str description " did not produce touch input events.")
@@ -254,6 +272,59 @@
          :pending pending
          :detailed detailed}))))
 
+(defn- run-confirmed-fallback-direct-drop! [http-client chrome url]
+  (println "Smoke checking confirmed CSS direct drop.")
+  (let [client (open-gnostica-page! http-client
+                                    chrome
+                                    (first stats/viewports)
+                                    (stats/direct-drop-smoke-url url)
+                                    ["*cdn.jsdelivr.net/npm/three@0.128.0*"])]
+    (try
+      (browser/wait-for! client
+                         "direct-drop CSS fallback setup"
+                         stats/direct-drop-fallback-stats-js
+                         stats/direct-drop-fallback-ready?)
+      (let [drop-result (browser/evaluate! client stats/initial-placement-drop-js)]
+        (assert-drop-started! "CSS initial-placement source-to-board drop" drop-result)
+        (let [pending (browser/wait-for! client
+                                         "CSS initial-placement pending tray"
+                                         stats/pending-tray-stats-js
+                                         stats/pending-tray-needs-choice-ready?)]
+          (browser/evaluate! client stats/open-detailed-entry-js)
+          (browser/wait-for! client
+                             "CSS initial-placement Detailed entry"
+                             stats/pending-tray-stats-js
+                             stats/pending-tray-detailed-open-ready?)
+          (let [orientation-result (browser/evaluate! client
+                                                      stats/choose-north-orientation-js)]
+            (assert-selected! "North orientation" orientation-result)
+            (let [ready (browser/wait-for! client
+                                           "CSS initial-placement ready tray"
+                                           stats/pending-tray-stats-js
+                                           stats/pending-tray-ready?)
+                  confirm-result (browser/evaluate! client
+                                                    stats/confirm-pending-move-js)]
+              (assert-clicked! "CSS initial-placement Confirm" confirm-result)
+              (let [confirmed (browser/wait-for! client
+                                                 "CSS initial-placement confirmed board state"
+                                                 stats/direct-drop-fallback-stats-js
+                                                 stats/direct-drop-confirmed?)]
+                {:drop-result drop-result
+                 :pending pending
+                 :orientation-result orientation-result
+                 :ready ready
+                 :confirm-result confirm-result
+                 :confirmed confirmed})))))
+      (catch Exception error
+        (throw (ex-info "Confirmed CSS direct drop smoke failed."
+                        {:url url
+                         :browser-diagnostics (browser/browser-diagnostics client)
+                         :cause (ex-message error)
+                         :data (ex-data error)}
+                        error)))
+      (finally
+        (browser/close-cdp! client)))))
+
 (defn- run-missing-three-fallback! [http-client chrome url]
   (println "Smoke checking missing-Three.js fallback path.")
   (let [client (open-gnostica-page! http-client
@@ -328,6 +399,7 @@
           (doseq [viewport stats/viewports]
             (run-happy-viewport! http-client chrome (:url target) viewport))
           (run-missing-three-fallback! http-client chrome (:url target))
+          (run-confirmed-fallback-direct-drop! http-client chrome (:url target))
           (run-mismatched-three-fallback! http-client chrome (:url target))
           (println "3D board smoke passed.")
           (finally

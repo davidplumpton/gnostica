@@ -7,6 +7,8 @@
 
 (def smoke-major-icons-mode "major-icons")
 
+(def smoke-direct-drop-mode "direct-drop")
+
 (def dev-shared-control-query-param "gnostica-dev-shared-control")
 
 (def shared-local-controller
@@ -98,12 +100,23 @@
                  remaining-cards))))
 
 (defn smoke-init-options [smoke-mode]
-  (when (= smoke-major-icons-mode smoke-mode)
+  (case smoke-mode
+    "major-icons"
     {:start-in-lobby? false
      :bypass-lobby? true
      :player-specs (mapv #(select-keys % [:id :name]) pieces/players)
      :demo-board-pieces smoke-board-pieces
-     :game-options {:deck-order (major-icon-smoke-deck-order)}}))
+     :game-options {:deck-order (major-icon-smoke-deck-order)}}
+
+    "direct-drop"
+    {:start-in-lobby? false
+     :bypass-lobby? true
+     :player-specs default-browser-lobby-player-specs
+     :open-panels #{:cards :move}
+     :demo-board-pieces []
+     :game-options {:shuffle-fn identity}}
+
+    nil))
 
 (defn merge-init-options [& options]
   (reduce (fn [merged option]

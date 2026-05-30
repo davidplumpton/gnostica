@@ -53,6 +53,15 @@
             :game-options {:deck-order deck-order}}
            (fixtures/smoke-init-options fixtures/smoke-major-icons-mode)))))
 
+(deftest direct-drop-smoke-init-options-start-no-piece-confirmation-page
+  (is (= {:start-in-lobby? false
+          :bypass-lobby? true
+          :player-specs fixtures/default-browser-lobby-player-specs
+          :open-panels #{:cards :move}
+          :demo-board-pieces []
+          :game-options {:shuffle-fn identity}}
+         (fixtures/smoke-init-options fixtures/smoke-direct-drop-mode))))
+
 (deftest browser-lobby-init-options-prefill-two-local-players
   (is (= {:start-in-lobby? true
           :player-specs [{:id :rose
