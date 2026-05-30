@@ -587,6 +587,94 @@ img {
   font-weight: 800;
 }
 
+.starting-bid__redraw {
+  display: grid;
+  gap: 0.55rem;
+  min-width: 0;
+}
+
+.starting-bid__redraw-heading,
+.starting-bid__redraw-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.65rem;
+  min-width: 0;
+}
+
+.starting-bid__redraw-heading span,
+.starting-bid__redraw-count {
+  flex: 0 0 auto;
+  color: var(--accent);
+  font-size: 0.8rem;
+  font-weight: 800;
+}
+
+.starting-bid__redraw-options {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+  gap: 0.45rem;
+  min-width: 0;
+}
+
+.starting-bid__redraw-card {
+  min-height: 2.2rem;
+  padding: 0.35rem 0.55rem;
+  border: 1px solid rgba(255, 250, 240, 0.24);
+  border-radius: 6px;
+  background: rgba(38, 49, 47, 0.62);
+  color: var(--ink);
+  font-size: 0.8rem;
+  font-weight: 800;
+  line-height: 1.2;
+  cursor: pointer;
+}
+
+.starting-bid__redraw-card:hover,
+.starting-bid__redraw-card:focus-visible {
+  border-color: var(--focus);
+  outline: 2px solid rgba(159, 247, 231, 0.34);
+  outline-offset: 2px;
+}
+
+.starting-bid__redraw-order {
+  display: grid;
+  gap: 0.35rem;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.starting-bid__redraw-row {
+  padding: 0.45rem 0.55rem;
+  border: 1px solid rgba(255, 250, 240, 0.12);
+  border-radius: 6px;
+  background: rgba(38, 49, 47, 0.38);
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.starting-bid__redraw-row.is-active {
+  border-color: rgba(159, 247, 231, 0.42);
+}
+
+.starting-bid__redraw-row.is-complete {
+  color: var(--ink);
+}
+
+.starting-bid__redraw-player {
+  flex: 0 0 auto;
+  font-weight: 800;
+}
+
+.starting-bid__redraw-cards {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .lobby-player {
   display: grid;
   grid-template-columns: auto minmax(8rem, 1.2fr) minmax(8rem, 1fr) auto;

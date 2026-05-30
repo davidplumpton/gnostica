@@ -468,7 +468,16 @@
                         (app-state/select-lobby-bid-card :indigo "fool"))
         revealed-db (app-state/reveal-lobby-bids selected-db)
         revealed-view (app-state/lobby-view revealed-db)
-        started-db (app-state/confirm-lobby-bidding revealed-db)
+        premature-db (app-state/confirm-lobby-bidding revealed-db)
+        rose-redraw-db (app-state/select-lobby-redraw-card revealed-db
+                                                           :rose
+                                                           "fool")
+        rose-redraw-view (app-state/lobby-view rose-redraw-db)
+        redrawn-db (app-state/select-lobby-redraw-card rose-redraw-db
+                                                       :indigo
+                                                       "cupsking")
+        redrawn-view (app-state/lobby-view redrawn-db)
+        started-db (app-state/confirm-lobby-bidding redrawn-db)
         state (app-state/game started-db)]
     (is (nil? (app-state/game bidding-db)))
     (is (true? (get-in bidding-view [:starting-bid :active?])))
@@ -477,9 +486,27 @@
            (take 1 (mapv :id (:bid-card-options
                               (first (:players bidding-view)))))))
     (is (nil? (app-state/game revealed-db)))
-    (is (= :resolved (get-in revealed-view [:starting-bid :stage])))
+    (is (= :redrawing (get-in revealed-view [:starting-bid :stage])))
     (is (= :indigo (get-in revealed-view [:starting-bid :winner-id])))
-    (is (true? (get-in revealed-view [:starting-bid :can-confirm?])))
+    (is (false? (get-in revealed-view [:starting-bid :can-confirm?])))
+    (is (= :rose (get-in revealed-view
+                         [:starting-bid :redraw :active-player-id])))
+    (is (= ["cupsking" "fool"]
+           (mapv :id (get-in revealed-view
+                             [:starting-bid :redraw :card-options]))))
+    (is (nil? (app-state/game premature-db)))
+    (is (= :starting-bid-redraw-incomplete
+           (get-in premature-db [:lobby :error :code])))
+    (is (= :indigo (get-in rose-redraw-view
+                           [:starting-bid :redraw :active-player-id])))
+    (is (= ["fool"]
+           (get-in rose-redraw-view
+                   [:starting-bid :redraw-order 0 :card-ids])))
+    (is (= ["cupsking"]
+           (mapv :id (get-in rose-redraw-view
+                             [:starting-bid :redraw :card-options]))))
+    (is (= :resolved (get-in redrawn-view [:starting-bid :stage])))
+    (is (true? (get-in redrawn-view [:starting-bid :can-confirm?])))
     (is (nil? (app-state/lobby started-db)))
     (is (= :indigo (get-in state [:setup :starting-player-id])))
     (is (= [:indigo :rose] (get-in state [:turn :order])))
@@ -491,11 +518,73 @@
     (is (= [:rose :indigo]
            (get-in state [:setup :bid-redraw-order])))
     (is (= [{:player-id :rose
-             :card-ids ["cupsking"]}
+             :card-ids ["fool"]}
             {:player-id :indigo
-             :card-ids ["fool"]}]
+             :card-ids ["cupsking"]}]
            (get-in state [:setup :bid-redraws])))
     (is (game-schema/valid-game? state))))
+
+(deftest lobby-starting-bid-redraws-follow-order-and-prevent_invalid_choices
+  (let [three-player-specs [{:id :rose}
+                            {:id :indigo}
+                            {:id :gold}]
+        db (app-state/initialize
+            {:start-in-lobby? true
+             :player-specs three-player-specs
+             :game-options {:deck-order (deck-with-cards-at
+                                          {0 "cupsking"
+                                           1 "coins2"
+                                           6 "swordsking"
+                                           7 "cups3"
+                                           12 "wandsqueen"
+                                           13 "world"})}})
+        redrawing-db (-> db
+                         app-state/start-lobby-bidding
+                         (app-state/select-lobby-bid-card :rose "cupsking")
+                         (app-state/select-lobby-bid-card :indigo "swordsking")
+                         (app-state/select-lobby-bid-card :gold "wandsqueen")
+                         app-state/reveal-lobby-bids
+                         (app-state/select-lobby-bid-card :rose "coins2")
+                         (app-state/select-lobby-bid-card :indigo "cups3")
+                         (app-state/select-lobby-bid-card :gold "world")
+                         app-state/reveal-lobby-bids)
+        redrawing-view (app-state/lobby-view redrawing-db)
+        inactive-db (app-state/select-lobby-redraw-card redrawing-db
+                                                        :rose
+                                                        "world")
+        first-redraw-db (app-state/select-lobby-redraw-card redrawing-db
+                                                            :indigo
+                                                            "world")
+        duplicate-db (app-state/select-lobby-redraw-card first-redraw-db
+                                                         :indigo
+                                                         "world")
+        second-redraw-db (app-state/select-lobby-redraw-card first-redraw-db
+                                                             :indigo
+                                                             "cupsking")
+        second-redraw-view (app-state/lobby-view second-redraw-db)]
+    (is (nil? (app-state/game redrawing-db)))
+    (is (= [:indigo :rose :gold]
+           (mapv :player-id
+                 (get-in redrawing-view [:starting-bid :redraw-order]))))
+    (is (= :indigo (get-in redrawing-view
+                           [:starting-bid :redraw :active-player-id])))
+    (is (= ["cupsking" "swordsking" "wandsqueen"
+            "coins2" "cups3" "world"]
+           (mapv :id (get-in redrawing-view
+                             [:starting-bid :redraw :card-options]))))
+    (is (= :inactive-starting-bid-redraw-player
+           (get-in inactive-db [:lobby :error :code])))
+    (is (= {} (get-in inactive-db [:lobby :starting-bid :redraws])))
+    (is (= :invalid-bid-redraw-card
+           (get-in duplicate-db [:lobby :error :code])))
+    (is (= {:indigo ["world"]}
+           (get-in duplicate-db [:lobby :starting-bid :redraws])))
+    (is (= :rose (get-in second-redraw-view
+                         [:starting-bid :redraw :active-player-id])))
+    (is (= ["swordsking" "wandsqueen" "coins2" "cups3"]
+           (mapv :id (get-in second-redraw-view
+                             [:starting-bid :redraw :card-options]))))
+    (is (nil? (app-state/game second-redraw-db)))))
 
 (deftest casual-lobby-start-is-blocked-while-starting-bid-is-staged
   (let [db (app-state/initialize
@@ -537,7 +626,16 @@
                         (app-state/select-lobby-bid-card :rose "cupsqueen")
                         (app-state/select-lobby-bid-card :indigo "swords10")
                         app-state/reveal-lobby-bids)
-        started-db (app-state/confirm-lobby-bidding resolved-db)
+        redrawn-db (-> resolved-db
+                       (app-state/select-lobby-redraw-card :indigo
+                                                           "cupsking")
+                       (app-state/select-lobby-redraw-card :indigo
+                                                           "swordsking")
+                       (app-state/select-lobby-redraw-card :rose
+                                                           "cupsqueen")
+                       (app-state/select-lobby-redraw-card :rose
+                                                           "swords10"))
+        started-db (app-state/confirm-lobby-bidding redrawn-db)
         state (app-state/game started-db)]
     (is (nil? (app-state/game tie-db)))
     (is (= :choosing (get-in tie-view [:starting-bid :stage])))

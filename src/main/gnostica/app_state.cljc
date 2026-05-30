@@ -474,19 +474,49 @@
   (some #(when (= card-id (:id %)) %)
         (get-in state [:players-by-id player-id :hand])))
 
-(defn- automatic-starting-bid-redraws [state bid-cards redraw-order]
-  (loop [available-card-ids (mapv :id bid-cards)
-         remaining-player-ids (seq redraw-order)
-         redraws {}]
-    (if-let [player-id (first remaining-player-ids)]
-      (let [needed-count (- game-state/starting-hand-size
-                            (count (get-in state
-                                           [:players-by-id player-id :hand])))
-            selected-card-ids (vec (take needed-count available-card-ids))]
-        (recur (vec (drop needed-count available-card-ids))
-               (next remaining-player-ids)
-               (assoc redraws player-id selected-card-ids)))
-      redraws)))
+(defn- starting-bid-redraw-needed-count [state player-id]
+  (- game-state/starting-hand-size
+     (count (get-in state [:players-by-id player-id :hand]))))
+
+(defn- starting-bid-redraw-card-ids [starting-bid]
+  (vec (mapcat #(get-in starting-bid [:redraws %] [])
+               (:redraw-order starting-bid))))
+
+(defn- starting-bid-remaining-redraw-cards [starting-bid]
+  (let [selected-card-ids (set (starting-bid-redraw-card-ids starting-bid))]
+    (vec (remove #(contains? selected-card-ids (:id %))
+                 (:bid-cards starting-bid)))))
+
+(defn- starting-bid-active-redraw-player-id [starting-bid]
+  (let [state (:current-game starting-bid)]
+    (some (fn [player-id]
+            (let [needed-count (starting-bid-redraw-needed-count state player-id)
+                  selected-count (count (get-in starting-bid
+                                                [:redraws player-id]
+                                                []))]
+              (when (< selected-count needed-count)
+                player-id)))
+          (:redraw-order starting-bid))))
+
+(defn- starting-bid-redraw-complete? [starting-bid]
+  (let [state (:current-game starting-bid)
+        selected-card-ids (starting-bid-redraw-card-ids starting-bid)]
+    (and (seq (:redraw-order starting-bid))
+         (= (count selected-card-ids)
+            (count (set selected-card-ids)))
+         (empty? (starting-bid-remaining-redraw-cards starting-bid))
+         (every? (fn [player-id]
+                   (= (starting-bid-redraw-needed-count state player-id)
+                      (count (get-in starting-bid
+                                     [:redraws player-id]
+                                     []))))
+                 (:redraw-order starting-bid)))))
+
+(defn- with-starting-bid-redraw-stage [starting-bid]
+  (assoc starting-bid
+         :stage (if (starting-bid-redraw-complete? starting-bid)
+                  :resolved
+                  :redrawing)))
 
 (defn start-lobby-bidding
   ([db] (start-lobby-bidding db {}))
@@ -583,13 +613,10 @@
                                :bid-history bid-history
                                :bid-cards bid-cards)
                   resolved?
-                  (assoc :stage :resolved
+                  (assoc :stage :redrawing
                          :winner-id winner-id
                          :redraw-order redraw-order
-                         :redraws (automatic-starting-bid-redraws
-                                   state
-                                   bid-cards
-                                   redraw-order))
+                         :redraws {})
 
                   (not resolved?)
                   (assoc :stage :choosing
@@ -600,11 +627,60 @@
                 (assoc-in [:lobby :starting-bid] next-starting-bid)
                 (update :lobby dissoc :error))))))))
 
+(defn select-lobby-redraw-card [db player-id card-id]
+  (let [player-id (normalize-player-id player-id)
+        card-id (str card-id)
+        starting-bid (get-in db [:lobby :starting-bid])
+        active-player-id (starting-bid-active-redraw-player-id starting-bid)
+        remaining-cards (starting-bid-remaining-redraw-cards starting-bid)
+        remaining-card-ids (set (map :id remaining-cards))]
+    (cond
+      (nil? starting-bid)
+      db
+
+      (not= :redrawing (:stage starting-bid))
+      db
+
+      (str/blank? card-id)
+      db
+
+      (not= player-id active-player-id)
+      (assoc-in db [:lobby :error]
+                (lobby-error :inactive-starting-bid-redraw-player
+                             "Choose bid redraw cards for the active redraw player."
+                             {:player-id player-id
+                              :active-player-id active-player-id}))
+
+      (not (contains? remaining-card-ids card-id))
+      (assoc-in db [:lobby :error]
+                (lobby-error :invalid-bid-redraw-card
+                             "Players can only redraw from bid cards that are still available."
+                             {:player-id player-id
+                              :card-id card-id
+                              :available-card-ids (mapv :id remaining-cards)}))
+
+      :else
+      (-> db
+          (update-in [:lobby :starting-bid :redraws player-id]
+                     (fnil conj [])
+                     card-id)
+          (update-in [:lobby :starting-bid]
+                     with-starting-bid-redraw-stage)
+          (update :lobby dissoc :error)))))
+
 (defn confirm-lobby-bidding [db]
   (let [starting-bid (get-in db [:lobby :starting-bid])]
     (cond
       (nil? starting-bid)
       db
+
+      (= :redrawing (:stage starting-bid))
+      (assoc-in db [:lobby :error]
+                (lobby-error :starting-bid-redraw-incomplete
+                             "Finish bid-card redraws before starting the game."
+                             {:active-player-id
+                              (starting-bid-active-redraw-player-id starting-bid)
+                              :redraw-order (:redraw-order starting-bid)}))
 
       (not= :resolved (:stage starting-bid))
       (assoc-in db [:lobby :error]
@@ -684,6 +760,46 @@
   (assoc (bid-card-summary card)
          :selected? (= selected-card-id (:id card))))
 
+(defn- redraw-player-view [players starting-bid player-id active-player-id]
+  (let [state (:current-game starting-bid)
+        card-ids (get-in starting-bid [:redraws player-id] [])
+        needed-count (starting-bid-redraw-needed-count state player-id)]
+    {:player-id player-id
+     :player-name (lobby-player-name players player-id)
+     :card-ids card-ids
+     :cards (mapv #(bid-card-summary (cards/card-by-id %)) card-ids)
+     :needed-count needed-count
+     :selected-count (count card-ids)
+     :active? (= player-id active-player-id)
+     :complete? (= needed-count (count card-ids))}))
+
+(defn- starting-bid-redraw-view [players starting-bid]
+  (when (contains? #{:redrawing :resolved} (:stage starting-bid))
+    (let [active-player-id (starting-bid-active-redraw-player-id starting-bid)
+          state (:current-game starting-bid)
+          selected-count (count (get-in starting-bid
+                                        [:redraws active-player-id]
+                                        []))
+          needed-count (when active-player-id
+                         (starting-bid-redraw-needed-count state
+                                                           active-player-id))]
+      {:active? (= :redrawing (:stage starting-bid))
+       :complete? (starting-bid-redraw-complete? starting-bid)
+       :active-player-id active-player-id
+       :active-player-name (when active-player-id
+                             (lobby-player-name players active-player-id))
+       :needed-count needed-count
+       :selected-count selected-count
+       :card-options (if active-player-id
+                       (mapv (partial bid-card-option nil)
+                             (starting-bid-remaining-redraw-cards starting-bid))
+                       [])
+       :order (mapv #(redraw-player-view players
+                                          starting-bid
+                                          %
+                                          active-player-id)
+                    (:redraw-order starting-bid))})))
+
 (defn- bid-history-entry-view [players round]
   (let [card-summary (fn [card-id]
                        (bid-card-summary (cards/card-by-id card-id)))]
@@ -721,7 +837,8 @@
     (let [player-ids (mapv :id players)
           current-bids (select-keys (:current-bids starting-bid) player-ids)
           complete? (every? #(contains? current-bids %) player-ids)
-          winner-id (:winner-id starting-bid)]
+          winner-id (:winner-id starting-bid)
+          redraw-view (starting-bid-redraw-view players starting-bid)]
       {:active? true
        :stage (:stage starting-bid)
        :round-number (if (= :resolved (:stage starting-bid))
@@ -730,16 +847,13 @@
        :complete? complete?
        :can-reveal? (and (= :choosing (:stage starting-bid))
                          complete?)
-       :can-confirm? (= :resolved (:stage starting-bid))
+       :can-confirm? (and (= :resolved (:stage starting-bid))
+                          (starting-bid-redraw-complete? starting-bid))
        :winner-id winner-id
        :winner-name (when winner-id
                       (lobby-player-name players winner-id))
-       :redraw-order (mapv (fn [player-id]
-                             {:player-id player-id
-                              :player-name (lobby-player-name players player-id)
-                              :card-ids (get-in starting-bid
-                                                [:redraws player-id])})
-                           (:redraw-order starting-bid))
+       :redraw redraw-view
+       :redraw-order (:order redraw-view)
        :history (mapv (partial bid-history-entry-view players)
                       (:bid-history starting-bid))})))
 

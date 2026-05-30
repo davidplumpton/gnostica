@@ -19,6 +19,7 @@
 (def start-lobby-bidding :gnostica.app/start-lobby-bidding)
 (def select-lobby-bid-card :gnostica.app/select-lobby-bid-card)
 (def reveal-lobby-bids :gnostica.app/reveal-lobby-bids)
+(def select-lobby-redraw-card :gnostica.app/select-lobby-redraw-card)
 (def confirm-lobby-bidding :gnostica.app/confirm-lobby-bidding)
 (def cancel-lobby-bidding :gnostica.app/cancel-lobby-bidding)
 (def select-board-card :gnostica.app/select-board-card)
@@ -234,6 +235,11 @@
  reveal-lobby-bids
  (fn [db _]
    (app-state/reveal-lobby-bids db)))
+
+(rf/reg-event-db
+ select-lobby-redraw-card
+ (fn [db [_ player-id card-id]]
+   (app-state/select-lobby-redraw-card db player-id card-id)))
 
 (rf/reg-event-db
  confirm-lobby-bidding

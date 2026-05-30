@@ -108,17 +108,62 @@
                            (interpose ", " (map :player-name
                                                  tied-players)))))]])
 
+(defn- redraw-order-row [{:keys [player-name cards active? complete?
+                                 selected-count needed-count]}]
+  [:li
+   {:class (cond-> "starting-bid__redraw-row"
+             active?
+             (str " is-active")
+
+             complete?
+             (str " is-complete"))}
+   [:span.starting-bid__redraw-player player-name]
+   [:span.starting-bid__redraw-cards
+    (if (seq cards)
+      (apply str (interpose ", " (map :title cards)))
+      "")]
+   [:span.starting-bid__redraw-count
+    (str selected-count "/" needed-count)]])
+
+(defn- redraw-panel [{:keys [active? active-player-id active-player-name
+                             selected-count needed-count card-options order
+                             complete?]}]
+  [:div.starting-bid__redraw
+   [:div.starting-bid__redraw-heading
+    [:strong (if complete?
+               "Redraw complete"
+               (str active-player-name " redraw"))]
+    (when active?
+      [:span (str selected-count "/" needed-count)])]
+   (when active?
+     [:div.starting-bid__redraw-options
+      (for [{card-id :id title :title} card-options]
+        ^{:key card-id}
+        [:button.starting-bid__redraw-card
+         {:type "button"
+          :on-click #(rf/dispatch [events/select-lobby-redraw-card
+                                    active-player-id
+                                    card-id])}
+         title])])
+   (when (seq order)
+     [:ol.starting-bid__redraw-order
+      (for [entry order]
+        ^{:key (:player-id entry)}
+        [redraw-order-row entry])])])
+
 (defn- starting-bid-panel [players {:keys [stage round-number can-reveal?
-                                           can-confirm? winner-name history]}]
+                                           can-confirm? winner-name history
+                                           redraw]}]
   [:section.starting-bid
    [:div.starting-bid__header
     [:div
      [:p.eyebrow "First player"]
      [:h2 (case stage
+            :redrawing "Bid redraw"
             :resolved "Bid resolved"
             "Starting bid")]]
     [:span.starting-bid__round (str "Round " round-number)]]
-   (when (not= :resolved stage)
+   (when (= :choosing stage)
      [:div.starting-bid__grid
       (for [player players]
         ^{:key (:id player)}
@@ -131,16 +176,28 @@
    (when winner-name
      [:p.starting-bid__winner
       (str winner-name " starts.")])
+   (when redraw
+     [redraw-panel redraw])
    [:div.starting-bid__actions
     [:button.lobby-action
      {:type "button"
       :on-click #(rf/dispatch [events/cancel-lobby-bidding])}
      "Cancel bidding"]
-    (if can-confirm?
+    (cond
+      can-confirm?
       [:button.lobby-action.is-primary
        {:type "button"
         :on-click #(rf/dispatch [events/confirm-lobby-bidding])}
        "Start game"]
+
+      (= :redrawing stage)
+      [:button.lobby-action.is-primary
+       {:type "button"
+        :disabled true
+        :aria-disabled true}
+       "Start game"]
+
+      :else
       [:button.lobby-action.is-primary
        {:type "button"
         :disabled (not can-reveal?)
