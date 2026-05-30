@@ -52,6 +52,7 @@
 (def start-gesture-intent :gnostica.app/start-gesture-intent)
 (def cancel-gesture-intent :gnostica.app/cancel-gesture-intent)
 (def open-gesture-detailed-entry :gnostica.app/open-gesture-detailed-entry)
+(def set-detailed-entry-default :gnostica.app/set-detailed-entry-default)
 (def end-turn :gnostica.app/end-turn)
 (def announce-challenge :gnostica.app/announce-challenge)
 (def toggle-card-icon-mode :gnostica.app/toggle-card-icon-mode)
@@ -391,6 +392,11 @@ select-move-rod-mode
  open-gesture-detailed-entry
  (fn [db _]
    (app-state/open-gesture-detailed-entry db)))
+
+(rf/reg-event-db
+ set-detailed-entry-default
+ (fn [db [_ enabled?]]
+   (app-state/set-detailed-entry-default db enabled?)))
 
 (rf/reg-event-db
  end-turn
@@ -855,12 +861,14 @@ move-rod-orientation-required?
  :<- [card-icon-mode]
  :<- [card-zones]
  :<- [move-legal-targets]
- (fn [[current-player card-icon-mode zones legal-targets] _]
+ :<- [direct-manipulation]
+ (fn [[current-player card-icon-mode zones legal-targets direct-manipulation] _]
    (app-state/card-zones-view-model
     {:current-player current-player
      :card-icon-mode card-icon-mode
      :zones zones
-     :legal-targets legal-targets})))
+     :legal-targets legal-targets
+     :direct-manipulation direct-manipulation})))
 
 (rf/reg-sub
  territory-view
@@ -880,6 +888,7 @@ move-rod-orientation-required?
  :<- [move-ready?]
  :<- [move-control-groups]
  :<- [move-action-ribbon]
+ :<- [direct-manipulation]
  :<- [board]
  :<- [move-power]
  :<- [move-power-options]
@@ -921,7 +930,7 @@ move-rod-orientation-required?
  :<- [draw-count-options]
  :<- [move-legal-targets]
 (fn [[current-player selection source-options prompt ready? control-groups
-       action-ribbon board power
+       action-ribbon direct-manipulation board power
        power-options world-copy-options world-copied-power-options world-copied-power
        rod-mode-options disc-action-count-options
        major-action-count-options major-action-count
@@ -945,6 +954,7 @@ move-rod-orientation-required?
      :ready? ready?
      :control-groups control-groups
      :action-ribbon action-ribbon
+     :direct-manipulation direct-manipulation
      :board board
      :power power
      :power-options power-options

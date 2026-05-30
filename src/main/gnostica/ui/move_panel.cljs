@@ -6,12 +6,13 @@
             [gnostica.ui.common :as ui]
             [re-frame.core :as rf]))
 
-(defn- move-source-picker [options selected-source current-player]
+(defn- move-source-picker [options selected-source current-player direct-manipulation]
   [:div.move-source-list
    (for [{:keys [id label summary enabled? reason]} options]
      (let [stash-source? (and (= :place-initial-small id)
                               current-player)
-           stash-input (when stash-source?
+           drag-enabled? (true? (:pointer-drag-enabled? direct-manipulation))
+           stash-input (when (and stash-source? drag-enabled?)
                          (gesture-input/stash-piece-source-input current-player))]
        ^{:key id}
        [:button.move-source-option
@@ -19,7 +20,7 @@
          :class (when (= selected-source id) "is-selected")
          :disabled (not enabled?)
          :aria-pressed (= selected-source id)
-         :draggable (if (and enabled? stash-source?) "true" "false")
+         :draggable (if (and enabled? stash-input) "true" "false")
          :on-click #(rf/dispatch [events/select-move-source id])
          :on-drag-start (fn [event]
                           (when (and enabled? stash-input)
@@ -37,6 +38,19 @@
                                              [(:id current-player) :css-color])}}])
          label]
         [:span.move-source-option__summary (if enabled? summary reason)]]))])
+
+(defn- detailed-entry-default-toggle
+  [{:keys [detailed-entry-available? detailed-entry-default?]}]
+  (when detailed-entry-available?
+    [:button.move-action.move-panel-mode-toggle
+     {:type "button"
+      :aria-pressed (true? detailed-entry-default?)
+      :aria-label (if detailed-entry-default?
+                    "Use direct gestures by default"
+                    "Use Detailed entry by default")
+      :on-click #(rf/dispatch [events/set-detailed-entry-default
+                               (not detailed-entry-default?)])}
+     "Detailed default"]))
 
 (defn- board-cell-label [{:keys [row col card]}]
   (str (:title card)
@@ -1108,7 +1122,8 @@
 (defn pending-move-tray []
   (let [{:keys [active? summary alternatives error ready? can-confirm?
                 action-ribbon
-                can-cancel? detailed-entry-label detailed-open?]}
+                can-cancel? detailed-entry-label detailed-open?
+                detailed-entry-available?]}
         @(rf/subscribe [events/pending-move-tray-view])]
     (when active?
       [:section.pending-move-tray
@@ -1131,11 +1146,12 @@
           :disabled (not can-cancel?)
           :on-click #(rf/dispatch [events/cancel-gesture-intent])}
          "Cancel"]
-        [:button.move-action
-         {:type "button"
-          :aria-pressed detailed-open?
-          :on-click #(rf/dispatch [events/open-gesture-detailed-entry])}
-         detailed-entry-label]
+        (when detailed-entry-available?
+          [:button.move-action
+           {:type "button"
+            :aria-pressed detailed-open?
+            :on-click #(rf/dispatch [events/open-gesture-detailed-entry])}
+           detailed-entry-label])
         [:button.move-action.is-primary
          {:type "button"
           :disabled (not can-confirm?)
@@ -1144,7 +1160,7 @@
 
 (defn move-panel []
   (let [{:keys [current-player selection source-options prompt ready? controls
-                control-groups action-ribbon]}
+                control-groups action-ribbon direct-manipulation]}
         @(rf/subscribe [events/move-panel-view])
         {:keys [source error]} selection]
     [:section.move-panel
@@ -1156,12 +1172,13 @@
        [:h2 (if current-player
               (:name current-player)
               "No player")]
+       [detailed-entry-default-toggle direct-manipulation]
        [:button.panel-close
         {:type "button"
          :aria-label "Close move panel"
          :on-click #(rf/dispatch [events/set-panel-open :move false])}
         "Close"]]]
-     [move-source-picker source-options source current-player]
+     [move-source-picker source-options source current-player direct-manipulation]
      [:p.move-panel__prompt prompt]
      [action-ribbon-view action-ribbon {:actions? true}]
      (when source

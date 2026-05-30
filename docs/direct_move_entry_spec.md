@@ -166,7 +166,7 @@ Initial placement:
 
 ## Detailed Entry Fallback
 
-The fallback entry point is the pending tray's Detailed entry action, backed by `gnostica.gesture-intent/open-detailed-entry`. It keeps the staged gesture fields and opens the existing move panel controls.
+The fallback entry point is the pending tray's Detailed entry action, backed by `gnostica.gesture-intent/open-detailed-entry`. It keeps the staged gesture fields and opens the existing move panel controls. The app-level direct-manipulation setting can also make Detailed entry the session default; in that mode the move panel is open from setup and gesture-started pending moves open the same detailed controls without clearing staged choices.
 
 Recommend Detailed entry when:
 - the gesture is ambiguous across powers, variants, target kinds, action counts, or replacement sources;
@@ -176,6 +176,11 @@ Recommend Detailed entry when:
 - a structured error needs repair without restarting the move.
 
 Classic staged controls must remain usable even if all direct manipulation affordances are disabled.
+
+Manual accessibility checks for this fallback:
+- Disable pointer dragging or enable the Detailed entry default, then complete representative Cup, Rod, Disc, Sword, orient, initial-placement, and major-power selections using only focusable move-panel controls plus board/card clicks.
+- Tab through the pending tray and move panel; focus should remain visible on source, power, minion, target, replacement, distance, damage, orientation, draw-count, Confirm, and Cancel controls.
+- Start a partial gesture, choose Detailed entry, finish the missing fields from the move panel, and confirm; `:game` should remain unchanged until confirmation.
 
 ## Implementation Phases
 

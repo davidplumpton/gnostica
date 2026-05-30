@@ -100,10 +100,11 @@
 (defn- piece-drag-input [piece descriptor]
   (gesture-input/piece-drag-input piece descriptor))
 
-(defn- board-piece-marker [slot piece descriptor]
+(defn- board-piece-marker [slot piece descriptor drag-enabled?]
   (let [pips (pieces/pips piece)
         player (pieces/player-for piece)
-        drag-input (piece-drag-input piece descriptor)
+        drag-input (when drag-enabled?
+                     (piece-drag-input piece descriptor))
         draggable? (some? drag-input)
         action-event (piece-action-event piece descriptor)]
     ^{:key (:id piece)}
@@ -144,18 +145,18 @@
          ^{:key pip}
          [:span.board-piece__pip])]]]))
 
-(defn- board-piece-markers [board-pieces piece-targets]
+(defn- board-piece-markers [board-pieces piece-targets drag-enabled?]
   (when (seq board-pieces)
     [:div.board-card__pieces
      (for [[slot piece] (map-indexed vector
                                      (take pieces/max-pieces-per-space board-pieces))]
-       (board-piece-marker slot piece (get piece-targets (:id piece))))]))
+       (board-piece-marker slot piece (get piece-targets (:id piece)) drag-enabled?))]))
 
 (defn- pieces-label [board-pieces]
   (apply str (interpose "; " (map ui/piece-summary board-pieces))))
 
 (defn- board-wasteland [bounds {:keys [id orientation] :as space}
-                        board-pieces descriptor piece-targets]
+                        board-pieces descriptor piece-targets drag-enabled?]
   ^{:key id}
   [:div.board-wasteland
    {:class (str "is-" (name orientation)
@@ -177,11 +178,14 @@
     :on-drop #(on-drop-gesture % {:kind :wasteland
                                   :row (:row space)
                                   :col (:col space)})}
-   (board-piece-markers board-pieces piece-targets)])
+   (board-piece-markers board-pieces piece-targets drag-enabled?)])
 
 (defn board-card [bounds {:keys [index row col orientation card] :as cell}
-                  selected? board-pieces card-icon-mode descriptor piece-targets]
-  (let [{:keys [title]} card]
+                  selected? board-pieces card-icon-mode descriptor piece-targets
+                  drag-enabled?]
+  (let [{:keys [title]} card
+        drag-input (when drag-enabled?
+                     (gesture-input/territory-drag-input cell descriptor))]
     [:button.board-card
      {:type "button"
       :class (str "is-" (name orientation)
@@ -193,7 +197,7 @@
       :style (board-space-style bounds cell)
       :data-move-target-status (some-> (:status descriptor) name)
       :data-move-target-role (some-> (:role descriptor) name)
-      :draggable "true"
+      :draggable (if drag-input "true" "false")
       :title (target-reason descriptor)
       :aria-label (str title
                        ", "
@@ -211,19 +215,19 @@
       :on-double-click #(rf/dispatch [events/start-gesture-intent
                                       (gesture-input/territory-source-input cell)])
       :on-drag-start (fn [event]
-                       (let [input (gesture-input/territory-drag-input cell descriptor)]
+                       (when drag-input
                          (some-> (.-dataTransfer event)
                                  (.setData gesture-input/mime-type
-                                           (gesture-input/gesture-input-string input)))
+                                           (gesture-input/gesture-input-string drag-input)))
                          (some-> (.-dataTransfer event)
                                  (.setData "text/plain"
                                            title))
-                         (rf/dispatch [events/start-gesture-intent input])))
+                         (rf/dispatch [events/start-gesture-intent drag-input])))
       :on-drag-over on-drag-over-gesture
      :on-drop #(on-drop-gesture % {:kind :territory
                                     :board-index index})}
      [card-ui/card-face card "board-card__face" card-icon-mode]
-     (board-piece-markers board-pieces piece-targets)]))
+     (board-piece-markers board-pieces piece-targets drag-enabled?)]))
 
 (defn board-stage []
   (let [{:keys [cells board-pieces pieces-by-space wastelands space-bounds
@@ -259,7 +263,8 @@
          three-renderer-message]
         (let [territory-targets (territory-targets-by-index legal-targets)
               wasteland-targets (wasteland-targets-by-coordinate legal-targets)
-              piece-targets (piece-targets-by-id legal-targets)]
+              piece-targets (piece-targets-by-id legal-targets)
+              drag-enabled? (true? (:pointer-drag-enabled? direct-manipulation))]
           [:div.board-stage
            {:role "group"
             :aria-label "Gnostica board"
@@ -277,7 +282,8 @@
               space
               (get pieces-by-space (pieces/wasteland-space (:row space) (:col space)))
               (get wasteland-targets [(:row space) (:col space)])
-              piece-targets))
+              piece-targets
+              drag-enabled?))
            (for [cell cells]
              ^{:key (:index cell)}
              [board-card
@@ -287,4 +293,5 @@
               (get pieces-by-space (pieces/territory-space (:index cell)))
               card-icon-mode
               (get territory-targets (:index cell))
-              piece-targets])])])]))
+              piece-targets
+              drag-enabled?])])])]))

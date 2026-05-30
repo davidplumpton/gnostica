@@ -758,6 +758,18 @@ img {
   cursor: pointer;
 }
 
+.move-panel-mode-toggle {
+  flex: 0 0 auto;
+  min-height: 1.8rem;
+  padding: 0.18rem 0.52rem;
+  font-size: 0.72rem;
+}
+
+.move-panel-mode-toggle[aria-pressed="true"] {
+  border-color: rgba(255, 224, 138, 0.72);
+  background: rgba(255, 224, 138, 0.14);
+}
+
 .panel-close:hover,
 .panel-close:focus-visible {
   border-color: var(--focus);

@@ -38,7 +38,8 @@
 
 (def default-direct-manipulation
   {:pointer-drag-enabled? true
-   :detailed-entry-available? true})
+   :detailed-entry-available? true
+   :detailed-entry-default? false})
 
 (def card-icon-modes
   #{:always :popup})
@@ -237,12 +238,16 @@
                    {})]
     (cond-> (merge default-direct-manipulation
                    (select-keys settings [:pointer-drag-enabled?
-                                          :detailed-entry-available?]))
+                                          :detailed-entry-available?
+                                          :detailed-entry-default?]))
       (contains? settings :pointer-drag-enabled?)
       (update :pointer-drag-enabled? true?)
 
       (contains? settings :detailed-entry-available?)
       (update :detailed-entry-available? true?)
+
+      (contains? settings :detailed-entry-default?)
+      (update :detailed-entry-default? true?)
 
       (contains? _opts :direct-manipulation-enabled?)
       (assoc :pointer-drag-enabled? (true? direct-manipulation-enabled?)))))
@@ -253,16 +258,20 @@
     :or {selected-board-index default-selected-board-index
          card-icon-mode default-card-icon-mode
          open-panels default-open-panels}}]
-  {:selected-board-index selected-board-index
-   :card-icon-mode (normalize-card-icon-mode card-icon-mode)
-   :open-panels (normalize-open-panels open-panels)
-   :hotkey-help-open? default-hotkey-help-open?
-   :icon-help-open? default-icon-help-open?
-   :move-selection (empty-move-selection)
-   :gesture-intent gesture-intent/empty-gesture-intent
-   :three-runtime-status (normalize-three-runtime-status three-runtime-status)
-   :direct-manipulation (normalize-direct-manipulation opts)
-   :three-texture-errors []})
+  (let [direct-manipulation (normalize-direct-manipulation opts)]
+    {:selected-board-index selected-board-index
+     :card-icon-mode (normalize-card-icon-mode card-icon-mode)
+     :open-panels (cond-> (normalize-open-panels open-panels)
+                    (and (:detailed-entry-available? direct-manipulation)
+                         (:detailed-entry-default? direct-manipulation))
+                    (conj :move))
+     :hotkey-help-open? default-hotkey-help-open?
+     :icon-help-open? default-icon-help-open?
+     :move-selection (empty-move-selection)
+     :gesture-intent gesture-intent/empty-gesture-intent
+     :three-runtime-status (normalize-three-runtime-status three-runtime-status)
+     :direct-manipulation direct-manipulation
+     :three-texture-errors []}))
 
 (defn- initialize-game-db [db opts player-specs game-options]
   (let [result (game-state/create-game player-specs (or game-options {}))]
@@ -643,6 +652,16 @@
 (defn direct-manipulation [db]
   (normalize-direct-manipulation {:direct-manipulation (:direct-manipulation db)}))
 
+(defn set-detailed-entry-default [db enabled?]
+  (let [current-settings (direct-manipulation db)
+        settings (assoc current-settings
+                        :detailed-entry-default?
+                        (and (:detailed-entry-available? current-settings)
+                             (true? enabled?)))]
+    (cond-> (assoc db :direct-manipulation settings)
+      (:detailed-entry-default? settings)
+      (set-panel-open :move true))))
+
 (defn card-zones [db]
   {:hand (current-player-hand db)
    :draw-pile (draw-pile db)
@@ -691,18 +710,21 @@
     :direct-manipulation (direct-manipulation db)}))
 
 (defn card-zones-view-model
-  [{:keys [current-player card-icon-mode zones legal-targets]}]
+  [{:keys [current-player card-icon-mode zones legal-targets direct-manipulation]}]
   {:current-player current-player
    :card-icon-mode card-icon-mode
    :zones zones
-   :legal-targets legal-targets})
+   :legal-targets legal-targets
+   :direct-manipulation (normalize-direct-manipulation
+                         {:direct-manipulation direct-manipulation})})
 
 (defn card-zones-view [db]
   (card-zones-view-model
    {:current-player (current-player db)
     :card-icon-mode (card-icon-mode db)
     :zones (card-zones db)
-    :legal-targets (move-selection/move-legal-targets db)}))
+    :legal-targets (move-selection/move-legal-targets db)
+    :direct-manipulation (direct-manipulation db)}))
 
 (defn territory-view-model
   [{:keys [cell selected-pieces]}]
@@ -761,22 +783,31 @@
 (defn gesture-intent [db]
   (gesture-intent/gesture-intent db))
 
-(defn start-gesture-intent [db input]
-  (gesture-intent/start-gesture-intent db input))
-
 (defn cancel-gesture-intent [db]
   (-> db
       move-selection/cancel-move
       gesture-intent/cancel-gesture-intent))
 
 (defn open-gesture-detailed-entry [db]
-  (-> db
-      gesture-intent/open-detailed-entry
-      (set-panel-open :move true)))
+  (if (:detailed-entry-available? (direct-manipulation db))
+    (-> db
+        gesture-intent/open-detailed-entry
+        (set-panel-open :move true))
+    db))
+
+(defn start-gesture-intent [db input]
+  (let [gesture-db (gesture-intent/start-gesture-intent db input)
+        {:keys [detailed-entry-available? detailed-entry-default?]}
+        (direct-manipulation gesture-db)]
+    (if (and detailed-entry-available? detailed-entry-default?)
+      (open-gesture-detailed-entry gesture-db)
+      gesture-db)))
 
 (defn pending-move-tray-view [db]
   (assoc (gesture-intent/pending-move-tray-view db)
-         :action-ribbon (move-action-ribbon db)))
+         :action-ribbon (move-action-ribbon db)
+         :detailed-entry-available? (:detailed-entry-available?
+                                     (direct-manipulation db))))
 
 (defn cancel-move [db]
   (cancel-gesture-intent db))
@@ -857,7 +888,7 @@
 
 (defn move-panel-view-model
   [{:keys [current-player selection source-options prompt ready? control-groups
-           action-ribbon
+           action-ribbon direct-manipulation
            board power power-options rod-mode-options disc-action-count-options
            major-action-count-options major-action-count
            world-copy-options world-copied-power-options world-copied-power
@@ -881,6 +912,8 @@
    :ready? ready?
    :control-groups control-groups
    :action-ribbon action-ribbon
+   :direct-manipulation (normalize-direct-manipulation
+                         {:direct-manipulation direct-manipulation})
    :controls {:board board
               :power power
               :power-options power-options
@@ -931,6 +964,7 @@
     :ready? (move-ready? db)
     :control-groups (move-control-groups db)
     :action-ribbon (move-action-ribbon db)
+    :direct-manipulation (direct-manipulation db)
     :board (board db)
     :power (move-power db)
     :power-options (move-power-options db)

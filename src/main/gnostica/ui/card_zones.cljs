@@ -52,8 +52,9 @@
     (.preventDefault event)
     (rf/dispatch dispatch-value)))
 
-(defn- hand-card [card card-icon-mode descriptor]
-  (let [drag-input (hand-card-drag-input card descriptor)]
+(defn- hand-card [card card-icon-mode descriptor drag-enabled?]
+  (let [drag-input (when drag-enabled?
+                     (hand-card-drag-input card descriptor))]
     ^{:key (:id card)}
     [:article.hand-card
      {:class (str (when (card-ui/card-icon-summary card) "has-gnostica-icons")
@@ -94,8 +95,9 @@
     [:h3.card-pile-zone__title "Draw deck"]
     [:p.card-pile-zone__detail (str (ui/card-count-label draw-count) " remaining")]]])
 
-(defn- discard-pile-zone [discard-count top-card card-icon-mode descriptor]
-  (let [drag-input (when top-card
+(defn- discard-pile-zone [discard-count top-card card-icon-mode descriptor
+                           drag-enabled?]
+  (let [drag-input (when (and top-card drag-enabled?)
                      (discard-card-drag-input top-card descriptor))]
     [:button.card-pile-zone
      {:class (target-status-class descriptor)
@@ -132,11 +134,13 @@
          "No cards discarded")]]]))
 
 (defn card-zones []
-  (let [{:keys [current-player card-icon-mode zones legal-targets]}
+  (let [{:keys [current-player card-icon-mode zones legal-targets
+                direct-manipulation]}
         @(rf/subscribe [events/card-zones-view])
         {:keys [hand draw-count discard-count discard-top-card]} zones
         hand-targets (:hand-cards legal-targets)
-        discard-targets (:discard-cards legal-targets)]
+        discard-targets (:discard-cards legal-targets)
+        drag-enabled? (true? (:pointer-drag-enabled? direct-manipulation))]
     [:section.card-zones
      {:id "cards-panel"
       :data-hand-count (count hand)
@@ -159,11 +163,13 @@
      [:div.hand-card-grid
       (for [card hand]
         ^{:key (:id card)}
-        [hand-card card card-icon-mode (descriptor-for-card hand-targets card)])]
+        [hand-card card card-icon-mode (descriptor-for-card hand-targets card)
+         drag-enabled?])]
      [:div.card-pile-grid
       [draw-deck-zone draw-count (:draw-pile legal-targets)]
       [discard-pile-zone
        discard-count
        discard-top-card
        card-icon-mode
-       (descriptor-for-card discard-targets discard-top-card)]]]))
+       (descriptor-for-card discard-targets discard-top-card)
+       drag-enabled?]]]))

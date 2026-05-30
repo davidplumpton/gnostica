@@ -796,13 +796,26 @@
                                           :game-options {:shuffle-fn identity}})
         detailed-db (app-state/initialize {:player-specs test-player-specs
                                            :game-options {:shuffle-fn identity}
-                                           :direct-manipulation-enabled? false})]
+                                           :direct-manipulation-enabled? false})
+        detailed-default-db (app-state/initialize
+                             {:player-specs test-player-specs
+                              :game-options {:shuffle-fn identity}
+                              :direct-manipulation
+                              {:pointer-drag-enabled? false
+                               :detailed-entry-default? true}})]
     (is (= {:pointer-drag-enabled? true
-            :detailed-entry-available? true}
+            :detailed-entry-available? true
+            :detailed-entry-default? false}
            (:direct-manipulation (app-state/board-view default-db))))
     (is (= {:pointer-drag-enabled? false
-            :detailed-entry-available? true}
-           (:direct-manipulation (app-state/board-view detailed-db))))))
+            :detailed-entry-available? true
+            :detailed-entry-default? false}
+           (:direct-manipulation (app-state/board-view detailed-db))))
+    (is (= {:pointer-drag-enabled? false
+            :detailed-entry-available? true
+            :detailed-entry-default? true}
+           (:direct-manipulation (app-state/board-view detailed-default-db))))
+    (is (true? (app-state/panel-open? detailed-default-db :move)))))
 
 (deftest selecting-an-unknown-board-card-is-ignored
   (let [db (app-state/initialize {:game-options {:shuffle-fn identity}})]
@@ -1008,6 +1021,42 @@
     (is (= (app-state/empty-move-selection)
            (app-state/move-selection cancelled-db)))
     (is (false? (get-in cancelled-db [:gesture-intent :active?])))))
+
+(deftest detailed-entry-default-opens-panel-without-losing-staged-data
+  (let [db (app-state/initialize
+            {:player-specs test-player-specs
+             :game-options {:deck-order (deck-starting-with ["cups2"])}
+             :direct-manipulation {:pointer-drag-enabled? false}
+             :demo-board-pieces [rose-hand-cup-territory-piece]})
+        source-db (-> db
+                      (app-state/select-move-source :play-hand-card)
+                      (app-state/select-move-hand-card "cups2"))
+        default-db (app-state/set-detailed-entry-default source-db true)
+        pending-db (app-state/start-gesture-intent
+                    default-db
+                    {:source {:kind :hand-card
+                              :card-id "cups2"}
+                     :fields {:piece-id :rose-striker}
+                     :target {:kind :territory
+                              :board-index 3}})
+        tray (app-state/pending-move-tray-view pending-db)]
+    (is (= {:hand-card-id "cups2"}
+           (app-state/move-params default-db)))
+    (is (= {:pointer-drag-enabled? false
+            :detailed-entry-available? true
+            :detailed-entry-default? true}
+           (:direct-manipulation (app-state/move-panel-view default-db))))
+    (is (true? (app-state/panel-open? default-db :move)))
+    (is (true? (get-in pending-db [:gesture-intent :detailed?])))
+    (is (true? (:detailed-open? tray)))
+    (is (true? (:detailed-entry-available? tray)))
+    (is (= {:hand-card-id "cups2"
+            :piece-id :rose-striker
+            :target-board-index 3}
+           (app-state/move-params pending-db)))
+    (is (= :orientation (:stage (app-state/move-selection pending-db))))
+    (is (= (app-state/game db)
+           (app-state/game pending-db)))))
 
 (deftest gesture-intent-maps-cup-wasteland-resolution-to-one-point-card
   (let [db (app-state/initialize
