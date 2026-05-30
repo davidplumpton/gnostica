@@ -672,7 +672,8 @@
 
 (defn board-view-model
   [{:keys [cells board-pieces selected-index card-icon-mode texture-errors
-           renderer-error three-runtime-status legal-targets direct-manipulation]}]
+           renderer-error three-runtime-status legal-targets move-preview
+           direct-manipulation]}]
   (let [wastelands (layout/wasteland-spaces cells)
         runtime-status (normalize-three-runtime-status three-runtime-status)]
     {:cells cells
@@ -683,6 +684,7 @@
      :space-bounds (layout/space-bounds (concat cells wastelands))
      :selected-index selected-index
      :legal-targets legal-targets
+     :move-preview move-preview
      :card-icon-mode card-icon-mode
      :texture-errors texture-errors
      :renderer-error renderer-error
@@ -703,6 +705,7 @@
     :board-pieces (board-pieces db)
     :selected-index (selected-board-index db)
     :legal-targets (move-selection/move-legal-targets db)
+    :move-preview (move-selection/move-preview db)
     :card-icon-mode (card-icon-mode db)
     :texture-errors (:three-texture-errors db)
     :renderer-error (:three-renderer-error db)
@@ -767,6 +770,7 @@
 (def move-disc-target-kind-options move-selection/move-disc-target-kind-options)
 (def move-sword-target-kind-options move-selection/move-sword-target-kind-options)
 (def move-legal-targets move-selection/move-legal-targets)
+(def move-preview move-selection/move-preview)
 (def move-distance-options move-selection/move-distance-options)
 (def move-damage-options move-selection/move-damage-options)
 (def move-target-piece-options move-selection/move-target-piece-options)

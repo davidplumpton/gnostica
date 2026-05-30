@@ -44,6 +44,51 @@
       :else
       (str "Dragging " source-label))))
 
+(defn- move-preview-class [{:keys [status]}]
+  (case status
+    :legal " is-preview-legal"
+    :disabled " is-preview-disabled"
+    :pending " is-preview-pending"
+    ""))
+
+(defn- move-preview-summary [{:keys [summary error movement mutation]}]
+  (or (when-let [message (:message error)]
+        (str (or summary "Move preview") ": " message))
+      summary
+      (:summary mutation)
+      (:summary movement)
+      "Move preview"))
+
+(defn- orientation-callback-key [field]
+  (case field
+    :minion-orientation :on-minion-orientation-select
+    :sun-disc-orientation :on-sun-disc-orientation-select
+    :on-orientation-select))
+
+(defn- orientation-compass [{:keys [field selected-orientation options]} callbacks]
+  (when (and field (seq options))
+    [:div.board-three__orientation-compass
+     {:data-orientation-field (name field)
+      :aria-label "Choose orientation"}
+     (for [{:keys [id label]} options]
+       ^{:key id}
+       [:button.board-three__orientation-choice
+        {:type "button"
+         :class (str "is-" (name id)
+                     (when (= selected-orientation id) " is-selected"))
+         :aria-label label
+         :aria-pressed (= selected-orientation id)
+         :title label
+         :on-click #(resources/invoke-callback callbacks
+                                               (orientation-callback-key field)
+                                               id)}
+        (case id
+          :up "U"
+          :north "N"
+          :east "E"
+          :south "S"
+          :west "W")])]))
+
 (defn three-runtime []
   (runtime/three-runtime))
 
@@ -66,9 +111,11 @@
     :component-did-update
     (fn [this old-argv _ _]
       (let [[_ old-cells old-pieces old-selected-index old-card-icon-mode
-             _old-texture-errors old-legal-targets old-direct-manipulation] old-argv
+             _old-texture-errors old-legal-targets _old-move-preview
+             old-direct-manipulation] old-argv
             [_ new-cells new-pieces new-selected-index new-card-icon-mode
-             _new-texture-errors new-legal-targets new-direct-manipulation] (r/argv this)]
+             _new-texture-errors new-legal-targets _new-move-preview
+             new-direct-manipulation] (r/argv this)]
         (cond
           (or (not= old-cells new-cells)
               (not= old-pieces new-pieces)
@@ -84,7 +131,7 @@
     :component-will-unmount lifecycle/dispose!
     :reagent-render
     (fn [_cells _pieces _selected-index card-icon-mode texture-errors legal-targets
-         direct-manipulation _callbacks]
+         move-preview direct-manipulation callbacks]
       (let [component (r/current-component)
             state (r/state component)
             cells-by-index (layout/cells-by-index _cells)
@@ -131,6 +178,8 @@
           :data-drag-active (true? (:active? drag-preview))
           :data-drag-target-kind (some-> drag-preview :target :kind name)
           :data-drag-target-status (some-> drag-preview :target-status name)
+          :data-move-preview-active (true? (:active? move-preview))
+          :data-move-preview-status (some-> move-preview :status name)
           :data-visible-piece-count (scene-graph/visible-piece-count _cells _pieces)
           :data-piece-edge-outline-count (or (:piece-edge-outline-count state) 0)
           :data-antialias-requested resources/renderer-antialias-requested?
@@ -156,6 +205,17 @@
             {:class (drag-preview-class drag-preview)
              :aria-live "polite"}
             (drag-preview-summary drag-preview)])
+         (when (:active? move-preview)
+           [:div.board-three__move-preview
+            {:class (move-preview-class move-preview)
+             :aria-live "polite"}
+            [:strong (move-preview-summary move-preview)]
+            (when-let [movement (:movement move-preview)]
+              [:span.board-three__move-preview-detail
+               (str (count (:path movement))
+                    " path space"
+                    (when (not= 1 (count (:path movement))) "s"))])
+            [orientation-compass (:orientation-compass move-preview) callbacks]])
          (when (and (= :popup card-icon-mode)
                     (seq (icons/present-icon-ids (:gnostica-icons popover-card))))
            [:div.board-three-icon-popover

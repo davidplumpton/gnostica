@@ -90,6 +90,92 @@
                                "var(--card-offset)"
                                "0px"))}))
 
+(defn- orientation-event [field]
+  (case field
+    :minion-orientation events/set-move-minion-orientation
+    :sun-disc-orientation events/set-move-sun-disc-orientation
+    events/set-move-orientation))
+
+(defn- preview-status-class [status]
+  (case status
+    :legal " is-preview-legal"
+    :disabled " is-preview-disabled"
+    :pending " is-preview-pending"
+    ""))
+
+(defn- preview-space-class [role {:keys [kind orientation]} status]
+  (str "board-move-preview__space"
+       " is-" (name role)
+       " is-" (name kind)
+       (when orientation
+         (str " is-" (name orientation)))
+       (preview-status-class status)))
+
+(defn- preview-space [bounds role status space]
+  (when space
+    [:div
+     {:class (preview-space-class role space status)
+      :style (board-space-style bounds space)
+      :data-preview-role (name role)
+      :data-preview-space-kind (name (:kind space))
+      :title (:label space)}
+     [:span.board-move-preview__space-label
+      (case role
+        :source "Start"
+        :destination "Land"
+        :mutation "Change"
+        "Path")]]))
+
+(defn- orientation-compass [bounds {:keys [field space selected-orientation options]}]
+  (when (and field space (seq options))
+    (let [event-id (orientation-event field)]
+      [:div.board-orientation-compass
+       {:style (board-space-style bounds space)
+        :data-orientation-field (name field)
+        :aria-label "Choose orientation"}
+       (for [{:keys [id label]} options]
+         ^{:key id}
+         [:button.board-orientation-compass__choice
+          {:type "button"
+           :class (str "is-" (name id)
+                       (when (= selected-orientation id) " is-selected"))
+           :aria-label label
+           :aria-pressed (= selected-orientation id)
+           :title label
+           :on-click (fn [event]
+                       (.preventDefault event)
+                       (.stopPropagation event)
+                       (rf/dispatch [event-id id]))}
+          (case id
+            :up "U"
+            :north "N"
+            :east "E"
+            :south "S"
+            :west "W")])])))
+
+(defn- board-move-preview [bounds {:keys [active? status movement mutation
+                                          summary error]
+                                   :as preview}]
+  (when active?
+    [:div.board-move-preview
+     {:data-move-preview-status (some-> status name)}
+     (when-let [source-space (:source-space movement)]
+       (preview-space bounds :source status source-space))
+     (for [[index space] (map-indexed vector (:path movement))]
+       ^{:key (str "path-" index "-" (:row space) "-" (:col space))}
+       (preview-space bounds :path status space))
+     (when-let [destination-space (:destination-space movement)]
+       (preview-space bounds :destination status destination-space))
+     (when-let [target-space (:target-space mutation)]
+       (preview-space bounds :mutation status target-space))
+     [orientation-compass bounds (:orientation-compass preview)]
+     (when summary
+       [:div.board-move-preview__summary
+        {:class (preview-status-class status)}
+        (if-let [message (:message error)]
+          (str summary ": " message)
+          summary)])]))
+
 (defn- piece-action-event [piece descriptor]
   (case (:role descriptor)
     :minion [events/select-move-piece (:id piece)]
@@ -233,7 +319,7 @@
   (let [{:keys [cells board-pieces pieces-by-space wastelands space-bounds
                 selected-index card-icon-mode texture-errors three-revision
                 three-renderer-available? three-renderer-message legal-targets
-                direct-manipulation]}
+                move-preview direct-manipulation]}
         @(rf/subscribe [events/board-view])]
     [:section.board-area
      {:data-three-revision (or three-revision "unavailable")}
@@ -250,9 +336,13 @@
         card-icon-mode
         texture-errors
         legal-targets
+        move-preview
         direct-manipulation
         {:on-card-select #(rf/dispatch [events/select-board-card %])
          :on-gesture-intent #(rf/dispatch [events/start-gesture-intent %])
+         :on-orientation-select #(rf/dispatch [events/set-move-orientation %])
+         :on-minion-orientation-select #(rf/dispatch [events/set-move-minion-orientation %])
+         :on-sun-disc-orientation-select #(rf/dispatch [events/set-move-sun-disc-orientation %])
          :on-clear-texture-errors #(rf/dispatch [events/clear-three-texture-errors])
          :on-renderer-error #(rf/dispatch [events/three-renderer-error %])
          :on-texture-error #(rf/dispatch [events/three-texture-error %])}]
@@ -294,4 +384,5 @@
               card-icon-mode
               (get territory-targets (:index cell))
               piece-targets
-              drag-enabled?])])])]))
+              drag-enabled?])
+           [board-move-preview space-bounds move-preview]])])]))

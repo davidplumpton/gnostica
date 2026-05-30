@@ -68,6 +68,7 @@ Preview:
 - Movement previews show snapped cardinal path, distance, destination, and whether the landing space is territory, wasteland, full, void, or blocked by enemy occupancy.
 - Mutation previews show before/after size, pips, territory value, replacement-card requirement, and source-card cost.
 - Preview data is derived from staged fields and pure resolver checks; it is not a separate rules engine.
+- Browser implementation note: `gnostica.move-selection/move-preview` exposes the shared preview view model. The CSS fallback renders spatial path, destination, mutation target, and compass overlays on the board; the Three.js path renders the same preview state in its board overlay with an orientation compass and smoke coverage.
 
 Missing choice:
 - When a gesture is incomplete, the pending tray lists the first missing field and alternatives from `gnostica.gesture-intent/alternatives`.
@@ -187,7 +188,7 @@ Manual accessibility checks for this fallback:
 1. Keep the current card and territory gesture adapter as the base: hand-card and draw-pile gestures, territory source gestures, CSS fallback territory/wasteland drops, pending tray, and Detailed entry handoff.
 2. Add piece and stash-piece object descriptors to board and move-panel view models, then wire click, keyboard activation, and CSS fallback drag payloads.
 3. Extend Three.js picking from territory card selection to draggable cards, piece meshes, wasteland outlines, and stable drop targets; suppress OrbitControls only during active object drags.
-4. Add previews for Rod paths, Hermit relocation, initial placement, and orientation compass selection.
-5. Add replacement-card, Disc/Sword/Sun mutation, damage, and same-target shortcut previews.
+4. Implemented: previews for Rod paths, Hermit relocation, initial placement, and orientation compass selection are exposed through the shared `move-preview` model and rendered in both CSS fallback and Three.js board paths.
+5. Implemented initial mutation previews for Disc, Sword, and Sun target/value changes; future work can deepen this into richer piece-size glyphs, replacement-card ghosting, damage markers, and same-target shortcut visuals.
 6. Add ordered-major and World action ribbon support so completed sub-actions are visible and editable before confirmation.
 7. Add integration and smoke coverage for gesture entry, disabled targets, no mutation on invalid drops, cleanup on unmount, and CSS fallback parity.

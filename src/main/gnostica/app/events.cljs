@@ -118,6 +118,7 @@
 (def move-disc-target-kind-options :gnostica.app/move-disc-target-kind-options)
 (def move-sword-target-kind-options :gnostica.app/move-sword-target-kind-options)
 (def move-legal-targets :gnostica.app/move-legal-targets)
+(def move-preview :gnostica.app/move-preview)
 (def move-target-piece-options :gnostica.app/move-target-piece-options)
 (def move-distance-options :gnostica.app/move-distance-options)
 (def move-damage-options :gnostica.app/move-damage-options)
@@ -737,6 +738,11 @@ move-rod-mode-options
    (app-state/move-legal-targets db)))
 
 (rf/reg-sub
+ move-preview
+ (fn [db _]
+   (app-state/move-preview db)))
+
+(rf/reg-sub
 move-target-piece-options
  (fn [db _]
    (app-state/move-target-piece-options db)))
@@ -841,14 +847,16 @@ move-rod-orientation-required?
  :<- [three-renderer-error]
  :<- [three-runtime-status]
  :<- [move-legal-targets]
+ :<- [move-preview]
  :<- [direct-manipulation]
  (fn [[cells board-pieces selected-index card-icon-mode texture-errors
-       renderer-error runtime-status legal-targets direct-manipulation] _]
+       renderer-error runtime-status legal-targets move-preview direct-manipulation] _]
    (app-state/board-view-model
     {:cells cells
      :board-pieces board-pieces
      :selected-index selected-index
      :legal-targets legal-targets
+     :move-preview move-preview
      :card-icon-mode card-icon-mode
      :texture-errors texture-errors
      :renderer-error renderer-error

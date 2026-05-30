@@ -5852,6 +5852,402 @@
          :player-id (current-player-id db)
          :params params}))))
 
+(def ^:private direction-deltas
+  {:north [-1 0]
+   :east [0 1]
+   :south [1 0]
+   :west [0 -1]})
+
+(defn- add-coordinates [[row col] [row-delta col-delta] distance]
+  [(+ row (* row-delta distance))
+   (+ col (* col-delta distance))])
+
+(defn- path-coordinates [from orientation distance]
+  (when-let [delta (get direction-deltas orientation)]
+    (mapv #(add-coordinates from delta %)
+          (range 1 (inc (or distance 0))))))
+
+(defn- board-cell-at-coordinate [db [row col]]
+  (some #(when (and (= row (:row %))
+                    (= col (:col %)))
+           %)
+        (board db)))
+
+(defn- wasteland-space-at-coordinate [db [row col]]
+  (some #(when (and (= row (:row %))
+                    (= col (:col %)))
+           %)
+        (layout/wasteland-spaces (board db))))
+
+(defn- coordinate-space [db [row col]]
+  (cond
+    (nil? row)
+    nil
+
+    (board-cell-at-coordinate db [row col])
+    (let [{:keys [index orientation] :as cell} (board-cell-at-coordinate db [row col])]
+      {:kind :territory
+       :board-index index
+       :row row
+       :col col
+       :orientation orientation
+       :label (territory-label db index)})
+
+    (wasteland-space-at-coordinate db [row col])
+    (let [{:keys [orientation] :as space} (wasteland-space-at-coordinate db [row col])]
+      {:kind :wasteland
+       :row row
+       :col col
+       :orientation orientation
+       :label (wasteland-label space)})
+
+    :else
+    {:kind :void
+     :row row
+     :col col
+     :orientation :portrait
+     :label (str "Void row " (inc row) ", column " (inc col))}))
+
+(defn- coordinate-for-board-index [db board-index]
+  (when-let [{:keys [row col]} (board-cell-by-index db board-index)]
+    [row col]))
+
+(defn- coordinate-for-wasteland [{:keys [row col]}]
+  (when (and (int? row) (int? col))
+    [row col]))
+
+(defn- target-coordinate-from-params [db params]
+  (cond
+    (some? (:sun-disc-target-piece-id params))
+    (some->> (:sun-disc-target-piece-id params)
+             (piece-by-id db)
+             (piece-coordinate db))
+
+    (some? (:target-piece-id params))
+    (some->> (:target-piece-id params)
+             (piece-by-id db)
+             (piece-coordinate db))
+
+    (some? (:sun-disc-target-board-index params))
+    (coordinate-for-board-index db (:sun-disc-target-board-index params))
+
+    (some? (:target-board-index params))
+    (coordinate-for-board-index db (:target-board-index params))
+
+    (:hermit-destination-wasteland params)
+    (coordinate-for-wasteland (:hermit-destination-wasteland params))
+
+    (some? (:hermit-destination-board-index params))
+    (coordinate-for-board-index db (:hermit-destination-board-index params))
+
+    (:target-wasteland params)
+    (coordinate-for-wasteland (:target-wasteland params))))
+
+(defn- rod-preview-moved-coordinate [db params]
+  (case (:rod-mode params)
+    :move-minion
+    (some->> (:piece-id params)
+             (piece-by-id db)
+             (piece-coordinate db))
+
+    :push-piece
+    (some->> (:target-piece-id params)
+             (piece-by-id db)
+             (piece-coordinate db))
+
+    :push-territory
+    (coordinate-for-board-index db (:target-board-index params))
+
+    nil))
+
+(defn- rod-preview [db _source params preview-status preview-error]
+  (let [minion (piece-by-id db (:piece-id params))
+        from (rod-preview-moved-coordinate db params)
+        distance (:distance params)
+        coordinates (when (and from
+                               (:orientation minion)
+                               (pos-int? distance))
+                      (path-coordinates from (:orientation minion) distance))]
+    (when (or from (seq coordinates))
+      {:kind :movement
+       :power :rod
+       :mode (:rod-mode params)
+       :status preview-status
+       :error preview-error
+       :source-space (coordinate-space db from)
+       :path (mapv #(coordinate-space db %) coordinates)
+       :destination-space (coordinate-space db (last coordinates))
+       :distance distance
+       :summary (str "Rod "
+                     (get-in rod-mode-definitions [(:rod-mode params) :label] "movement")
+                     (when distance
+                       (str " " distance)))})))
+
+(defn- hermit-preview [db _source params preview-status preview-error]
+  (let [from (cond
+               (:target-piece-id params)
+               (some->> (:target-piece-id params)
+                        (piece-by-id db)
+                        (piece-coordinate db))
+
+               (some? (:target-board-index params))
+               (coordinate-for-board-index db (:target-board-index params)))
+        to (or (coordinate-for-wasteland (:hermit-destination-wasteland params))
+               (coordinate-for-board-index db (:hermit-destination-board-index params)))]
+    (when (or from to)
+      {:kind :movement
+       :power :hermit
+       :status preview-status
+       :error preview-error
+       :source-space (coordinate-space db from)
+       :path (cond-> []
+               from (conj (coordinate-space db from))
+               to (conj (coordinate-space db to)))
+       :destination-space (coordinate-space db to)
+       :summary "Hermit relocation"})))
+
+(defn- piece-size-after-growth [size steps]
+  (nth (iterate {:small :medium
+                 :medium :large
+                 :large :large}
+                size)
+       (or steps 1)
+       size))
+
+(defn- piece-size-for-pips [pips]
+  (case pips
+    1 :small
+    2 :medium
+    3 :large
+    nil))
+
+(defn- selected-replacement-card [db source params card-id]
+  (some #(when (= card-id (:id %)) %)
+        (replacement-card-options-for-source
+         db
+         source
+         params
+         (selected-replacement-card-source db source params))))
+
+(defn- disc-mutation-preview [db source params preview-status preview-error]
+  (case (:disc-target-kind params)
+    :piece
+    (when-let [piece (piece-by-id db (:target-piece-id params))]
+      (let [action-count (selected-disc-action-count db source params)]
+        {:kind :mutation
+         :power :disc
+         :status preview-status
+         :error preview-error
+         :target-space (coordinate-space db (piece-coordinate db piece))
+         :target {:kind :piece
+                  :piece-id (:id piece)}
+         :summary (str "Grow "
+                       (pieces/size-label (:size piece))
+                       " to "
+                       (pieces/size-label (piece-size-after-growth (:size piece)
+                                                                  action-count)))}))
+
+    :territory
+    (when-let [cell (target-board-cell db params)]
+      (let [old-value (cards/card-point-value (:card cell))
+            replacement (selected-replacement-card db
+                                                   source
+                                                   params
+                                                   (:replacement-card-id params))
+            new-value (or (some-> replacement cards/card-point-value)
+                          (replacement-card-expected-value db source params))]
+        {:kind :mutation
+         :power :disc
+         :status preview-status
+         :error preview-error
+         :target-space (coordinate-space db [(:row cell) (:col cell)])
+         :target {:kind :territory
+                  :board-index (:index cell)}
+         :summary (str "Grow territory "
+                       (or old-value "?")
+                       " to "
+                       (or new-value "?"))}))
+
+    nil))
+
+(defn- sword-mutation-preview [db source params preview-status preview-error]
+  (case (:sword-target-kind params)
+    :piece
+    (when-let [piece (piece-by-id db (:target-piece-id params))]
+      (let [damage (:damage params)
+            remaining (when (int? damage)
+                        (- (pieces/pips piece) damage))]
+        {:kind :mutation
+         :power :sword
+         :status preview-status
+         :error preview-error
+         :target-space (coordinate-space db (piece-coordinate db piece))
+         :target {:kind :piece
+                  :piece-id (:id piece)}
+         :summary (if (and (int? remaining) (pos? remaining))
+                    (str "Shrink "
+                         (pieces/size-label (:size piece))
+                         " to "
+                         (pieces/size-label (piece-size-for-pips remaining)))
+                    "Destroy piece")}))
+
+    :territory
+    (when-let [cell (target-board-cell db params)]
+      (let [old-value (cards/card-point-value (:card cell))
+            damage (:damage params)
+            new-value (when (and old-value damage)
+                        (- old-value damage))]
+        {:kind :mutation
+         :power :sword
+         :status preview-status
+         :error preview-error
+         :target-space (coordinate-space db [(:row cell) (:col cell)])
+         :target {:kind :territory
+                  :board-index (:index cell)}
+         :summary (if (and (int? new-value) (pos? new-value))
+                    (str "Reduce territory "
+                         old-value
+                         " to "
+                         new-value)
+                    "Destroy territory")}))
+
+    nil))
+
+(defn- sun-mutation-preview [db source params preview-status preview-error]
+  (case (selected-sun-disc-mode db source params)
+    :created-piece
+    {:kind :mutation
+     :power :sun
+     :status preview-status
+     :error preview-error
+     :target-space (coordinate-space db (target-coordinate-from-params db params))
+     :target {:kind :created-piece}
+     :summary "Create a medium piece"}
+
+    :created-territory
+    {:kind :mutation
+     :power :sun
+     :status preview-status
+     :error preview-error
+     :target-space (coordinate-space db (target-coordinate-from-params db params))
+     :target {:kind :created-territory}
+     :summary "Create a two-point territory"}
+
+    :piece
+    (when-let [piece (piece-by-id db (:sun-disc-target-piece-id params))]
+      {:kind :mutation
+       :power :sun
+       :status preview-status
+       :error preview-error
+       :target-space (coordinate-space db (piece-coordinate db piece))
+       :target {:kind :piece
+                :piece-id (:id piece)}
+       :summary (str "Grow "
+                     (pieces/size-label (:size piece))
+                     " to "
+                     (pieces/size-label (piece-size-after-growth (:size piece) 1)))})
+
+    :territory
+    (when-let [cell (sun-disc-target-cell db params)]
+      {:kind :mutation
+       :power :sun
+       :status preview-status
+       :error preview-error
+       :target-space (coordinate-space db [(:row cell) (:col cell)])
+       :target {:kind :territory
+                :board-index (:index cell)}
+       :summary (str "Grow territory "
+                     (or (cards/card-point-value (:card cell)) "?")
+                     " to "
+                     (or (replacement-card-expected-value db source params) "?"))})
+
+    nil))
+
+(defn- mutation-preview [db source params preview-status preview-error]
+  (cond
+    (disc-move? db source params)
+    (disc-mutation-preview db source params preview-status preview-error)
+
+    (sword-move? db source params)
+    (sword-mutation-preview db source params preview-status preview-error)
+
+    (sun-move? db source params)
+    (sun-mutation-preview db source params preview-status preview-error)
+
+    :else
+    nil))
+
+(defn- compass-field [db source params]
+  (let [stage (:stage (move-selection db))]
+    (cond
+      (or (= :minion-orientation stage)
+          (and (= :confirm stage)
+               (major-orient-step? db source params)))
+      :minion-orientation
+
+      (and (= :sun (active-power db source params))
+           (move-sun-disc-orientation-available? db))
+      :sun-disc-orientation
+
+      (or (= :orientation stage)
+          (= :orient-piece source)
+          (= :place-initial-small source)
+          (and (rod-move? db source params)
+               (move-rod-orientation-required? db)
+               (:distance params))
+          (move-hermit-orientation-required? db)
+          (move-disc-orientation-available? db)
+          (move-sword-orientation-available? db)
+          (hierophant-move? db source params)
+          (devil-move? db source params)
+          (and (or (cup-move? db source params)
+                   (sun-move? db source params))
+               (some? (:target-board-index params))
+               (nil? (:target-piece-id params))))
+      :orientation)))
+
+(defn- compass-coordinate [db source params field movement]
+  (case field
+    :minion-orientation
+    (some->> (:piece-id params)
+             (piece-by-id db)
+             (piece-coordinate db))
+
+    :sun-disc-orientation
+    (some->> (:sun-disc-target-piece-id params)
+             (piece-by-id db)
+             (piece-coordinate db))
+
+    :orientation
+    (or (some-> movement :destination-space ((juxt :row :col)))
+        (cond
+          (= :orient-piece source)
+          (some->> (:piece-id params)
+                   (piece-by-id db)
+                   (piece-coordinate db))
+
+          (= :place-initial-small source)
+          (target-coordinate-from-params db params)
+
+          (hermit-move? db source params)
+          (or (coordinate-for-wasteland (:hermit-destination-wasteland params))
+              (coordinate-for-board-index db (:hermit-destination-board-index params)))
+
+          :else
+          (target-coordinate-from-params db params)))))
+
+(defn- orientation-compass [db source params movement]
+  (when-let [field (compass-field db source params)]
+    (when-let [coordinate (compass-coordinate db source params field movement)]
+      {:active? true
+       :field field
+       :space (coordinate-space db coordinate)
+       :selected-orientation (case field
+                               :minion-orientation (:minion-orientation params)
+                               :sun-disc-orientation (:sun-disc-orientation params)
+                               (:orientation params))
+       :options (move-orientation-options db)})))
+
 (defn- command-uses-draw-pile-territory-card? [value]
   (cond
     (map? value)
@@ -5878,6 +6274,46 @@
     (if (world-move? db source params)
       (selected-world-copied-power db source params)
       (move-power db))))
+
+(declare move-preview-result)
+
+(defn move-preview [db]
+  (let [{:keys [source params]} (move-selection db)
+        preview-result (when (move-ready? db)
+                         (move-preview-result db))
+        preview-error (when (false? (:ok? preview-result))
+                        (:error preview-result))
+        preview-status (cond
+                         (false? (:ok? preview-result)) :disabled
+                         (:ok? preview-result) :legal
+                         :else :pending)
+        movement (cond
+                   (rod-move? db source params)
+                   (rod-preview db source params preview-status preview-error)
+
+                   (hermit-move? db source params)
+                   (hermit-preview db source params preview-status preview-error)
+
+                   :else
+                   nil)
+        mutation (mutation-preview db source params preview-status preview-error)
+        compass (orientation-compass db source params movement)]
+    (cond-> {:active? (boolean (or movement mutation compass))
+             :status preview-status
+             :error preview-error}
+      movement
+      (assoc :movement movement)
+
+      mutation
+      (assoc :mutation mutation)
+
+      compass
+      (assoc :orientation-compass compass)
+
+      (or movement mutation compass)
+      (assoc :summary (or (:summary mutation)
+                          (:summary movement)
+                          "Choose orientation")))))
 
 (defn- confirmed-move-result [db command transition-options]
   (let [power (transition-power db)

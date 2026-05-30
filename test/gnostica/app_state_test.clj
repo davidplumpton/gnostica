@@ -1331,6 +1331,15 @@
                                   :game-options {:shuffle-fn identity}
                                   :demo-board-pieces []})
         original-game (app-state/game db)
+        partial-db (app-state/start-gesture-intent
+                    db
+                    {:source {:kind :stash-piece
+                              :player-id :rose
+                              :size :small}
+                     :target {:kind :wasteland
+                              :row 0
+                              :col 3}})
+        partial-preview (:move-preview (app-state/board-view partial-db))
         pending-db (app-state/start-gesture-intent
                     db
                     {:source {:kind :stash-piece
@@ -1357,6 +1366,15 @@
                      :col 3}
             :orientation :north}
            (app-state/move-command pending-db)))
+    (is (= :orientation
+           (get-in partial-preview [:orientation-compass :field])))
+    (is (= {:kind :wasteland
+            :row 0
+            :col 3}
+           (select-keys (get-in partial-preview [:orientation-compass :space])
+                        [:kind :row :col])))
+    (is (= [:up :north :east :south :west]
+           (mapv :id (get-in partial-preview [:orientation-compass :options]))))
     (is (true? (:can-confirm? (app-state/pending-move-tray-view pending-db))))
     (is (:ok? (get-in confirmed-db [:move-selection :last-result])))
     (is (= {:id :rose-small-1
@@ -1477,6 +1495,7 @@
                               :distance 1
                               :orientation :south}})
         tray (app-state/pending-move-tray-view pending-db)
+        preview (:move-preview (app-state/board-view pending-db))
         confirmed-db (app-state/confirm-move pending-db)]
     (is (= :confirm (:stage (app-state/move-selection pending-db))))
     (is (= :target-territory-full
@@ -1485,6 +1504,19 @@
            (get-in tray [:error :code])))
     (is (false? (:can-confirm? tray)))
     (is (= original-game (app-state/game pending-db)))
+    (is (= :disabled (:status preview)))
+    (is (= :rod (get-in preview [:movement :power])))
+    (is (= 4 (get-in preview [:movement :destination-space :board-index])))
+    (is (= [{:kind :territory
+             :board-index 4
+             :row 1
+             :col 1}]
+           (mapv #(select-keys % [:kind :board-index :row :col])
+                 (get-in preview [:movement :path]))))
+    (is (= {:field :orientation
+            :selected-orientation :south}
+           (select-keys (:orientation-compass preview)
+                        [:field :selected-orientation])))
     (is (= :rejected (:stage (app-state/move-selection confirmed-db))))
     (is (= :target-territory-full
            (get-in confirmed-db [:move-selection :error :code])))
@@ -1579,7 +1611,8 @@
                               :replacement-card-id "cupsking"}
                      :target {:kind :territory
                               :board-index 4}})
-        tray (app-state/pending-move-tray-view pending-db)]
+        tray (app-state/pending-move-tray-view pending-db)
+        preview (:move-preview (app-state/board-view pending-db))]
     (is (= (app-state/game db)
            (app-state/game pending-db)))
     (is (= :confirm (:stage (app-state/move-selection pending-db))))
@@ -1591,6 +1624,15 @@
             :replacement-card-id "cupsking"}
            (app-state/move-params pending-db)))
     (is (true? (:can-confirm? tray)))
+    (is (= {:power :disc
+            :status :pending
+            :summary "Grow territory 1 to 2"}
+           (select-keys (:mutation preview)
+                        [:power :status :summary])))
+    (is (= {:kind :territory
+            :board-index 4}
+           (select-keys (get-in preview [:mutation :target-space])
+                        [:kind :board-index])))
     (is (= {:player-id :rose
             :source {:kind :hand-card
                      :card-id "coins2"
@@ -1651,6 +1693,7 @@
                               :replacement-card-id "cups2"}
                      :target {:kind :territory
                               :board-index 4}})
+        preview (:move-preview (app-state/board-view pending-db))
         confirmed-db (app-state/confirm-move pending-db)]
     (is (= (app-state/game db)
            (app-state/game pending-db)))
@@ -1674,6 +1717,11 @@
             :replacement-card-id "cups2"
             :sword-variant :sword}
            (app-state/move-command pending-db)))
+    (is (= {:power :sword
+            :status :pending
+            :summary "Reduce territory 2 to 1"}
+           (select-keys (:mutation preview)
+                        [:power :status :summary])))
     (is (:ok? (get-in confirmed-db [:move-selection :last-result])))
     (is (= "cups2" (get-in (board-cell-by-index confirmed-db 4) [:card :id])))
     (is (game-schema/valid-game? (app-state/game confirmed-db)))))

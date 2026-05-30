@@ -99,7 +99,7 @@
   ([this preserved-view]
    (dispose! this)
    (let [[_ cells board-pieces selected-index card-icon-mode _texture-errors
-          legal-targets direct-manipulation callbacks] (r/argv this)]
+          legal-targets _move-preview direct-manipulation callbacks] (r/argv this)]
      (resources/invoke-callback callbacks :on-clear-texture-errors)
      (when (runtime/available?)
        (when-let [mount-node (.-boardMountNode ^js this)]
