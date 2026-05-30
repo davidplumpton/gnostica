@@ -33,6 +33,7 @@
            pointer-cancel-listener
            pointer-move-listener
            pointer-leave-listener
+           pointer-listener-capture?
            active?
            geometries
            materials
@@ -55,15 +56,15 @@
     (let [canvas (.-domElement renderer)
           parent (.-parentNode canvas)]
       (when pointer-down-listener
-        (.removeEventListener canvas "pointerdown" pointer-down-listener))
+        (.removeEventListener canvas "pointerdown" pointer-down-listener pointer-listener-capture?))
       (when pointer-up-listener
-        (.removeEventListener canvas "pointerup" pointer-up-listener))
+        (.removeEventListener canvas "pointerup" pointer-up-listener pointer-listener-capture?))
       (when pointer-cancel-listener
-        (.removeEventListener canvas "pointercancel" pointer-cancel-listener))
+        (.removeEventListener canvas "pointercancel" pointer-cancel-listener pointer-listener-capture?))
       (when pointer-move-listener
-        (.removeEventListener canvas "pointermove" pointer-move-listener))
+        (.removeEventListener canvas "pointermove" pointer-move-listener pointer-listener-capture?))
       (when pointer-leave-listener
-        (.removeEventListener canvas "pointerleave" pointer-leave-listener))
+        (.removeEventListener canvas "pointerleave" pointer-leave-listener pointer-listener-capture?))
       (when parent
         (.removeChild parent canvas)))
     (.dispose renderer)))

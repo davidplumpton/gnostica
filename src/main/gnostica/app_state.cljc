@@ -36,6 +36,10 @@
    :expected-revision nil
    :message "Three.js runtime status has not been checked yet."})
 
+(def default-direct-manipulation
+  {:pointer-drag-enabled? true
+   :detailed-entry-available? true})
+
 (def card-icon-modes
   #{:always :popup})
 
@@ -225,8 +229,27 @@
            (select-keys status [:code :revision :expected-revision :message])
            {:ok? (true? (:ok? status))})))
 
+(defn normalize-direct-manipulation [{:keys [direct-manipulation
+                                             direct-manipulation-enabled?]
+                                      :as _opts}]
+  (let [settings (if (map? direct-manipulation)
+                   direct-manipulation
+                   {})]
+    (cond-> (merge default-direct-manipulation
+                   (select-keys settings [:pointer-drag-enabled?
+                                          :detailed-entry-available?]))
+      (contains? settings :pointer-drag-enabled?)
+      (update :pointer-drag-enabled? true?)
+
+      (contains? settings :detailed-entry-available?)
+      (update :detailed-entry-available? true?)
+
+      (contains? _opts :direct-manipulation-enabled?)
+      (assoc :pointer-drag-enabled? (true? direct-manipulation-enabled?)))))
+
 (defn- base-db
   [{:keys [selected-board-index card-icon-mode open-panels three-runtime-status]
+    :as opts
     :or {selected-board-index default-selected-board-index
          card-icon-mode default-card-icon-mode
          open-panels default-open-panels}}]
@@ -238,6 +261,7 @@
    :move-selection (empty-move-selection)
    :gesture-intent gesture-intent/empty-gesture-intent
    :three-runtime-status (normalize-three-runtime-status three-runtime-status)
+   :direct-manipulation (normalize-direct-manipulation opts)
    :three-texture-errors []})
 
 (defn- initialize-game-db [db opts player-specs game-options]
@@ -616,6 +640,9 @@
 (defn set-three-runtime-status [db status]
   (assoc db :three-runtime-status (normalize-three-runtime-status status)))
 
+(defn direct-manipulation [db]
+  (normalize-direct-manipulation {:direct-manipulation (:direct-manipulation db)}))
+
 (defn card-zones [db]
   {:hand (current-player-hand db)
    :draw-pile (draw-pile db)
@@ -626,7 +653,7 @@
 
 (defn board-view-model
   [{:keys [cells board-pieces selected-index card-icon-mode texture-errors
-           renderer-error three-runtime-status legal-targets]}]
+           renderer-error three-runtime-status legal-targets direct-manipulation]}]
   (let [wastelands (layout/wasteland-spaces cells)
         runtime-status (normalize-three-runtime-status three-runtime-status)]
     {:cells cells
@@ -641,6 +668,8 @@
      :texture-errors texture-errors
      :renderer-error renderer-error
      :three-runtime-status runtime-status
+     :direct-manipulation (normalize-direct-manipulation
+                           {:direct-manipulation direct-manipulation})
      :three-revision (:revision runtime-status)
      :three-renderer-available? (and (:ok? runtime-status)
                                      (not renderer-error))
@@ -658,7 +687,8 @@
     :card-icon-mode (card-icon-mode db)
     :texture-errors (:three-texture-errors db)
     :renderer-error (:three-renderer-error db)
-    :three-runtime-status (three-runtime-status db)}))
+    :three-runtime-status (three-runtime-status db)
+    :direct-manipulation (direct-manipulation db)}))
 
 (defn card-zones-view-model
   [{:keys [current-player card-icon-mode zones legal-targets]}]

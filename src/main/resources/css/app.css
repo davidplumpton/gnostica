@@ -937,6 +937,10 @@ img {
   cursor: grabbing;
 }
 
+.board-three[data-drag-active="true"] .board-three__canvas {
+  cursor: grabbing;
+}
+
 .board-three__reset {
   position: absolute;
   top: 0.75rem;
@@ -959,6 +963,35 @@ img {
   border-color: var(--focus);
   outline: 2px solid rgba(114, 199, 189, 0.42);
   outline-offset: 2px;
+}
+
+.board-three__drag-preview {
+  position: absolute;
+  left: 50%;
+  bottom: 0.75rem;
+  z-index: 3;
+  max-width: min(24rem, calc(100% - 1.5rem));
+  padding: 0.48rem 0.7rem;
+  border: 1px solid rgba(255, 250, 240, 0.28);
+  border-radius: 6px;
+  background: rgba(22, 30, 28, 0.9);
+  color: var(--ink);
+  font-size: 0.78rem;
+  font-weight: 800;
+  line-height: 1.25;
+  pointer-events: none;
+  transform: translateX(-50%);
+}
+
+.board-three__drag-preview.is-legal-target {
+  border-color: rgba(255, 224, 138, 0.84);
+  box-shadow: 0 0 0 2px rgba(255, 224, 138, 0.22);
+}
+
+.board-three__drag-preview.is-disabled-target {
+  border-color: rgba(255, 138, 122, 0.72);
+  color: #ffd7cf;
+  box-shadow: 0 0 0 2px rgba(255, 138, 122, 0.2);
 }
 
 .board-three-icon-popover {

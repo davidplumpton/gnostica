@@ -1,12 +1,23 @@
 (ns gnostica.three-board.pointer
-  (:require [gnostica.three-board.resources :as resources]))
+  (:require [gnostica.gesture-input :as gesture-input]
+            [gnostica.three-board.resources :as resources]))
 
 (def click-threshold 8)
 (def board-index-user-data-key "gnosticaBoardIndex")
+(def gesture-object-user-data-key "gnosticaGestureObject")
 
 (defn mark-board-index! [mesh index]
   (aset (.-userData mesh) board-index-user-data-key index)
   mesh)
+
+(defn mark-gesture-object! [mesh object]
+  (aset (.-userData mesh) gesture-object-user-data-key object)
+  mesh)
+
+(defn- gesture-object [mesh]
+  (some-> mesh
+          (.-userData)
+          (aget gesture-object-user-data-key)))
 
 (defn- pointer-event->board-pointer! [pointer target event]
   (let [rect (.getBoundingClientRect target)
@@ -18,56 +29,221 @@
             (- 1 (* 2 (/ (- (.-clientY event) (.-top rect)) height))))
       true)))
 
-(defn- board-index-at!
-  [raycaster pointer camera card-meshes canvas event]
+(defn- picked-mesh-at!
+  [raycaster pointer camera meshes canvas event]
   (when (pointer-event->board-pointer! pointer canvas event)
     (.setFromCamera raycaster pointer camera)
-    (let [intersections (.intersectObjects raycaster card-meshes false)
-          intersection (aget intersections 0)
-          picked-object (some-> intersection (aget "object"))
-          picked-index (some-> picked-object
-                               (.-userData)
-                               (aget board-index-user-data-key))]
-      (when (number? picked-index)
-        picked-index))))
+    (some-> (.intersectObjects raycaster meshes false)
+            (aget 0)
+            (aget "object"))))
 
-(defn install-card-pointer-listeners!
-  [{:keys [canvas camera card-meshes callbacks assoc-state!]}]
+(defn- board-index-at!
+  [raycaster pointer camera card-meshes canvas event]
+  (let [picked-object (picked-mesh-at! raycaster pointer camera card-meshes canvas event)
+        picked-index (some-> picked-object
+                             (.-userData)
+                             (aget board-index-user-data-key))]
+    (when (number? picked-index)
+      picked-index)))
+
+(defn- gesture-object-at!
+  [raycaster pointer camera object-meshes canvas event]
+  (some-> (picked-mesh-at! raycaster pointer camera object-meshes canvas event)
+          gesture-object))
+
+(defn- descriptors-by [key descriptors]
+  (into {}
+        (map (juxt key identity))
+        descriptors))
+
+(defn- descriptor-for-object [legal-targets object]
+  (case (:kind object)
+    :territory
+    (get (descriptors-by :board-index (:territories legal-targets))
+         (:board-index object))
+
+    :piece
+    (get (descriptors-by :piece-id (:pieces legal-targets))
+         (:piece-id object))
+
+    :wasteland
+    (get (into {}
+               (map (fn [{:keys [row col] :as descriptor}]
+                      [[row col] descriptor]))
+               (:wastelands legal-targets))
+         [(:row object) (:col object)])
+
+    nil))
+
+(defn- source-input-for-object [legal-targets object]
+  (case (:kind object)
+    :territory
+    (gesture-input/territory-drag-input
+     {:index (:board-index object)}
+     (descriptor-for-object legal-targets object))
+
+    :piece
+    (when-let [descriptor (descriptor-for-object legal-targets object)]
+      (gesture-input/piece-drag-input (:piece descriptor) descriptor))
+
+    nil))
+
+(defn- target-for-object [object]
+  (case (:kind object)
+    :territory (gesture-input/territory-target (:board-index object))
+    :piece (gesture-input/piece-target (:piece-id object))
+    :wasteland (gesture-input/wasteland-target (:row object) (:col object))
+    nil))
+
+(defn- preview-for [legal-targets source-object target-object]
+  (let [descriptor (when target-object
+                     (descriptor-for-object legal-targets target-object))]
+    (cond-> {:active? true
+             :source source-object
+             :target target-object}
+      descriptor
+      (assoc :target-status (:status descriptor)
+             :target-enabled? (:enabled? descriptor)
+             :target-reason (or (:reason descriptor)
+                                (get-in descriptor [:error :message]))))))
+
+(defn- pointer-distance [event {:keys [x y]}]
+  (js/Math.hypot (- (.-clientX event) x)
+                 (- (.-clientY event) y)))
+
+(defn- set-controls-enabled! [controls enabled?]
+  (when controls
+    (set! (.-enabled controls) enabled?)))
+
+(defn- stop-object-pointer-event! [event]
+  (.preventDefault event)
+  (.stopPropagation event))
+
+(defn install-board-pointer-listeners!
+  [{:keys [canvas camera controls card-meshes object-meshes target-meshes
+           legal-targets-ref drag-enabled? callbacks assoc-state!]}]
   (let [raycaster (js/THREE.Raycaster.)
         pointer (js/THREE.Vector2.)
         pointer-down (atom nil)
         card-mesh-array (to-array card-meshes)
+        object-mesh-array (to-array object-meshes)
+        target-mesh-array (to-array target-meshes)
         board-index-at! #(board-index-at! raycaster pointer camera card-mesh-array canvas %)
+        source-object-at! #(gesture-object-at! raycaster pointer camera object-mesh-array canvas %)
+        target-object-at! #(gesture-object-at! raycaster pointer camera target-mesh-array canvas %)
+        current-legal-targets #(or (some-> legal-targets-ref deref) {})
         select-card-at! (fn [event]
                           (when-let [picked-index (board-index-at! event)]
                             (resources/invoke-callback callbacks :on-card-select picked-index)))
-        hover-card-at! #(assoc-state! :hovered-index (board-index-at! %))
+        dispatch-gesture! (fn [input]
+                            (resources/invoke-callback callbacks :on-gesture-intent input))
+        clear-drag! (fn []
+                      (assoc-state! :drag-preview nil)
+                      (set-controls-enabled! controls true))
+        hover-card-at! #(when-not @pointer-down
+                          (assoc-state! :hovered-index (board-index-at! %)))
         pointer-down-listener (fn [event]
-                                (reset! pointer-down {:id (.-pointerId event)
-                                                      :x (.-clientX event)
-                                                      :y (.-clientY event)}))
+                                (let [click-state {:id (.-pointerId event)
+                                                   :x (.-clientX event)
+                                                   :y (.-clientY event)
+                                                   :selection-only? true}]
+                                  (if-let [source-object (when drag-enabled?
+                                                           (source-object-at! event))]
+                                    (if-let [input (source-input-for-object (current-legal-targets)
+                                                                            source-object)]
+                                      (do
+                                        (stop-object-pointer-event! event)
+                                        (set-controls-enabled! controls false)
+                                        (when (.-setPointerCapture canvas)
+                                          (.setPointerCapture canvas (.-pointerId event)))
+                                        (reset! pointer-down {:id (.-pointerId event)
+                                                              :x (.-clientX event)
+                                                              :y (.-clientY event)
+                                                              :source-object source-object
+                                                              :input input
+                                                              :dragging? false}))
+                                      (reset! pointer-down click-state))
+                                    (reset! pointer-down click-state))))
+        pointer-move-listener (fn [event]
+                                (if-let [{:keys [input source-object dragging?
+                                                 selection-only?]
+                                          :as state} @pointer-down]
+                                  (if selection-only?
+                                    nil
+                                    (do
+                                      (stop-object-pointer-event! event)
+                                      (let [distance (pointer-distance event state)
+                                            dragging-now? (or dragging?
+                                                              (< click-threshold distance))
+                                            target-object (when dragging-now?
+                                                            (target-object-at! event))]
+                                        (when (and dragging-now? (not dragging?))
+                                          (dispatch-gesture! input))
+                                        (when dragging-now?
+                                          (swap! pointer-down assoc :dragging? true)
+                                          (assoc-state! :drag-preview
+                                                        (preview-for (current-legal-targets)
+                                                                     source-object
+                                                                     target-object))))))
+                                  (hover-card-at! event)))
         pointer-up-listener (fn [event]
-                              (when-let [{:keys [id x y]} @pointer-down]
+                              (when-let [{:keys [id input source-object dragging?
+                                                 selection-only?]
+                                          :as state}
+                                         @pointer-down]
+                                (when-not selection-only?
+                                  (stop-object-pointer-event! event))
                                 (reset! pointer-down nil)
-                                (let [distance (js/Math.hypot (- (.-clientX event) x)
-                                                              (- (.-clientY event) y))]
-                                  (when (and (= id (.-pointerId event))
-                                             (<= distance click-threshold))
-                                    (select-card-at! event)))))
+                                (when (and (not selection-only?)
+                                           (.-releasePointerCapture canvas))
+                                  (try
+                                    (.releasePointerCapture canvas (.-pointerId event))
+                                    (catch :default _
+                                      nil)))
+                                (when-not selection-only?
+                                  (clear-drag!))
+                                (let [distance (pointer-distance event state)
+                                      same-pointer? (= id (.-pointerId event))]
+                                  (cond
+                                    (and same-pointer?
+                                         selection-only?
+                                         (<= distance click-threshold))
+                                    (select-card-at! event)
+
+                                    (and same-pointer? dragging?)
+                                    (let [target-object (target-object-at! event)
+                                          target (target-for-object target-object)]
+                                      (dispatch-gesture! (cond-> input
+                                                           target
+                                                           (assoc :target target))))
+
+                                    (and same-pointer?
+                                         (<= distance click-threshold)
+                                         (= :territory (:kind source-object)))
+                                    (select-card-at! event)
+
+                                    (and same-pointer?
+                                         (<= distance click-threshold)
+                                         input)
+                                    (dispatch-gesture! input)))))
         pointer-cancel-listener (fn [_]
-                                  (reset! pointer-down nil))
+                                  (reset! pointer-down nil)
+                                  (clear-drag!))
         pointer-leave-listener (fn [_]
                                  (assoc-state! :hovered-index nil))]
-    (.addEventListener canvas "pointerdown" pointer-down-listener)
-    (.addEventListener canvas "pointerup" pointer-up-listener)
-    (.addEventListener canvas "pointercancel" pointer-cancel-listener)
-    (.addEventListener canvas "pointermove" hover-card-at!)
-    (.addEventListener canvas "pointerleave" pointer-leave-listener)
+    (.addEventListener canvas "pointerdown" pointer-down-listener true)
+    (.addEventListener canvas "pointerup" pointer-up-listener true)
+    (.addEventListener canvas "pointercancel" pointer-cancel-listener true)
+    (.addEventListener canvas "pointermove" pointer-move-listener true)
+    (.addEventListener canvas "pointerleave" pointer-leave-listener true)
     {:pointer-down-listener pointer-down-listener
      :pointer-up-listener pointer-up-listener
      :pointer-cancel-listener pointer-cancel-listener
-     :pointer-move-listener hover-card-at!
-     :pointer-leave-listener pointer-leave-listener}))
+     :pointer-move-listener pointer-move-listener
+     :pointer-leave-listener pointer-leave-listener
+     :pointer-listener-capture? true}))
+
+(def install-card-pointer-listeners! install-board-pointer-listeners!)
 
 (defn focus-board-on-pointer-down! [event]
   (let [target (.-target event)

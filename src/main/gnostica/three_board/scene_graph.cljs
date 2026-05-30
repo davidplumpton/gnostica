@@ -1,5 +1,6 @@
 (ns gnostica.three-board.scene-graph
   (:require [gnostica.board-layout :as layout]
+            [gnostica.gesture-input :as gesture-input]
             [gnostica.icons :as icons]
             [gnostica.pieces :as pieces]
             [gnostica.three-board.pointer :as pointer]
@@ -21,6 +22,11 @@
 (def wasteland-outline-z -0.005)
 (def wasteland-outline-dash-size 0.035)
 (def wasteland-outline-gap-size 0.055)
+(def drag-target-opacity 0)
+(def drag-target-z 0.018)
+(def wasteland-highlight-z 0.006)
+(def piece-highlight-z 0.032)
+(def piece-highlight-radius 0.24)
 
 (defn- piece-tilt-axis [orientation]
   (let [axis (js/THREE.Vector3.)]
@@ -158,6 +164,54 @@
       (add-wasteland-line! scene geometries material segment))
     (swap! materials conj material)))
 
+(defn- set-space-plane-rotation! [mesh orientation]
+  (when (= :landscape orientation)
+    (set! (.. mesh -rotation -z) (/ js/Math.PI 2)))
+  mesh)
+
+(defn- add-wasteland-target-plane!
+  [scene geometries materials target-meshes wasteland-selection-meshes space]
+  (let [target-geometry (js/THREE.PlaneGeometry. layout/card-short layout/card-long)
+        target-material (js/THREE.MeshBasicMaterial.
+                         #js {:transparent true
+                              :opacity drag-target-opacity
+                              :side js/THREE.DoubleSide
+                              :depthWrite false})
+        target-mesh (js/THREE.Mesh. target-geometry target-material)
+        highlight-geometry (js/THREE.PlaneGeometry.
+                            (+ layout/card-short layout/selected-card-padding)
+                            (+ layout/card-long layout/selected-card-padding))
+        highlight-material (js/THREE.MeshBasicMaterial.
+                            #js {:color 0xffe08a
+                                 :transparent true
+                                 :opacity 0.46
+                                 :side js/THREE.DoubleSide})
+        highlight-mesh (js/THREE.Mesh. highlight-geometry highlight-material)
+        [x y] (layout/card-position space)
+        key [(:row space) (:col space)]]
+    (.set (.-position target-mesh) x y drag-target-z)
+    (.set (.-position highlight-mesh) x y wasteland-highlight-z)
+    (set-space-plane-rotation! target-mesh (:orientation space))
+    (set-space-plane-rotation! highlight-mesh (:orientation space))
+    (set! (.-visible highlight-mesh) false)
+    (pointer/mark-gesture-object! target-mesh (gesture-input/wasteland-target space))
+    (.add scene highlight-mesh)
+    (.add scene target-mesh)
+    (swap! geometries into [target-geometry highlight-geometry])
+    (swap! materials into [target-material highlight-material])
+    (swap! target-meshes conj target-mesh)
+    (swap! wasteland-selection-meshes assoc key highlight-mesh)))
+
+(defn- add-wasteland-target-planes!
+  [scene geometries materials target-meshes wasteland-selection-meshes spaces]
+  (doseq [space spaces]
+    (add-wasteland-target-plane! scene
+                                 geometries
+                                 materials
+                                 target-meshes
+                                 wasteland-selection-meshes
+                                 space)))
+
 (defn- add-piece-lights! [scene]
   (let [ambient (js/THREE.AmbientLight. 0xffffff 0.72)
         directional (js/THREE.DirectionalLight. 0xffffff 0.68)]
@@ -184,7 +238,8 @@
         spaces))
 
 (defn- add-piece-mesh!
-  [scene geometries materials spaces-by-key slot piece-count piece]
+  [scene geometries materials spaces-by-key piece-meshes target-meshes
+   piece-selection-meshes slot piece-count piece]
   (when-let [space (get spaces-by-key (pieces/piece-space-key piece))]
     (let [piece-size (pieces/size-data piece)
           {:keys [radius height]} piece-size
@@ -193,8 +248,17 @@
           material (js/THREE.MeshLambertMaterial.
                     #js {:color (or (:color player) 0xffffff)})
           mesh (js/THREE.Mesh. geometry material)
+          highlight-geometry (js/THREE.CircleGeometry. piece-highlight-radius 36)
+          highlight-material (js/THREE.MeshBasicMaterial.
+                              #js {:color 0xffe08a
+                                   :transparent true
+                                   :opacity 0.46
+                                   :side js/THREE.DoubleSide})
+          highlight-mesh (js/THREE.Mesh. highlight-geometry highlight-material)
           [card-x card-y] (layout/card-position space)
           [offset-x offset-y] (layout/piece-slot-offset slot piece-count)
+          x (+ card-x offset-x)
+          y (+ card-y offset-y)
           z (layout/piece-center-z piece-size (:orientation piece))]
       (add-piece-edge-outline! mesh geometries materials geometry)
       (doseq [{:keys [position normal]} (layout/piece-pip-local-markers piece-size)]
@@ -209,20 +273,38 @@
           (.add mesh pip-mesh)
           (swap! geometries conj pip-geometry)
           (swap! materials conj pip-material)))
-      (.set (.-position mesh) (+ card-x offset-x) (+ card-y offset-y) z)
+      (.set (.-position mesh) x y z)
+      (.set (.-position highlight-mesh) x y piece-highlight-z)
+      (set! (.-visible highlight-mesh) false)
       (set-piece-rotation! mesh (:orientation piece) piece-size)
+      (pointer/mark-gesture-object! mesh (gesture-input/piece-target piece))
+      (.add scene highlight-mesh)
       (.add scene mesh)
-      (swap! geometries conj geometry)
-      (swap! materials conj material)
+      (swap! geometries into [geometry highlight-geometry])
+      (swap! materials into [material highlight-material])
+      (swap! piece-meshes conj mesh)
+      (swap! target-meshes conj mesh)
+      (swap! piece-selection-meshes assoc (:id piece) highlight-mesh)
       true)))
 
-(defn- add-piece-meshes! [scene geometries materials spaces board-pieces]
+(defn- add-piece-meshes!
+  [scene geometries materials spaces piece-meshes target-meshes
+   piece-selection-meshes board-pieces]
   (let [indexed-spaces (spaces-by-key spaces)
         edge-outline-count (atom 0)]
     (doseq [[space-key space-pieces] (pieces/pieces-by-space board-pieces)
             :when (contains? indexed-spaces space-key)
             [slot piece] (layout/visible-piece-slots space-pieces)]
-      (when (add-piece-mesh! scene geometries materials indexed-spaces slot (count space-pieces) piece)
+      (when (add-piece-mesh! scene
+                             geometries
+                             materials
+                             indexed-spaces
+                             piece-meshes
+                             target-meshes
+                             piece-selection-meshes
+                             slot
+                             (count space-pieces)
+                             piece)
         (swap! edge-outline-count inc)))
     @edge-outline-count))
 
@@ -253,6 +335,8 @@
            materials
            textures
            card-meshes
+           object-meshes
+           target-meshes
            selection-meshes
            card-icon-mode
            callbacks]}
@@ -279,12 +363,15 @@
     (.add scene selection-mesh)
     (.add scene mesh)
     (pointer/mark-board-index! mesh index)
+    (pointer/mark-gesture-object! mesh (gesture-input/territory-target cell))
     (swap! geometries conj selection-geometry)
     (swap! materials conj selection-material)
     (swap! selection-meshes assoc index selection-mesh)
     (swap! geometries conj geometry)
     (swap! materials conj material)
     (swap! card-meshes conj mesh)
+    (swap! object-meshes conj mesh)
+    (swap! target-meshes conj mesh)
     (if (and (show-card-icon-overlays? card-icon-mode)
              (seq (icons/present-icon-ids (:gnostica-icons card))))
       (let [{:keys [ok? texture error-message]}
@@ -312,7 +399,11 @@
         materials (atom [])
         textures (atom [])
         card-meshes (atom [])
+        object-meshes (atom [])
+        target-meshes (atom [])
         selection-meshes (atom {})
+        wasteland-selection-meshes (atom {})
+        piece-selection-meshes (atom {})
         card-context {:scene scene
                       :loader loader
                       :render! render!
@@ -321,6 +412,8 @@
                       :materials materials
                       :textures textures
                       :card-meshes card-meshes
+                      :object-meshes object-meshes
+                      :target-meshes target-meshes
                       :selection-meshes selection-meshes
                       :card-icon-mode card-icon-mode
                       :callbacks callbacks}]
@@ -329,16 +422,29 @@
           board-spaces (vec (concat cells wastelands))]
       (add-table-plane! scene geometries materials textures board-spaces)
       (add-wasteland-outlines! scene geometries materials wastelands)
+      (add-wasteland-target-planes! scene
+                                    geometries
+                                    materials
+                                    target-meshes
+                                    wasteland-selection-meshes
+                                    wastelands)
       (doseq [cell cells]
         (add-card-plane! card-context cell))
       (let [piece-edge-outline-count (add-piece-meshes! scene
                                                          geometries
                                                          materials
                                                          board-spaces
+                                                         object-meshes
+                                                         target-meshes
+                                                         piece-selection-meshes
                                                          board-pieces)]
         {:geometries @geometries
          :materials @materials
          :textures @textures
          :card-meshes @card-meshes
+         :object-meshes @object-meshes
+         :target-meshes @target-meshes
          :selection-meshes @selection-meshes
+         :wasteland-selection-meshes @wasteland-selection-meshes
+         :piece-selection-meshes @piece-selection-meshes
          :piece-edge-outline-count piece-edge-outline-count}))))

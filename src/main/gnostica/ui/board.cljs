@@ -1,6 +1,7 @@
 (ns gnostica.ui.board
   (:require [cljs.reader :as reader]
             [gnostica.app.events :as events]
+            [gnostica.gesture-input :as gesture-input]
             [gnostica.pieces :as pieces]
             [gnostica.three-board :as three-board]
             [gnostica.ui.card :as card-ui]
@@ -34,27 +35,9 @@
   (or (:reason descriptor)
       (get-in descriptor [:error :message])))
 
-(defn- gesture-input-string [input]
-  (pr-str input))
-
-(defn- territory-source-input [cell]
-  {:source {:kind :territory
-            :board-index (:index cell)}})
-
-(defn- piece-source-input [piece]
-  {:source {:kind :piece
-            :piece-id (:id piece)}})
-
-(defn- territory-drag-input [cell descriptor]
-  (if (and (:active? descriptor)
-           (= :target (:role descriptor)))
-    {:preserve-selection? true
-     :fields {:target-board-index (:index cell)}}
-    (territory-source-input cell)))
-
 (defn- gesture-input-from-event [event]
   (let [payload (some-> (.-dataTransfer event)
-                        (.getData "application/gnostica-gesture"))]
+                        (.getData gesture-input/mime-type))]
     (when (seq payload)
       (try
         (reader/read-string payload)
@@ -64,7 +47,7 @@
 (defn- gesture-drag-event? [event]
   (when-let [data-transfer (.-dataTransfer event)]
     (boolean
-     (some #(= "application/gnostica-gesture" %)
+     (some #(= gesture-input/mime-type %)
            (array-seq (.-types data-transfer))))))
 
 (defn- on-drag-over-gesture [event]
@@ -112,22 +95,10 @@
     :minion [events/select-move-piece (:id piece)]
     :target [events/select-move-target-piece (:id piece)]
     (when (:source-enabled? descriptor)
-      [events/start-gesture-intent (piece-source-input piece)])))
+      [events/start-gesture-intent (gesture-input/piece-source-input piece)])))
 
 (defn- piece-drag-input [piece descriptor]
-  (case (:role descriptor)
-    :minion
-    (when (:enabled? descriptor)
-      {:preserve-selection? true
-       :fields {:piece-id (:id piece)}})
-
-    :target
-    (when (:enabled? descriptor)
-      {:preserve-selection? true
-       :fields {:target-piece-id (:id piece)}})
-
-    (when (:source-enabled? descriptor)
-      (piece-source-input piece))))
+  (gesture-input/piece-drag-input piece descriptor))
 
 (defn- board-piece-marker [slot piece descriptor]
   (let [pips (pieces/pips piece)
@@ -158,8 +129,8 @@
                        (when draggable?
                          (.stopPropagation event)
                          (some-> (.-dataTransfer event)
-                                 (.setData "application/gnostica-gesture"
-                                           (gesture-input-string drag-input)))
+                                 (.setData gesture-input/mime-type
+                                           (gesture-input/gesture-input-string drag-input)))
                          (some-> (.-dataTransfer event)
                                  (.setData "text/plain"
                                            (ui/piece-summary piece)))
@@ -238,12 +209,12 @@
                               (pieces-label board-pieces))))
       :on-click #(rf/dispatch [events/select-board-card index])
       :on-double-click #(rf/dispatch [events/start-gesture-intent
-                                      (territory-source-input cell)])
+                                      (gesture-input/territory-source-input cell)])
       :on-drag-start (fn [event]
-                       (let [input (territory-drag-input cell descriptor)]
+                       (let [input (gesture-input/territory-drag-input cell descriptor)]
                          (some-> (.-dataTransfer event)
-                                 (.setData "application/gnostica-gesture"
-                                           (gesture-input-string input)))
+                                 (.setData gesture-input/mime-type
+                                           (gesture-input/gesture-input-string input)))
                          (some-> (.-dataTransfer event)
                                  (.setData "text/plain"
                                            title))
@@ -257,7 +228,8 @@
 (defn board-stage []
   (let [{:keys [cells board-pieces pieces-by-space wastelands space-bounds
                 selected-index card-icon-mode texture-errors three-revision
-                three-renderer-available? three-renderer-message legal-targets]}
+                three-renderer-available? three-renderer-message legal-targets
+                direct-manipulation]}
         @(rf/subscribe [events/board-view])]
     [:section.board-area
      {:data-three-revision (or three-revision "unavailable")}
@@ -274,7 +246,9 @@
         card-icon-mode
         texture-errors
         legal-targets
+        direct-manipulation
         {:on-card-select #(rf/dispatch [events/select-board-card %])
+         :on-gesture-intent #(rf/dispatch [events/start-gesture-intent %])
          :on-clear-texture-errors #(rf/dispatch [events/clear-three-texture-errors])
          :on-renderer-error #(rf/dispatch [events/three-renderer-error %])
          :on-texture-error #(rf/dispatch [events/three-texture-error %])}]
@@ -290,6 +264,10 @@
            {:role "group"
             :aria-label "Gnostica board"
             :data-wasteland-count (count wastelands)
+            :data-pointer-drag-enabled (true? (:pointer-drag-enabled?
+                                               direct-manipulation))
+            :data-detailed-entry-available (true? (:detailed-entry-available?
+                                                   direct-manipulation))
             :data-table-surface-color three-board/table-surface-css-color
             :data-table-clear-color three-board/table-clear-css-color
             :style (board-stage-style space-bounds)}

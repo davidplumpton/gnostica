@@ -78,6 +78,7 @@
 (def card-zones :gnostica.app/card-zones)
 (def three-texture-errors :gnostica.app/three-texture-errors)
 (def three-runtime-status :gnostica.app/three-runtime-status)
+(def direct-manipulation :gnostica.app/direct-manipulation)
 (def selected-board-cell :gnostica.app/selected-board-cell)
 (def selected-board-pieces :gnostica.app/selected-board-pieces)
 (def move-selection :gnostica.app/move-selection)
@@ -523,6 +524,11 @@ select-move-rod-mode
    (app-state/three-runtime-status db)))
 
 (rf/reg-sub
+ direct-manipulation
+ (fn [db _]
+   (app-state/direct-manipulation db)))
+
+(rf/reg-sub
  three-renderer-error
  (fn [db _]
    (:three-renderer-error db)))
@@ -829,8 +835,9 @@ move-rod-orientation-required?
  :<- [three-renderer-error]
  :<- [three-runtime-status]
  :<- [move-legal-targets]
+ :<- [direct-manipulation]
  (fn [[cells board-pieces selected-index card-icon-mode texture-errors
-       renderer-error runtime-status legal-targets] _]
+       renderer-error runtime-status legal-targets direct-manipulation] _]
    (app-state/board-view-model
     {:cells cells
      :board-pieces board-pieces
@@ -839,7 +846,8 @@ move-rod-orientation-required?
      :card-icon-mode card-icon-mode
      :texture-errors texture-errors
      :renderer-error renderer-error
-     :three-runtime-status runtime-status})))
+     :three-runtime-status runtime-status
+     :direct-manipulation direct-manipulation})))
 
 (rf/reg-sub
  card-zones-view

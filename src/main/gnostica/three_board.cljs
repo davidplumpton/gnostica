@@ -14,6 +14,36 @@
 (def table-surface-css-color scene-graph/table-surface-css-color)
 (def table-clear-css-color scene-graph/table-clear-css-color)
 
+(defn- object-label [{:keys [kind board-index piece-id row col]}]
+  (case kind
+    :territory (str "territory " board-index)
+    :piece (str "piece " (name piece-id))
+    :wasteland (str "wasteland " row ", " col)
+    "board object"))
+
+(defn- drag-preview-class [{:keys [target-status]}]
+  (case target-status
+    :legal " is-legal-target"
+    :disabled " is-disabled-target"
+    ""))
+
+(defn- drag-preview-summary [{:keys [source target target-status target-reason]}]
+  (let [source-label (object-label source)]
+    (cond
+      (and target (= :legal target-status))
+      (str "Dragging " source-label " to " (object-label target))
+
+      (and target (= :disabled target-status))
+      (str "Cannot drop on " (object-label target)
+           (when target-reason
+             (str ": " target-reason)))
+
+      target
+      (str "Dragging " source-label " over " (object-label target))
+
+      :else
+      (str "Dragging " source-label))))
+
 (defn three-runtime []
   (runtime/three-runtime))
 
@@ -36,12 +66,13 @@
     :component-did-update
     (fn [this old-argv _ _]
       (let [[_ old-cells old-pieces old-selected-index old-card-icon-mode
-             _old-texture-errors old-legal-targets] old-argv
+             _old-texture-errors old-legal-targets old-direct-manipulation] old-argv
             [_ new-cells new-pieces new-selected-index new-card-icon-mode
-             _new-texture-errors new-legal-targets] (r/argv this)]
+             _new-texture-errors new-legal-targets new-direct-manipulation] (r/argv this)]
         (cond
           (or (not= old-cells new-cells)
-              (not= old-pieces new-pieces))
+              (not= old-pieces new-pieces)
+              (not= old-direct-manipulation new-direct-manipulation))
           (lifecycle/mount! this)
 
           (not= old-card-icon-mode new-card-icon-mode)
@@ -52,12 +83,14 @@
           (lifecycle/set-selection! this new-selected-index new-legal-targets))))
     :component-will-unmount lifecycle/dispose!
     :reagent-render
-    (fn [_cells _pieces _selected-index card-icon-mode texture-errors legal-targets _callbacks]
+    (fn [_cells _pieces _selected-index card-icon-mode texture-errors legal-targets
+         direct-manipulation _callbacks]
       (let [component (r/current-component)
             state (r/state component)
             cells-by-index (layout/cells-by-index _cells)
             selected-card (get-in cells-by-index [_selected-index :card])
             texture-metadata (card-textures/texture-renderer-metadata)
+            drag-preview (:drag-preview state)
             popover-index (or (:hovered-index state)
                               (when (:board-focused? state)
                                 _selected-index))
@@ -91,6 +124,13 @@
           :data-wasteland-count (count (layout/wasteland-spaces _cells))
           :data-legal-target-count (count (filter :enabled?
                                                   (:territories legal-targets)))
+          :data-pointer-drag-enabled (true? (:pointer-drag-enabled?
+                                             direct-manipulation))
+          :data-detailed-entry-available (true? (:detailed-entry-available?
+                                                 direct-manipulation))
+          :data-drag-active (true? (:active? drag-preview))
+          :data-drag-target-kind (some-> drag-preview :target :kind name)
+          :data-drag-target-status (some-> drag-preview :target-status name)
           :data-visible-piece-count (scene-graph/visible-piece-count _cells _pieces)
           :data-piece-edge-outline-count (or (:piece-edge-outline-count state) 0)
           :data-antialias-requested resources/renderer-antialias-requested?
@@ -111,6 +151,11 @@
           {:type "button"
            :on-click #(controls/reset-view! component)}
           "Reset view"]
+         (when (:active? drag-preview)
+           [:div.board-three__drag-preview
+            {:class (drag-preview-class drag-preview)
+             :aria-live "polite"}
+            (drag-preview-summary drag-preview)])
          (when (and (= :popup card-icon-mode)
                     (seq (icons/present-icon-ids (:gnostica-icons popover-card))))
            [:div.board-three-icon-popover

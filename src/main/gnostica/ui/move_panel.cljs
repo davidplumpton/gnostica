@@ -1,17 +1,10 @@
 (ns gnostica.ui.move-panel
   (:require [gnostica.app.events :as events]
             [gnostica.board-layout :as layout]
+            [gnostica.gesture-input :as gesture-input]
             [gnostica.pieces :as pieces]
             [gnostica.ui.common :as ui]
             [re-frame.core :as rf]))
-
-(defn- gesture-input-string [input]
-  (pr-str input))
-
-(defn- stash-piece-source-input [current-player]
-  {:source {:kind :stash-piece
-            :player-id (:id current-player)
-            :size :small}})
 
 (defn- move-source-picker [options selected-source current-player]
   [:div.move-source-list
@@ -19,7 +12,7 @@
      (let [stash-source? (and (= :place-initial-small id)
                               current-player)
            stash-input (when stash-source?
-                         (stash-piece-source-input current-player))]
+                         (gesture-input/stash-piece-source-input current-player))]
        ^{:key id}
        [:button.move-source-option
         {:type "button"
@@ -31,8 +24,8 @@
          :on-drag-start (fn [event]
                           (when (and enabled? stash-input)
                             (some-> (.-dataTransfer event)
-                                    (.setData "application/gnostica-gesture"
-                                              (gesture-input-string stash-input)))
+                                    (.setData gesture-input/mime-type
+                                              (gesture-input/gesture-input-string stash-input)))
                             (some-> (.-dataTransfer event)
                                     (.setData "text/plain" label))
                             (rf/dispatch [events/start-gesture-intent stash-input])))}

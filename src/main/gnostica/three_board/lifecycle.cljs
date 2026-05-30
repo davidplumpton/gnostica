@@ -16,10 +16,24 @@
         (map (juxt :board-index identity))
         (:territories legal-targets)))
 
-(defn- target-mesh-style [selected-index legal-targets index]
-  (let [descriptor (get (territory-targets-by-index legal-targets) index)]
+(defn- wasteland-targets-by-coordinate [legal-targets]
+  (into {}
+        (map (fn [{:keys [row col] :as descriptor}]
+               [[row col] descriptor]))
+        (:wastelands legal-targets)))
+
+(defn- piece-targets-by-id [legal-targets]
+  (into {}
+        (map (juxt :piece-id identity))
+        (:pieces legal-targets)))
+
+(defn- target-mesh-style
+  ([descriptor]
+   (target-mesh-style nil nil descriptor))
+  ([selected-key key descriptor]
     (cond
-      (= index selected-index)
+      (and (some? selected-key)
+           (= key selected-key))
       {:visible? true
        :color 0x9ff7e7
        :opacity 0.82}
@@ -41,24 +55,39 @@
        :color 0x9ff7e7
        :opacity 0.82})))
 
+(defn- style-highlight-mesh! [mesh {:keys [visible? color opacity]}]
+  (let [^js material (.-material ^js mesh)]
+    (set! (.-visible ^js mesh) visible?)
+    (.set (.-color material) color)
+    (set! (.-opacity material) opacity)
+    (set! (.-transparent material) (< opacity 1))
+    (set! (.-needsUpdate material) true)))
+
 (defn set-selection!
   ([this selected-index]
    (set-selection! this selected-index nil))
   ([this selected-index legal-targets]
-  (let [{:keys [active? render! selection-meshes]} (r/state this)]
-    (when (and active? @active? selection-meshes)
-      (doseq [[index mesh] selection-meshes]
-        (let [{:keys [visible? color opacity]} (target-mesh-style selected-index
-                                                                   legal-targets
-                                                                   index)
-              ^js material (.-material ^js mesh)]
-          (set! (.-visible ^js mesh) visible?)
-          (.set (.-color material) color)
-          (set! (.-opacity material) opacity)
-          (set! (.-transparent material) (< opacity 1))
-          (set! (.-needsUpdate material) true)))
-      (when render!
-        (render!))))))
+   (let [{:keys [active? render! selection-meshes wasteland-selection-meshes
+                 piece-selection-meshes legal-targets-ref]} (r/state this)]
+     (when (and active? @active? selection-meshes)
+       (when legal-targets-ref
+         (reset! legal-targets-ref legal-targets))
+       (let [territory-targets (territory-targets-by-index legal-targets)
+             wasteland-targets (wasteland-targets-by-coordinate legal-targets)
+             piece-targets (piece-targets-by-id legal-targets)]
+         (doseq [[index mesh] selection-meshes]
+           (style-highlight-mesh! mesh
+                                  (target-mesh-style selected-index
+                                                     index
+                                                     (get territory-targets index))))
+         (doseq [[coordinate mesh] wasteland-selection-meshes]
+           (style-highlight-mesh! mesh
+                                  (target-mesh-style (get wasteland-targets coordinate))))
+         (doseq [[piece-id mesh] piece-selection-meshes]
+           (style-highlight-mesh! mesh
+                                  (target-mesh-style (get piece-targets piece-id)))))
+       (when render!
+         (render!))))))
 
 (defn dispose! [this]
   (resources/dispose-board! (r/state this))
@@ -69,7 +98,8 @@
    (mount! this nil))
   ([this preserved-view]
    (dispose! this)
-   (let [[_ cells board-pieces selected-index card-icon-mode _texture-errors legal-targets callbacks] (r/argv this)]
+   (let [[_ cells board-pieces selected-index card-icon-mode _texture-errors
+          legal-targets direct-manipulation callbacks] (r/argv this)]
      (resources/invoke-callback callbacks :on-clear-texture-errors)
      (when (runtime/available?)
        (when-let [mount-node (.-boardMountNode ^js this)]
@@ -77,7 +107,8 @@
            (let [scene (js/THREE.Scene.)
                  camera (js/THREE.PerspectiveCamera. 45 1 0.1 100)
                  loader (js/THREE.TextureLoader.)
-                 active? (atom true)]
+                 active? (atom true)
+                 legal-targets-ref (atom legal-targets)]
              (.setPixelRatio renderer (min 2 (or (.-devicePixelRatio js/window) 1)))
              (set! (.-outputEncoding renderer) js/THREE.sRGBEncoding)
              (.setClearColor renderer scene-graph/table-clear-color 1)
@@ -112,10 +143,16 @@
                                     :board-pieces board-pieces
                                     :card-icon-mode card-icon-mode
                                     :callbacks callbacks})
-                       pointer-listeners (pointer/install-card-pointer-listeners!
+                       pointer-listeners (pointer/install-board-pointer-listeners!
                                           {:canvas canvas
                                            :camera camera
+                                           :controls controls
                                            :card-meshes (:card-meshes scene-data)
+                                           :object-meshes (:object-meshes scene-data)
+                                           :target-meshes (:target-meshes scene-data)
+                                           :legal-targets-ref legal-targets-ref
+                                           :drag-enabled? (:pointer-drag-enabled?
+                                                           direct-manipulation)
                                            :callbacks callbacks
                                            :assoc-state! #(assoc-component-state! this %1 %2)})
                        antialias-enabled? (resources/renderer-antialias-enabled? renderer)]
@@ -133,6 +170,9 @@
                                                  :materials (:materials scene-data)
                                                  :textures (:textures scene-data)
                                                  :selection-meshes (:selection-meshes scene-data)
+                                                 :wasteland-selection-meshes (:wasteland-selection-meshes scene-data)
+                                                 :piece-selection-meshes (:piece-selection-meshes scene-data)
+                                                 :legal-targets-ref legal-targets-ref
                                                  :piece-edge-outline-count (:piece-edge-outline-count scene-data)
                                                  :antialias-enabled? antialias-enabled?
                                                  :keyboard-pan-bounds (controls/keyboard-pan-bounds cells)}

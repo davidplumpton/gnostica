@@ -742,6 +742,19 @@
     (is (= "Three.js revision 999 is incompatible."
            (:three-renderer-message fallback-view)))))
 
+(deftest board-view-exposes-direct-manipulation-capability
+  (let [default-db (app-state/initialize {:player-specs test-player-specs
+                                          :game-options {:shuffle-fn identity}})
+        detailed-db (app-state/initialize {:player-specs test-player-specs
+                                           :game-options {:shuffle-fn identity}
+                                           :direct-manipulation-enabled? false})]
+    (is (= {:pointer-drag-enabled? true
+            :detailed-entry-available? true}
+           (:direct-manipulation (app-state/board-view default-db))))
+    (is (= {:pointer-drag-enabled? false
+            :detailed-entry-available? true}
+           (:direct-manipulation (app-state/board-view detailed-db))))))
+
 (deftest selecting-an-unknown-board-card-is-ignored
   (let [db (app-state/initialize {:game-options {:shuffle-fn identity}})]
     (is (= db (app-state/select-board-card db 99)))))

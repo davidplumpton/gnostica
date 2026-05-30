@@ -1,5 +1,6 @@
 (ns gnostica.ui.card-zones
   (:require [gnostica.app.events :as events]
+            [gnostica.gesture-input :as gesture-input]
             [gnostica.ui.card :as card-ui]
             [gnostica.ui.common :as ui]
             [re-frame.core :as rf]))
@@ -24,28 +25,12 @@
 (defn- descriptor-for-card [descriptors card]
   (get (descriptors-by-card-id descriptors) (:id card)))
 
-(defn- gesture-input-string [input]
-  (pr-str input))
-
-(defn- hand-card-source-input [card]
-  {:source {:kind :hand-card
-            :card-id (:id card)}})
-
-(defn- replacement-card-choice-input [card descriptor]
-  {:preserve-selection? true
-   :fields (cond-> {:replacement-card-id (:id card)}
-             (:replacement-card-source descriptor)
-             (assoc :replacement-card-source (:replacement-card-source descriptor)))})
-
-(defn- draw-pile-source-input []
-  {:source {:kind :draw-pile}})
-
 (defn- card-action-event [card descriptor]
   (case (:role descriptor)
     :discard [events/toggle-move-discard-card (:id card)]
     :territory-card [events/select-move-one-point-card (:id card)]
     :replacement-card [events/select-move-replacement-card (:id card)]
-    [events/start-gesture-intent (hand-card-source-input card)]))
+    [events/start-gesture-intent (gesture-input/hand-card-source-input card)]))
 
 (defn- discard-card-action-event [card descriptor]
   (case (:role descriptor)
@@ -53,26 +38,11 @@
     :replacement-card [events/select-move-replacement-card (:id card)]
     nil))
 
-(defn- draggable-source? [descriptor]
-  (not (contains? #{:discard :territory-card :replacement-card}
-                  (:role descriptor))))
-
 (defn- hand-card-drag-input [card descriptor]
-  (cond
-    (and (= :replacement-card (:role descriptor))
-         (:enabled? descriptor))
-    (replacement-card-choice-input card descriptor)
-
-    (draggable-source? descriptor)
-    (hand-card-source-input card)
-
-    :else
-    nil))
+  (gesture-input/hand-card-drag-input card descriptor))
 
 (defn- discard-card-drag-input [card descriptor]
-  (when (and (= :replacement-card (:role descriptor))
-             (:enabled? descriptor))
-    (replacement-card-choice-input card descriptor)))
+  (gesture-input/discard-card-drag-input card descriptor))
 
 (defn- activation-key? [event]
   (contains? #{"Enter" " "} (.-key event)))
@@ -99,8 +69,8 @@
       :on-drag-start (fn [event]
                        (when drag-input
                          (some-> (.-dataTransfer event)
-                                 (.setData "application/gnostica-gesture"
-                                           (gesture-input-string drag-input)))
+                                 (.setData gesture-input/mime-type
+                                           (gesture-input/gesture-input-string drag-input)))
                          (some-> (.-dataTransfer event)
                                  (.setData "text/plain"
                                            (:title card)))
@@ -115,7 +85,8 @@
     :type "button"
     :title (target-reason descriptor)
     :aria-label (str "Draw deck, " (ui/card-count-label draw-count) " remaining")
-    :on-click #(rf/dispatch [events/start-gesture-intent (draw-pile-source-input)])}
+    :on-click #(rf/dispatch [events/start-gesture-intent
+                             (gesture-input/draw-pile-source-input)])}
    [:div.card-pile-zone__preview.is-deck
     {:aria-hidden "true"}
     [:span]]
@@ -140,8 +111,8 @@
       :on-drag-start (fn [event]
                        (when drag-input
                          (some-> (.-dataTransfer event)
-                                 (.setData "application/gnostica-gesture"
-                                           (gesture-input-string drag-input)))
+                                 (.setData gesture-input/mime-type
+                                           (gesture-input/gesture-input-string drag-input)))
                          (some-> (.-dataTransfer event)
                                  (.setData "text/plain"
                                            (:title top-card)))))}
