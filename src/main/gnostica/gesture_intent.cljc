@@ -382,7 +382,7 @@
 
         db))))
 
-(defn- stage-gesture [db {:keys [fields target preserve-selection?] :as input} inferred-source]
+(defn- stage-gesture [db {:keys [fields target preserve-selection?]} inferred-source]
   (let [fields (or fields {})
         db (cond-> db
              (not preserve-selection?)

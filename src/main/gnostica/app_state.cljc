@@ -614,7 +614,7 @@
 
 (defn can-announce-challenge? [db]
   (if-let [player-id (current-player-id db)]
-    (boolean (game-state/can-announce-challenge? (game db) player-id))
+    (game-state/can-announce-challenge? (game db) player-id)
     false))
 
 (defn can-end-turn? [db]

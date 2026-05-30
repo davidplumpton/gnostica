@@ -593,7 +593,7 @@
       (selected-rod-variant db source-id params)
       (assoc :rod-variant (selected-rod-variant db source-id params)))))
 
-(defn- rod-command-resolves? [db source-id params command]
+(defn- rod-command-resolves? [db command]
   (boolean
    (and (game db)
         command
@@ -602,10 +602,8 @@
 (defn- rod-piece-target? [db source-id params piece]
   (and piece
        (= :push-piece (:rod-mode params))
-       (rod-command-resolves?
-        db
-        source-id
-        params
+      (rod-command-resolves?
+       db
         (assoc (rod-base-command db source-id params)
                :mode :push-piece
                :target {:kind :piece
@@ -615,10 +613,8 @@
 (defn- rod-territory-target? [db source-id params cell]
   (and cell
        (= :push-territory (:rod-mode params))
-       (rod-command-resolves?
-        db
-        source-id
-        params
+      (rod-command-resolves?
+       db
         (assoc (rod-base-command db source-id params)
                :mode :push-territory
                :target {:kind :territory
