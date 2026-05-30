@@ -637,11 +637,21 @@
   ([db transition-options]
    (if-not (lobby-active? db)
      db
-     (let [db (refresh-lobby-error db)
+     (let [starting-bid (get-in db [:lobby :starting-bid])
+           db (refresh-lobby-error db)
            lobby (lobby db)
            validation-error (lobby-validation-error lobby)]
-       (if validation-error
+       (cond
+         starting-bid
+         (assoc-in db [:lobby :error]
+                   (lobby-error :starting-bid-active
+                                "Finish or cancel bidding before starting a casual game."
+                                {:stage (:stage starting-bid)}))
+
+         validation-error
          (assoc-in db [:lobby :error] validation-error)
+
+         :else
          (let [start-options (:start-options lobby)
                game-options (game-options-with-transition-shuffle
                              (:game-options start-options)

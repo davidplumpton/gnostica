@@ -497,6 +497,26 @@
            (get-in state [:setup :bid-redraws])))
     (is (game-schema/valid-game? state))))
 
+(deftest casual-lobby-start-is-blocked-while-starting-bid-is-staged
+  (let [db (app-state/initialize
+            {:start-in-lobby? true
+             :player-specs test-player-specs})
+        bidding-db (app-state/start-lobby-bidding db {:shuffle-fn identity})
+        app-state-start-db (app-state/start-lobby-game bidding-db
+                                                       {:shuffle-fn identity})
+        handler-start-db (app-handlers/start-lobby-game-db
+                          bidding-db
+                          {:shuffle-seed 8675309})]
+    (doseq [attempted-db [app-state-start-db handler-start-db]]
+      (is (nil? (app-state/game attempted-db)))
+      (is (= (get-in bidding-db [:lobby :starting-bid])
+             (get-in attempted-db [:lobby :starting-bid])))
+      (is (= :starting-bid-active
+             (get-in attempted-db [:lobby :error :code])))
+      (is (= :choosing
+             (get-in attempted-db [:lobby :error :data :stage])))
+      (is (false? (:can-start? (app-state/lobby-view attempted-db)))))))
+
 (deftest lobby-starting-bid-repeats-after-a-tied-round
   (let [db (app-state/initialize
             {:start-in-lobby? true
