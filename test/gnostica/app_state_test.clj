@@ -11,6 +11,7 @@
             [gnostica.game-schema :as game-schema]
             [gnostica.game-state :as game-state]
             [gnostica.gesture-input :as gesture-input]
+            [gnostica.move-selection.registry :as move-registry]
             [gnostica.pieces :as pieces]))
 
 (def test-player-specs
@@ -145,23 +146,6 @@
 (defn- form-nodes [form]
   (tree-seq coll? seq form))
 
-(defn- move-selection-emitted-control-group-types []
-  (->> ["src/main/gnostica/move_selection.cljc"
-        "src/main/gnostica/move_selection/controls.cljc"]
-       (mapcat read-source-forms)
-       (mapcat form-nodes)
-       (keep (fn [node]
-               (when (seq? node)
-                 (case (first node)
-                   control-group (let [type (second node)]
-                                   (when (keyword? type) type))
-                   power-control-group (let [type (nth node 2 nil)]
-                                         (when (keyword? type) type))
-                   major-action-control-group (let [type (nth node 3 nil)]
-                                                (when (keyword? type) type))
-                   nil))))
-       set))
-
 (defn- move-panel-render-control-group-branches []
   (let [forms (read-source-forms "src/main/gnostica/ui/move_panel.cljs")
         render-form (some #(when (and (seq? %)
@@ -171,7 +155,9 @@
                           forms)
         case-form (some #(when (and (seq? %)
                                     (= 'case (first %))
-                                    (= 'type (second %)))
+                                    (or (= 'type (second %))
+                                        (= '(move-registry/control-renderer-key type)
+                                           (second %))))
                            %)
                         (form-nodes render-form))
         clauses (drop 2 case-form)
@@ -239,6 +225,23 @@
    "sun" [:cup :disc :sun]
    "judgement" [:judgement]
    "world" [:world]})
+
+(deftest move-power-registry-covers-implemented-browser-powers
+  (is (= (set move-registry/move-power-order)
+         (set (keys move-registry/move-power-registry))))
+  (doseq [power move-registry/move-power-order
+          :let [definition (move-registry/power-definition power)]]
+    (is (= power (:id definition)) power)
+    (is (seq (:label definition)) power)
+    (is (keyword? (move-registry/power-command-builder power)) power)
+    (is (fn? (move-registry/power-transition-fn power)) power)
+    (is (contains? #{:static :fool :world :composite-major :sword-major}
+                   (move-registry/power-control-kind power))
+        power))
+  (doseq [[card-id expected-options] expected-major-power-options]
+    (is (= expected-options
+           (move-registry/power-ids-for-card (cards/card-by-id card-id)))
+        card-id)))
 
 (deftest initialize-builds-app-db-from-shared-game-state
   (let [hand-count (* game-state/starting-hand-size
@@ -2659,7 +2662,7 @@
            (move-control-group-summary world-cup-db)))))
 
 (deftest move-panel-renderer-covers-emitted-control-groups
-  (let [emitted-types (move-selection-emitted-control-group-types)
+  (let [emitted-types (move-registry/control-renderer-types)
         rendered-branches (move-panel-render-control-group-branches)
         rendered-types (set (keys rendered-branches))
         missing-types (sort (remove rendered-types emitted-types))

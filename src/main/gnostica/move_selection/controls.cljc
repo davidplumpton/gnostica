@@ -1,4 +1,5 @@
-(ns gnostica.move-selection.controls)
+(ns gnostica.move-selection.controls
+  (:require [gnostica.move-selection.registry :as registry]))
 
 (defn- call [ctx key & args]
   (apply (get ctx key) args))
@@ -268,24 +269,23 @@
       (power-control-groups ctx db source-id params copied-power)))))
 
 (defn- power-control-groups [ctx db source-id params power]
-  (case power
-    :rod [(power-control-group power :rod)]
-    :cup [(power-control-group power :cup)]
-    :disc [(power-control-group power :disc)]
-    :sun [(power-control-group power :sun)]
-    :sword [(power-control-group power :sword)]
-    :fool (fool-control-groups ctx db source-id params)
-    :high-priestess [(power-control-group power :high-priestess-redraw-count)
-                     (power-control-group power :high-priestess-redraws)]
-    :judgement [(power-control-group power :judgement-card-selection)]
-    :hierophant [(power-control-group power :piece-orientation-major)]
-    :hermit [(power-control-group power :hermit)]
-    :devil [(power-control-group power :devil)]
-    :world (world-control-groups ctx db source-id params)
-    (:empress :emperor :lovers :chariot :hanged-man :temperance)
+  (case (registry/power-control-kind power)
+    :static
+    (mapv #(power-control-group power %)
+          (registry/power-control-groups power))
+
+    :fool
+    (fool-control-groups ctx db source-id params)
+
+    :world
+    (world-control-groups ctx db source-id params)
+
+    :composite-major
     (composite-major-control-groups ctx db source-id params)
-    (:justice :death :tower :moon)
+
+    :sword-major
     (sword-major-control-groups ctx db source-id params)
+
     []))
 
 (defn- gameplay-control-groups [ctx db source-id params]

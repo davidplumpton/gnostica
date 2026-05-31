@@ -1,5 +1,6 @@
 (ns gnostica.move-selection.commands
-  (:require [gnostica.game-state :as game-state]))
+  (:require [gnostica.game-state :as game-state]
+            [gnostica.move-selection.registry :as registry]))
 
 (defn- call [ctx key & args]
   (apply (get ctx key) args))
@@ -239,23 +240,26 @@
                          (conj (call ctx :completed-major-actions params)
                                (call ctx :composite-current-action db source params))))})
 
+(def ^:private power-command-builders
+  {:rod rod-command
+   :disc disc-command
+   :cup cup-command
+   :sun sun-command
+   :sword sword-command
+   :sword-major sword-major-command
+   :fool fool-command
+   :high-priestess high-priestess-command
+   :judgement judgement-command
+   :piece-orientation (fn [_ctx _db _source params]
+                        (piece-orientation-command params))
+   :hermit hermit-command
+   :devil devil-command
+   :composite-major composite-major-command})
+
 (defn gameplay-power-command-for-power [ctx db source params power]
-  (case power
-    :rod (rod-command ctx db source params)
-    :disc (disc-command ctx db source params)
-    :cup (cup-command ctx db source params)
-    :sun (sun-command ctx db source params)
-    :sword (sword-command ctx db source params)
-    (:justice :death :tower :moon)
-    (sword-major-command ctx db source params)
-    :fool (fool-command ctx db source params)
-    :high-priestess (high-priestess-command ctx db source params)
-    :judgement (judgement-command ctx db source params)
-    :hierophant (piece-orientation-command params)
-    :hermit (hermit-command ctx db source params)
-    :devil (devil-command ctx db source params)
-    (:empress :emperor :lovers :chariot :hanged-man :temperance)
-    (composite-major-command ctx db source params)
+  (if-let [builder (get power-command-builders
+                        (registry/power-command-builder power))]
+    (builder ctx db source params)
     (unavailable-power-command ctx db source params power)))
 
 (defn- world-command-for-power [ctx db source params power]
@@ -394,7 +398,8 @@
 (defn confirmed-move-result [ctx db command transition-options]
   (let [power (transition-power ctx db)
         command (command-with-transition-options command transition-options power)
-        move-power (call ctx :move-power db)]
+        move-power (call ctx :move-power db)
+        transition-fn (registry/power-transition-fn move-power)]
     (cond
       (= :draw-cards (:source command))
       (game-state/apply-draw-move (call ctx :game db) command)
@@ -405,62 +410,8 @@
       (= :place-initial-small (:source command))
       (game-state/apply-initial-placement (call ctx :game db) command)
 
-      (= :world move-power)
-      (game-state/apply-world-move (call ctx :game db) command)
-
-      (= :cup move-power)
-      (game-state/apply-cup-move (call ctx :game db) command)
-
-      (= :rod move-power)
-      (game-state/apply-rod-move (call ctx :game db) command)
-
-      (= :disc move-power)
-      (game-state/apply-disc-move (call ctx :game db) command)
-
-      (= :sword move-power)
-      (game-state/apply-sword-move (call ctx :game db) command)
-
-      (contains? #{:justice :death :tower :moon} move-power)
-      (game-state/apply-sword-move (call ctx :game db) command)
-
-      (= :sun move-power)
-      (game-state/apply-sun-move (call ctx :game db) command)
-
-      (= :fool move-power)
-      (game-state/apply-fool-move (call ctx :game db) command)
-
-      (= :high-priestess move-power)
-      (game-state/apply-high-priestess-move (call ctx :game db) command)
-
-      (= :judgement move-power)
-      (game-state/apply-judgement-move (call ctx :game db) command)
-
-      (= :hierophant move-power)
-      (game-state/apply-hierophant-move (call ctx :game db) command)
-
-      (= :hermit move-power)
-      (game-state/apply-hermit-move (call ctx :game db) command)
-
-      (= :devil move-power)
-      (game-state/apply-devil-move (call ctx :game db) command)
-
-      (= :empress move-power)
-      (game-state/apply-empress-move (call ctx :game db) command)
-
-      (= :emperor move-power)
-      (game-state/apply-emperor-move (call ctx :game db) command)
-
-      (= :lovers move-power)
-      (game-state/apply-lovers-move (call ctx :game db) command)
-
-      (= :chariot move-power)
-      (game-state/apply-chariot-move (call ctx :game db) command)
-
-      (= :hanged-man move-power)
-      (game-state/apply-hanged-man-move (call ctx :game db) command)
-
-      (= :temperance move-power)
-      (game-state/apply-temperance-move (call ctx :game db) command)
+      transition-fn
+      (transition-fn (call ctx :game db) command)
 
       :else
       (game-state/failure :move-transition-unavailable
@@ -471,8 +422,7 @@
   (let [source (call ctx :move-source db)
         power (transition-power ctx db)]
     (or (contains? #{:orient-piece :place-initial-small} source)
-        (contains? #{:rod :hermit :emperor :lovers :chariot :hanged-man :moon}
-                   power))))
+        (registry/previewable-power? power))))
 
 (defn move-preview-result
   ([ctx db] (move-preview-result ctx db {}))

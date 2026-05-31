@@ -2,6 +2,7 @@
   (:require [gnostica.app.events :as events]
             [gnostica.board-layout :as layout]
             [gnostica.gesture-input :as gesture-input]
+            [gnostica.move-selection.registry :as move-registry]
             [gnostica.pieces :as pieces]
             [gnostica.ui.card :as card-ui]
             [gnostica.ui.common :as ui]
@@ -1063,7 +1064,7 @@
                 disc-orientation-available? sun-disc-orientation-available?
                 sword-orientation-available?
                 distance-options damage-options draw-options legal-targets]} controls]
-    (case type
+    (case (move-registry/control-renderer-key type)
       :source-board
       [board-choice-grid "Source territory" source-board-options (:source-board-index params)
        (:territories legal-targets)]

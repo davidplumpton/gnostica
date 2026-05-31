@@ -4,117 +4,17 @@
             [gnostica.game-state :as game-state]
             [gnostica.move-selection.commands :as commands]
             [gnostica.move-selection.controls :as controls]
+            [gnostica.move-selection.registry :as registry]
             [gnostica.move-selection.targets :as targets]
             [gnostica.pieces :as pieces]))
 
-(def move-source-order
-  [:activate-territory
-   :play-hand-card
-   :draw-cards
-   :orient-piece
-   :place-initial-small])
-
-(def move-source-definitions
-  {:activate-territory
-   {:id :activate-territory
-    :label "Activate territory"
-    :summary "Use a board card through one of your pieces."
-    :requirements [:source-board-index :piece-id :target-space :target-resolution]}
-   :play-hand-card
-   {:id :play-hand-card
-    :label "Play hand card"
-    :summary "Discard a hand card and use its power through a piece."
-    :requirements [:hand-card-id :piece-id :target-space :target-resolution]}
-   :draw-cards
-   {:id :draw-cards
-    :label "Draw cards"
-    :summary "Discard hand cards, then draw toward the six-card hand limit."
-    :requirements [:draw-count]}
-   :orient-piece
-   {:id :orient-piece
-    :label "Orient piece"
-    :summary "Turn one of your pieces to a legal direction."
-    :requirements [:piece-id :orientation]}
-   :place-initial-small
-   {:id :place-initial-small
-    :label "Place first piece"
-    :summary "Special rule: with no pieces, put your first small piece on an empty territory or wasteland."
-    :requirements [:target-space :orientation]}})
-
-(def move-power-order
-  [:empress :emperor :lovers :chariot :hanged-man :temperance
-   :justice :death :tower :moon
-   :cup :rod :disc :sun :sword
-   :fool :high-priestess :judgement :hierophant :hermit :devil :world])
-
-(def move-power-definitions
-  {:empress {:id :empress
-             :label "Empress"}
-   :emperor {:id :emperor
-             :label "Emperor"}
-   :lovers {:id :lovers
-            :label "Lovers"}
-   :chariot {:id :chariot
-             :label "Chariot"}
-   :hanged-man {:id :hanged-man
-                :label "Hanged Man"}
-   :temperance {:id :temperance
-                :label "Temperance"}
-   :justice {:id :justice
-             :label "Justice"}
-   :death {:id :death
-           :label "Death"}
-   :tower {:id :tower
-           :label "Tower"}
-   :moon {:id :moon
-          :label "Moon"}
-   :cup {:id :cup
-         :label "Cup"}
-   :rod {:id :rod
-         :label "Rod"}
-   :disc {:id :disc
-          :label "Disc"}
-   :sun {:id :sun
-         :label "Sun"}
-   :sword {:id :sword
-           :label "Sword"}
-   :fool {:id :fool
-          :label "Fool"}
-   :high-priestess {:id :high-priestess
-                    :label "High Priestess"}
-   :judgement {:id :judgement
-               :label "Judgement"}
-   :hierophant {:id :hierophant
-                :label "Hierophant"}
-   :hermit {:id :hermit
-            :label "Hermit"}
-   :devil {:id :devil
-           :label "Devil"}
-   :world {:id :world
-           :label "World"}})
-
-(def copied-suit-powers
-  #{:cup :rod :disc :sword})
-
-(def composite-major-card-powers
-  {"empress" :empress
-   "emperor" :emperor
-   "lovers" :lovers
-   "chariot" :chariot
-   "hangedman" :hanged-man
-   "temperance" :temperance})
-
-(def composite-major-powers
-  (set (vals composite-major-card-powers)))
-
-(def sword-major-card-powers
-  {"justice" :justice
-   "death" :death
-   "tower" :tower
-   "moon" :moon})
-
-(def sword-major-powers
-  (set (vals sword-major-card-powers)))
+(def move-source-order registry/move-source-order)
+(def move-source-definitions registry/move-source-definitions)
+(def move-power-order registry/move-power-order)
+(def move-power-definitions registry/move-power-definitions)
+(def copied-suit-powers registry/copied-suit-powers)
+(def composite-major-powers registry/composite-major-powers)
+(def sword-major-powers registry/sword-major-powers)
 
 (def rod-mode-order
   [:move-minion
@@ -424,24 +324,7 @@
      :piece-id (:piece-id params)}))
 
 (defn- move-power-ids-for-card [card]
-  (when card
-    (cond-> []
-      (contains? composite-major-card-powers (:id card))
-      (conj (get composite-major-card-powers (:id card)))
-      (contains? sword-major-card-powers (:id card))
-      (conj (get sword-major-card-powers (:id card)))
-      (cards/cup-card? card) (conj :cup)
-      (cards/rod-card? card) (conj :rod)
-      (cards/disc-card? card) (conj :disc)
-      (= "sun" (:id card)) (conj :sun)
-      (cards/sword-card? card) (conj :sword)
-      (= "fool" (:id card)) (conj :fool)
-      (= "high-priestess" (:id card)) (conj :high-priestess)
-      (= "judgement" (:id card)) (conj :judgement)
-      (= "hierophant" (:id card)) (conj :hierophant)
-      (= "hermit" (:id card)) (conj :hermit)
-      (= "devil" (:id card)) (conj :devil)
-      (= "world" (:id card)) (conj :world))))
+  (registry/power-ids-for-card card))
 
 (defn- selected-power-for-card [card selected]
   (let [power-options (move-power-ids-for-card card)]
@@ -478,7 +361,7 @@
   (:card (world-copy-board-cell db (:copied-board-index params))))
 
 (defn- world-copied-power-ids-for-card [card]
-  (vec (remove #{:world} (move-power-ids-for-card card))))
+  (registry/copied-power-ids-for-card card))
 
 (defn- selected-world-copied-power [db source-id params]
   (when (world-move? db source-id params)
@@ -1159,14 +1042,9 @@
          (< damage target-pips))))
 
 (defn- apply-composite-preview [state power command]
-  (case power
-    :empress (game-state/apply-empress-move state command)
-    :emperor (game-state/apply-emperor-move state command)
-    :lovers (game-state/apply-lovers-move state command)
-    :chariot (game-state/apply-chariot-move state command)
-    :hanged-man (game-state/apply-hanged-man-move state command)
-    :temperance (game-state/apply-temperance-move state command)
-    nil))
+  (when (contains? composite-major-powers power)
+    (when-let [transition-fn (registry/power-transition-fn power)]
+      (transition-fn state command))))
 
 (defn- cup-target-state [db source-id params]
   (let [state (game db)
@@ -3067,7 +2945,7 @@
    :world-power "Copied power"})
 
 (defn- power-label [power]
-  (get-in move-power-definitions [power :label] (name power)))
+  (registry/power-label power))
 
 (defn- player-label [player-id]
   (get-in pieces/players-by-id [player-id :name] (name player-id)))
