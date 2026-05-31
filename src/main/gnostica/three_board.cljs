@@ -74,53 +74,6 @@
       (:summary movement)
       "Move preview"))
 
-(defn- preview-piece-class [{:keys [orientation status]}]
-  (str "board-three__placement-piece-preview"
-       " is-" (name (or orientation :up))
-       (move-preview-class {:status status})))
-
-(defn- projected-space-style [state space orientation]
-  (let [{:keys [camera renderer]} state
-        canvas (some-> renderer .-domElement)
-        board-node (some-> canvas (.closest ".board-three"))]
-    (when (and camera canvas board-node space)
-      (let [[x y] (layout/card-position space)
-            piece-size (pieces/size-data {:size :small})
-            z (layout/piece-center-z piece-size (or orientation :up))
-            point (js/THREE.Vector3. x y z)
-            canvas-rect (.getBoundingClientRect canvas)
-            board-rect (.getBoundingClientRect board-node)]
-        (.project point camera)
-        (when (and (<= -1 (.-x point) 1)
-                   (<= -1 (.-y point) 1))
-          (let [left (+ (- (.-left canvas-rect) (.-left board-rect))
-                        (* (/ (+ (.-x point) 1) 2)
-                           (.-width canvas-rect)))
-                top (+ (- (.-top canvas-rect) (.-top board-rect))
-                       (* (/ (- 1 (.-y point)) 2)
-                          (.-height canvas-rect)))]
-            {"--preview-x" (str left "px")
-             "--preview-y" (str top "px")}))))))
-
-(defn- placement-piece-preview [state {:keys [status placement]}]
-  (let [{:keys [target-space player-id piece-size orientation]} placement
-        color (get-in pieces/players-by-id [player-id :css-color])
-        style (projected-space-style state target-space orientation)]
-    (when style
-      [:div
-       {:class (preview-piece-class {:orientation orientation
-                                     :status status})
-        :aria-hidden "true"
-        :data-player-id (some-> player-id name)
-        :data-piece-size (some-> piece-size name)
-        :data-preview-space-kind (some-> target-space :kind name)
-        :data-preview-orientation (some-> orientation name)
-        :style (cond-> style
-                 color
-                 (assoc "--piece-color" color))}
-       [:span.board-three__placement-piece-preview-body]
-       [:span.board-three__placement-piece-preview-pip]])))
-
 (defn- orientation-callback-key [field]
   (case field
     :minion-orientation :on-minion-orientation-select
@@ -188,8 +141,11 @@
           (lifecycle/mount! this (controls/capture-view-state this))
 
           (or (not= old-selected-index new-selected-index)
-              (not= old-legal-targets new-legal-targets))
-          (lifecycle/set-selection! this new-selected-index new-legal-targets))))
+              (not= old-legal-targets new-legal-targets)
+              (not= _old-move-preview _new-move-preview))
+          (do
+            (lifecycle/set-placement-preview! this _new-move-preview)
+            (lifecycle/set-selection! this new-selected-index new-legal-targets)))))
     :component-will-unmount lifecycle/dispose!
     :reagent-render
     (fn [_cells _pieces _selected-index card-icon-mode texture-errors legal-targets
@@ -281,7 +237,6 @@
              :style (drag-ghost-style drag-preview)}
             [:span.board-three__drag-piece-ghost-body]
             [:span.board-three__drag-piece-ghost-pip]])
-         [placement-piece-preview state move-preview]
          (when (:active? move-preview)
            [:div.board-three__move-preview
             {:class (move-preview-class move-preview)

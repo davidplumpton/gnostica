@@ -39,6 +39,7 @@
     axis))
 
 (defn- set-piece-rotation! [mesh orientation piece-size]
+  (.set (.-rotation mesh) 0 0 0)
   (cond
     (= :up orientation)
     (set! (.. mesh -rotation -x) (/ js/Math.PI 2))
@@ -287,6 +288,51 @@
       (swap! piece-selection-meshes assoc (:id piece) highlight-mesh)
       true)))
 
+(defn- add-placement-preview-mesh! [scene geometries materials]
+  (let [piece-size (pieces/size-data {:size :small})
+        {:keys [radius height]} piece-size
+        geometry (js/THREE.ConeGeometry. radius height 4)
+        material (js/THREE.MeshLambertMaterial.
+                  #js {:color 0xffffff
+                       :transparent true
+                       :opacity 0.96})
+        mesh (js/THREE.Mesh. geometry material)]
+    (add-piece-edge-outline! mesh geometries materials geometry)
+    (doseq [{:keys [position normal]} (layout/piece-pip-local-markers piece-size)]
+      (let [pip-geometry (js/THREE.CircleGeometry. layout/piece-pip-marker-radius 16)
+            pip-material (js/THREE.MeshBasicMaterial.
+                          #js {:color pip-marker-color
+                               :side js/THREE.DoubleSide})
+            pip-mesh (js/THREE.Mesh. pip-geometry pip-material)
+            [x y marker-z] position]
+        (align-local-z-to-normal! pip-mesh normal)
+        (.set (.-position pip-mesh) x y marker-z)
+        (.add mesh pip-mesh)
+        (swap! geometries conj pip-geometry)
+        (swap! materials conj pip-material)))
+    (set! (.-visible mesh) false)
+    (.add scene mesh)
+    (swap! geometries conj geometry)
+    (swap! materials conj material)
+    {:mesh mesh
+     :material material
+     :piece-size piece-size}))
+
+(defn set-placement-preview!
+  [preview {:keys [target-space player-id orientation]}]
+  (let [{:keys [mesh material piece-size]} preview]
+    (if (and mesh material target-space player-id)
+      (let [player (get pieces/players-by-id player-id)
+            orientation (or orientation :up)
+            [x y] (layout/card-position target-space)
+            z (layout/piece-center-z piece-size orientation)]
+        (set! (.-visible mesh) true)
+        (.set (.-color material) (or (:color player) 0xffffff))
+        (.set (.-position mesh) x y z)
+        (set-piece-rotation! mesh orientation piece-size))
+      (when mesh
+        (set! (.-visible mesh) false)))))
+
 (defn- add-piece-meshes!
   [scene geometries materials spaces piece-meshes target-meshes
    piece-selection-meshes board-pieces]
@@ -437,7 +483,10 @@
                                                          object-meshes
                                                          target-meshes
                                                          piece-selection-meshes
-                                                         board-pieces)]
+                                                         board-pieces)
+            placement-preview (add-placement-preview-mesh! scene
+                                                           geometries
+                                                           materials)]
         {:geometries @geometries
          :materials @materials
          :textures @textures
@@ -447,4 +496,5 @@
          :selection-meshes @selection-meshes
          :wasteland-selection-meshes @wasteland-selection-meshes
          :piece-selection-meshes @piece-selection-meshes
+         :placement-preview placement-preview
          :piece-edge-outline-count piece-edge-outline-count}))))

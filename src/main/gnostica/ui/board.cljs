@@ -256,6 +256,8 @@
        (preview-space bounds :destination status destination-space))
      (when-let [target-space (:target-space mutation)]
        (preview-space bounds :mutation status target-space))
+     (when-let [target-space (:target-space placement)]
+       (preview-space bounds :destination status target-space))
      [preview-piece bounds status placement]
      [orientation-compass bounds (:orientation-compass preview)]
      (when summary

@@ -45,22 +45,39 @@
       :wasteland [(:row target) (:col target)]
       nil)))
 
+(defn- placement-target-key [kind {:keys [placement]}]
+  (let [target-space (:target-space placement)]
+    (when (= kind (:kind target-space))
+      (case kind
+        :territory (:board-index target-space)
+        :wasteland [(:row target-space) (:col target-space)]
+        nil))))
+
+(defn- highlighted-target-style [status]
+  (case status
+    :disabled {:visible? true
+               :color 0xff8a7a
+               :opacity 0.56}
+    :legal {:visible? true
+            :color 0xfff2a6
+            :opacity 0.9}
+    {:visible? true
+     :color 0xffe08a
+     :opacity 0.74}))
+
 (defn- target-mesh-style
   ([descriptor]
-   (target-mesh-style nil nil false nil descriptor))
-  ([selected-key key drag-active? drag-key descriptor]
+   (target-mesh-style nil nil false nil nil nil descriptor))
+  ([selected-key key drag-active? drag-key preview-key preview-status descriptor]
     (cond
       (and (some? drag-key)
            (= key drag-key))
-      (if (= :disabled (:status descriptor))
-        {:visible? true
-         :color 0xff8a7a
-         :opacity 0.56
-         :drag-target? true}
-        {:visible? true
-         :color 0xfff2a6
-         :opacity 0.9
-         :drag-target? true})
+      (assoc (highlighted-target-style (:status descriptor))
+             :drag-target? true)
+
+      (and (some? preview-key)
+           (= key preview-key))
+      (highlighted-target-style preview-status)
 
       (and (some? selected-key)
            (= key selected-key))
@@ -107,6 +124,13 @@
   (style-highlight-mesh! mesh style)
   (true? (:drag-target? style)))
 
+(defn set-placement-preview! [this move-preview]
+  (let [{:keys [active? placement-preview render!]} (r/state this)]
+    (when (and active? @active? placement-preview)
+      (scene-graph/set-placement-preview! placement-preview (:placement move-preview))
+      (when render!
+        (render!)))))
+
 (defn set-selection!
   ([this selected-index]
    (set-selection! this selected-index nil))
@@ -116,12 +140,17 @@
      (when (and active? @active? selection-meshes)
       (when legal-targets-ref
         (reset! legal-targets-ref legal-targets))
-      (let [territory-targets (territory-targets-by-index legal-targets)
+      (let [[_ _cells _board-pieces _selected-index _card-icon-mode
+             _texture-errors _legal-targets move-preview] (r/argv this)
+            territory-targets (territory-targets-by-index legal-targets)
             wasteland-targets (wasteland-targets-by-coordinate legal-targets)
             piece-targets (piece-targets-by-id legal-targets)
             board-space-drag-active? (board-space-drag-preview? drag-preview)
             drag-territory-key (drag-target-key :territory drag-preview)
             drag-wasteland-key (drag-target-key :wasteland drag-preview)
+            preview-territory-key (placement-target-key :territory move-preview)
+            preview-wasteland-key (placement-target-key :wasteland move-preview)
+            preview-status (:status move-preview)
             drag-target-count (atom 0)]
         (doseq [[index mesh] selection-meshes]
           (when (style-and-track-drag-target!
@@ -130,6 +159,8 @@
                                     index
                                     board-space-drag-active?
                                     drag-territory-key
+                                    preview-territory-key
+                                    preview-status
                                     (get territory-targets index)))
             (swap! drag-target-count inc)))
         (doseq [[coordinate mesh] wasteland-selection-meshes]
@@ -139,6 +170,8 @@
                                     coordinate
                                     board-space-drag-active?
                                     drag-wasteland-key
+                                    preview-wasteland-key
+                                    preview-status
                                     (get wasteland-targets coordinate)))
             (swap! drag-target-count inc)))
         (doseq [[piece-id mesh] piece-selection-meshes]
@@ -233,10 +266,12 @@
                                                  :selection-meshes (:selection-meshes scene-data)
                                                  :wasteland-selection-meshes (:wasteland-selection-meshes scene-data)
                                                  :piece-selection-meshes (:piece-selection-meshes scene-data)
+                                                 :placement-preview (:placement-preview scene-data)
                                                  :legal-targets-ref legal-targets-ref
                                                  :piece-edge-outline-count (:piece-edge-outline-count scene-data)
                                                  :antialias-enabled? antialias-enabled?
                                                  :keyboard-pan-bounds (controls/keyboard-pan-bounds cells)}
                                                 pointer-listeners
                                                 (controls/camera-view-metadata camera controls)))
+                   (set-placement-preview! this _move-preview)
                    (set-selection! this selected-index legal-targets)))))))))))
