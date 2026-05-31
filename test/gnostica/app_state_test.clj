@@ -146,7 +146,9 @@
   (tree-seq coll? seq form))
 
 (defn- move-selection-emitted-control-group-types []
-  (->> (read-source-forms "src/main/gnostica/move_selection.cljc")
+  (->> ["src/main/gnostica/move_selection.cljc"
+        "src/main/gnostica/move_selection/controls.cljc"]
+       (mapcat read-source-forms)
        (mapcat form-nodes)
        (keep (fn [node]
                (when (seq? node)

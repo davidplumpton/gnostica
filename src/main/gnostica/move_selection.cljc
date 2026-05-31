@@ -2,6 +2,9 @@
   (:require [gnostica.board-layout :as layout]
             [gnostica.cards :as cards]
             [gnostica.game-state :as game-state]
+            [gnostica.move-selection.commands :as commands]
+            [gnostica.move-selection.controls :as controls]
+            [gnostica.move-selection.targets :as targets]
             [gnostica.pieces :as pieces]))
 
 (def move-source-order
@@ -1957,14 +1960,6 @@
       :else
       "Unknown move source.")))
 
-(defn move-source-options [db]
-  (mapv (fn [source-id]
-          (let [reason (source-unavailable-reason db source-id)]
-            (assoc (get move-source-definitions source-id)
-                   :enabled? (nil? reason)
-                   :reason reason)))
-        move-source-order))
-
 (defn move-selection [db]
   (:move-selection db (empty-move-selection)))
 
@@ -1974,321 +1969,125 @@
 (defn move-params [db]
   (:params (move-selection db)))
 
+(defn- control-context []
+  {:move-source-order move-source-order
+   :move-source-definitions move-source-definitions
+   :move-power-order move-power-order
+   :move-power-definitions move-power-definitions
+   :rod-mode-order rod-mode-order
+   :rod-mode-definitions rod-mode-definitions
+   :sun-disc-mode-definitions sun-disc-mode-definitions
+   :fool-reveal-count-order fool-reveal-count-order
+   :high-priestess-redraw-count-order high-priestess-redraw-count-order
+   :hand-trade-major-action-count-definitions hand-trade-major-action-count-definitions
+   :source-unavailable-reason source-unavailable-reason
+   :move-selection move-selection
+   :board board
+   :source-card source-card
+   :move-power-ids-for-card move-power-ids-for-card
+   :selected-power selected-power
+   :world-copy-board-indexes world-copy-board-indexes
+   :world-copied-card world-copied-card
+   :world-copied-power-ids-for-card world-copied-power-ids-for-card
+   :selected-world-copied-power selected-world-copied-power
+   :world-move? world-move?
+   :disc-action-count-option-values disc-action-count-option-values
+   :selected-disc-action-count selected-disc-action-count
+   :hand-trade-major-action-count-option-values hand-trade-major-action-count-option-values
+   :hand-trade-major-action-count-source? hand-trade-major-action-count-source?
+   :selected-hand-trade-major-action-count selected-hand-trade-major-action-count
+   :death-sword-action-count-option-values death-sword-action-count-option-values
+   :selected-death-sword-action-count selected-death-sword-action-count
+   :devil-action-count-option-values devil-action-count-option-values
+   :selected-devil-action-count selected-devil-action-count
+   :sun-disc-mode-option-ids sun-disc-mode-option-ids
+   :fool-move? fool-move?
+   :fool-active-play? fool-active-play?
+   :fool-play-power-options fool-play-power-options
+   :selected-fool-play-power selected-fool-play-power
+   :selected-fool-reveal-count selected-fool-reveal-count
+   :fool-completed-reveals fool-completed-reveals
+   :fool-completed-reveal-count fool-completed-reveal-count
+   :fool-active-reveal fool-active-reveal
+   :fool-active-reveal-card fool-active-reveal-card
+   :high-priestess-move? high-priestess-move?
+   :selected-high-priestess-redraw-count selected-high-priestess-redraw-count
+   :high-priestess-redraw-pass high-priestess-redraw-pass
+   :high-priestess-draw-count-options high-priestess-draw-count-options
+   :high-priestess-hand-card-options high-priestess-hand-card-options
+   :high-priestess-valid-discard-card-ids high-priestess-valid-discard-card-ids
+   :judgement-move? judgement-move?
+   :judgement-discard-card-options judgement-discard-card-options
+   :judgement-card-maximum judgement-card-maximum
+   :active-power active-power
+   :active-composite-action-power active-composite-action-power
+   :active-sword-major-action-power active-sword-major-action-power})
+
+(defn move-source-options [db]
+  (controls/move-source-options (control-context) db))
+
 (defn move-power-options [db]
-  (let [{:keys [source params]} (move-selection db)
-        options (move-power-ids-for-card (source-card db source params))]
-    (mapv move-power-definitions
-          (filter #(contains? (set options) %)
-                  move-power-order))))
+  (controls/move-power-options (control-context) db))
 
 (defn move-power [db]
-  (let [{:keys [source params]} (move-selection db)]
-    (selected-power db source params)))
+  (controls/move-power (control-context) db))
 
 (defn move-world-copy-options [db]
-  (let [copy-indexes (world-copy-board-indexes db)]
-    (filterv #(contains? copy-indexes (:index %))
-             (board db))))
+  (controls/move-world-copy-options (control-context) db))
 
 (defn move-world-copied-power-options [db]
-  (let [{:keys [source params]} (move-selection db)
-        options (world-copied-power-ids-for-card (world-copied-card db params))]
-    (if (world-move? db source params)
-      (mapv move-power-definitions
-            (filter #(contains? (set options) %)
-                    move-power-order))
-      [])))
+  (controls/move-world-copied-power-options (control-context) db))
 
 (defn move-world-copied-power [db]
-  (let [{:keys [source params]} (move-selection db)]
-    (selected-world-copied-power db source params)))
+  (controls/move-world-copied-power (control-context) db))
 
-(defn move-rod-mode-options [_db]
-  (mapv rod-mode-definitions rod-mode-order))
+(defn move-rod-mode-options [db]
+  (controls/move-rod-mode-options (control-context) db))
 
 (defn move-disc-action-count-options [db]
-  (let [{:keys [source params]} (move-selection db)]
-    (disc-action-count-option-values db source params)))
+  (controls/move-disc-action-count-options (control-context) db))
 
 (defn move-major-action-count-options [db]
-  (let [{:keys [source params]} (move-selection db)]
-    (mapv hand-trade-major-action-count-definitions
-          (hand-trade-major-action-count-option-values db source params))))
+  (controls/move-major-action-count-options (control-context) db))
 
 (defn move-major-action-count [db]
-  (let [{:keys [source params]} (move-selection db)]
-    (when (hand-trade-major-action-count-source? db source params)
-      (selected-hand-trade-major-action-count db source params))))
+  (controls/move-major-action-count (control-context) db))
 
 (defn move-sword-action-count-options [db]
-  (let [{:keys [source params]} (move-selection db)]
-    (death-sword-action-count-option-values db source params)))
+  (controls/move-sword-action-count-options (control-context) db))
 
 (defn move-devil-action-count-options [db]
-  (let [{:keys [source params]} (move-selection db)]
-    (devil-action-count-option-values db source params)))
+  (controls/move-devil-action-count-options (control-context) db))
 
 (defn move-sun-disc-mode-options [db]
-  (let [{:keys [source params]} (move-selection db)]
-    (mapv sun-disc-mode-definitions
-          (sun-disc-mode-option-ids db source params))))
+  (controls/move-sun-disc-mode-options (control-context) db))
 
 (defn move-fool-reveal-count-options [db]
-  (let [{:keys [source params]} (move-selection db)]
-    (if (fool-move? db source params)
-      fool-reveal-count-order
-      [])))
+  (controls/move-fool-reveal-count-options (control-context) db))
 
 (defn move-fool-play-power-options [db]
-  (let [{:keys [source params]} (move-selection db)
-        options (fool-play-power-options params)]
-    (if (and (fool-active-play? db source params)
-             (seq options))
-      (mapv move-power-definitions
-            (filter #(contains? (set options) %)
-                    move-power-order))
-      [])))
+  (controls/move-fool-play-power-options (control-context) db))
 
 (defn move-fool-play-power [db]
-  (let [{:keys [source params]} (move-selection db)]
-    (selected-fool-play-power db source params)))
+  (controls/move-fool-play-power (control-context) db))
 
 (defn move-fool-reveal-state [db]
-  (let [{:keys [source params]} (move-selection db)
-        reveal-count (selected-fool-reveal-count params)
-        completed (fool-completed-reveals params)
-        active-reveal (fool-active-reveal params)
-        active-card (fool-active-reveal-card params)]
-    (when (fool-move? db source params)
-      (cond-> {:selected-count reveal-count
-               :completed-count (count completed)
-               :remaining-count (when reveal-count
-                                  (max 0 (- reveal-count
-                                            (count completed)
-                                            (if active-reveal 1 0))))
-               :completed-reveals completed
-               :active-reveal active-reveal
-               :active-card active-card
-               :play-power-options (move-fool-play-power-options db)
-               :play-power (move-fool-play-power db)
-               :can-reveal? (and reveal-count
-                                  (not active-reveal)
-                                  (< (count completed) reveal-count))}
-        active-card
-        (assoc :active-card-id (:id active-card)
-               :active-card-title (:title active-card)
-               :active-card-image (:image active-card))))))
+  (controls/move-fool-reveal-state (control-context) db))
 
 (defn move-high-priestess-redraw-count-options [db]
-  (let [{:keys [source params]} (move-selection db)]
-    (if (high-priestess-move? db source params)
-      high-priestess-redraw-count-order
-      [])))
+  (controls/move-high-priestess-redraw-count-options (control-context) db))
 
 (defn move-high-priestess-redraw-options [db]
-  (let [{:keys [source params]} (move-selection db)]
-    (if-let [redraw-count (and (high-priestess-move? db source params)
-                               (selected-high-priestess-redraw-count params))]
-      (mapv (fn [pass-index]
-              (let [pass (high-priestess-redraw-pass params pass-index)
-                    discard-card-ids (:discard-card-ids pass)
-                    draw-count-options (high-priestess-draw-count-options
-                                        db
-                                        source
-                                        params
-                                        pass-index
-                                        discard-card-ids)]
-                {:pass-index pass-index
-                 :discard-card-options (high-priestess-hand-card-options
-                                        db
-                                        source
-                                        params
-                                        pass-index)
-                 :selected-discard-card-ids (high-priestess-valid-discard-card-ids
-                                             db
-                                             source
-                                             params
-                                             pass-index
-                                             discard-card-ids)
-                 :draw-count-options draw-count-options
-                 :selected-draw-count (when (some #{(:draw-count pass)}
-                                                  draw-count-options)
-                                        (:draw-count pass))}))
-            (range 1 (inc redraw-count)))
-      [])))
+  (controls/move-high-priestess-redraw-options (control-context) db))
 
 (defn move-judgement-card-options [db]
-  (let [{:keys [source params]} (move-selection db)]
-    (if (judgement-move? db source params)
-      (judgement-discard-card-options db source params)
-      [])))
+  (controls/move-judgement-card-options (control-context) db))
 
 (defn move-judgement-card-maximum [db]
-  (let [{:keys [source params]} (move-selection db)]
-    (if (judgement-move? db source params)
-      (judgement-card-maximum db source params)
-      0)))
-
-(declare power-control-groups)
-
-(defn- control-group
-  ([type]
-   {:type type})
-  ([type attrs]
-   (assoc attrs :type type)))
-
-(defn- power-control-group [power type]
-  (control-group type {:power power}))
-
-(defn- major-action-control-group [power action-power type]
-  (control-group type {:power power
-                       :action-power action-power}))
-
-(defn- composite-major-control-groups [db source-id params]
-  (let [power (active-power db source-id params)
-        action-power (active-composite-action-power db source-id params)]
-    (vec
-     (concat
-      (when (seq (hand-trade-major-action-count-option-values db source-id params))
-        [(power-control-group power :major-action-count)])
-      (case action-power
-        :orient-minion [(major-action-control-group power action-power :minion-orientation)]
-        :rod [(major-action-control-group power action-power :rod)]
-        :cup [(major-action-control-group power action-power :cup)]
-        :trade-hand [(major-action-control-group power action-power :target-piece)]
-        [])))))
-
-(defn- sword-major-control-groups [db source-id params]
-  (let [power (active-power db source-id params)
-        action-power (active-sword-major-action-power db source-id params)]
-    (vec
-     (concat
-      (when (seq (hand-trade-major-action-count-option-values db source-id params))
-        [(power-control-group power :major-action-count)])
-      (when (= :death power)
-        [(power-control-group power :sword-action-count)])
-      (when (or (not= :death power)
-                (:sword-action-count params))
-        (case action-power
-          :trade-hand [(major-action-control-group power action-power :target-piece)]
-          :orient-minion [(major-action-control-group power action-power :minion-orientation)]
-          :rod [(major-action-control-group power action-power :rod)]
-          :sword [(major-action-control-group power action-power :sword)]
-          []))))))
-
-(defn- fool-play-power-choice-needed? [params]
-  (< 1 (count (fool-play-power-options params))))
-
-(defn- fool-control-groups [db source-id params]
-  (let [reveal-count (selected-fool-reveal-count params)
-        completed-count (fool-completed-reveal-count params)
-        active-reveal (fool-active-reveal params)
-        child-power (selected-fool-play-power db source-id params)]
-    (vec
-     (concat
-      [(power-control-group :fool :fool-reveal-count)]
-      (cond
-        (nil? reveal-count)
-        []
-
-        (zero? reveal-count)
-        []
-
-        active-reveal
-        (concat
-         [(power-control-group :fool :fool-reveal-decision)]
-         (when (= :play (:choice active-reveal))
-           (concat
-            (when (and (fool-play-power-choice-needed? params)
-                       (nil? child-power))
-              [(power-control-group :fool :fool-play-power)])
-            (when child-power
-              (power-control-groups db source-id params child-power)))))
-
-        (< completed-count reveal-count)
-        [(power-control-group :fool :fool-reveal-card)]
-
-        :else
-        [])))))
-
-(defn- world-control-groups [db source-id params]
-  (vec
-   (concat
-    [(power-control-group :world :world-copy)]
-    (when (some? (:copied-board-index params))
-      [(power-control-group :world :world-copied-power)])
-    (when-let [copied-power (selected-world-copied-power db source-id params)]
-      (power-control-groups db source-id params copied-power)))))
-
-(defn- power-control-groups [db source-id params power]
-  (case power
-    :rod [(power-control-group power :rod)]
-    :cup [(power-control-group power :cup)]
-    :disc [(power-control-group power :disc)]
-    :sun [(power-control-group power :sun)]
-    :sword [(power-control-group power :sword)]
-    :fool (fool-control-groups db source-id params)
-    :high-priestess [(power-control-group power :high-priestess-redraw-count)
-                     (power-control-group power :high-priestess-redraws)]
-    :judgement [(power-control-group power :judgement-card-selection)]
-    :hierophant [(power-control-group power :piece-orientation-major)]
-    :hermit [(power-control-group power :hermit)]
-    :devil [(power-control-group power :devil)]
-    :world (world-control-groups db source-id params)
-    (:empress :emperor :lovers :chariot :hanged-man :temperance)
-    (composite-major-control-groups db source-id params)
-    (:justice :death :tower :moon)
-    (sword-major-control-groups db source-id params)
-    []))
-
-(defn- gameplay-control-groups [db source-id params]
-  (let [power (selected-power db source-id params)]
-    (vec
-     (concat
-      [(control-group :power)]
-      (power-control-groups db source-id params power)))))
+  (controls/move-judgement-card-maximum (control-context) db))
 
 (defn move-control-groups [db]
-  (let [{:keys [source params]} (move-selection db)]
-    (case source
-      :activate-territory
-      (vec
-       (concat
-        [(control-group :source-board)]
-        (when (some? (:source-board-index params))
-          [(control-group :piece)])
-        (when (:piece-id params)
-          (gameplay-control-groups db source params))))
-
-      :play-hand-card
-      (vec
-       (concat
-        [(control-group :hand-card)]
-        (when (:hand-card-id params)
-          [(control-group :piece)])
-        (when (:piece-id params)
-          (gameplay-control-groups db source params))))
-
-      :draw-cards
-      [(control-group :discard-cards)
-       (control-group :draw-count)]
-
-      :orient-piece
-      (vec
-       (concat
-        [(control-group :piece)]
-        (when (:piece-id params)
-          [(control-group :orientation)])))
-
-      :place-initial-small
-      (vec
-       (concat
-        [(control-group :target-space)]
-        (when (or (some? (:target-board-index params))
-                  (:target-wasteland params))
-          [(control-group :orientation)])))
-
-      [])))
+  (controls/move-control-groups (control-context) db))
 
 (defn move-disc-minion-orientation-required? [db]
   (let [{:keys [source params]} (move-selection db)]
@@ -2709,6 +2508,9 @@
 
 (declare power-requirements)
 
+(defn- fool-play-power-choice-needed? [params]
+  (< 1 (count (fool-play-power-options params))))
+
 (defn- fool-play-requirements [db source-id params]
   (let [child-power (selected-fool-play-power db source-id params)]
     (vec
@@ -2896,11 +2698,23 @@
     :draw-count :draw-count
     :confirm))
 
-(declare cup-target-command
-         gameplay-power-command-for-power
-         rod-command
-         sword-target-command
+(declare gameplay-power-command-for-power
          select-move-world-copy)
+
+(defn- command-fragment-context []
+  {:selected-rod-variant selected-rod-variant
+   :sword-orientation-available? sword-orientation-available?
+   :sword-replacement-card-source-option-ids sword-replacement-card-source-option-ids
+   :selected-sword-replacement-card-source selected-sword-replacement-card-source})
+
+(defn- cup-target-command [params]
+  (commands/cup-target-command params))
+
+(defn- rod-command [db source params]
+  (commands/rod-command (command-fragment-context) db source params))
+
+(defn- sword-target-command [db source params]
+  (commands/sword-target-command (command-fragment-context) db source params))
 
 (def ^:private current-major-action-param-keys
   [:target-board-index
@@ -5470,873 +5284,93 @@
            :label (pieces/orientation-label orientation)})
         [:up :north :east :south :west]))
 
-(defn- target-status [active? enabled?]
-  (cond
-    enabled? :legal
-    active? :disabled
-    :else :idle))
-
-(defn- descriptor-error [code message data]
-  {:code code
-   :message message
-   :data data})
-
-(defn- replacement-card-source-label [card-source]
-  (get-in disc-replacement-card-source-definitions [card-source :label] "card source"))
+(defn- target-context []
+  {:disc-replacement-card-source-definitions disc-replacement-card-source-definitions
+   :move-selection move-selection
+   :board board
+   :board-pieces board-pieces
+   :current-player-id current-player-id
+   :current-player-hand current-player-hand
+   :current-player-piece? current-player-piece?
+   :discard-pile discard-pile
+   :source-unavailable-reason source-unavailable-reason
+   :replacement-card-source-option-ids replacement-card-source-option-ids
+   :selected-replacement-card-source selected-replacement-card-source
+   :replacement-card-options-for-source replacement-card-options-for-source
+   :selected-sun-disc-mode selected-sun-disc-mode
+   :sun-disc-target-cell sun-disc-target-cell
+   :target-board-cell target-board-cell
+   :selected-disc-action-count selected-disc-action-count
+   :sun-move? sun-move?
+   :disc-move? disc-move?
+   :sword-move? sword-move?
+   :rod-move? rod-move?
+   :cup-move? cup-move?
+   :active-power active-power
+   :move-source-board-options move-source-board-options
+   :move-world-copy-options move-world-copy-options
+   :move-target-board-options move-target-board-options
+   :move-target-wasteland-options move-target-wasteland-options
+   :move-piece-options move-piece-options
+   :move-target-piece-options move-target-piece-options
+   :move-hand-card-options move-hand-card-options
+   :move-discard-card-options move-discard-card-options
+   :move-one-point-card-options move-one-point-card-options
+   :move-judgement-card-options move-judgement-card-options
+   :max-draw-count max-draw-count
+   :small-stash-count small-stash-count})
 
 (defn- replacement-card-expected-value [db source params]
-  (cond
-    (sun-move? db source params)
-    (case (selected-sun-disc-mode db source params)
-      :created-territory 2
-      :territory (some-> (sun-disc-target-cell db params)
-                         :card
-                         cards/card-point-value
-                         inc)
-      nil)
-
-    (disc-move? db source params)
-    (some-> (target-board-cell db params)
-            :card
-            cards/card-point-value
-            (+ (selected-disc-action-count db source params)))
-
-    (sword-move? db source params)
-    (when-let [target-value (some-> (target-board-cell db params)
-                                    :card
-                                    cards/card-point-value)]
-      (when-let [damage (:damage params)]
-        (let [replacement-value (- target-value damage)]
-          (when (pos? replacement-value)
-            replacement-value))))
-
-    :else
-    nil))
-
-(defn- replacement-card-disabled-error [db card-source]
-  (let [{:keys [source params]} (move-selection db)
-        source-options (set (replacement-card-source-option-ids db source params))
-        selected-source (selected-replacement-card-source db source params)
-        expected-value (replacement-card-expected-value db source params)]
-    (cond
-      (not (contains? source-options card-source))
-      (descriptor-error :replacement-card-source-unavailable
-                        (str (replacement-card-source-label card-source)
-                             " replacements are not available for the active source.")
-                        {:source source
-                         :replacement-card-source card-source
-                         :available-sources (vec source-options)})
-
-      (and selected-source
-           (not= selected-source card-source))
-      (descriptor-error :replacement-card-source-unavailable
-                        (str "The active replacement source is "
-                             (replacement-card-source-label selected-source)
-                             ".")
-                        {:source source
-                         :replacement-card-source card-source
-                         :selected-replacement-card-source selected-source})
-
-      expected-value
-      (descriptor-error :invalid-replacement-card
-                        (str "Choose a replacement card worth "
-                             expected-value
-                             " point"
-                             (when (not= 1 expected-value) "s")
-                             ".")
-                        {:source source
-                         :replacement-card-source card-source
-                         :required-point-value expected-value})
-
-      :else
-      (descriptor-error :invalid-replacement-card
-                        "Choose an available replacement card."
-                        {:source source
-                         :replacement-card-source card-source}))))
-
-(defn- selected-territory-indexes [params]
-  (set (keep params
-             [:source-board-index
-              :copied-board-index
-              :target-board-index
-              :sun-disc-target-board-index
-              :hermit-destination-board-index])))
-
-(defn- selected-wasteland? [params {:keys [row col]}]
-  (boolean
-   (some (fn [key]
-           (let [space (get params key)]
-             (and (= row (:row space))
-                  (= col (:col space)))))
-         [:target-wasteland :hermit-destination-wasteland])))
-
-(defn- selected-piece-ids [params]
-  (set (keep params
-             [:piece-id :target-piece-id :sun-disc-target-piece-id])))
-
-(defn- current-target-role [stage]
-  (case stage
-    :source-territory :source
-    :hand-card :source
-    :piece :minion
-    :world-copy :copy
-    :hermit-destination :destination
-    :one-point-card :territory-card
-    :replacement-card :replacement-card
-    :target-piece :target
-    :target :target
-    :draw-count :draw
-    :orientation :orientation
-    :idle))
-
-(defn- territory-disabled-error [db stage]
-  (let [{:keys [source params]} (move-selection db)]
-    (case stage
-      :source-territory
-      (descriptor-error :invalid-source-territory
-                        "Choose a territory with one of the current player's pieces."
-                        {:source source})
-
-      :world-copy
-      (descriptor-error :invalid-world-copy
-                        "Choose a non-World major territory for World to copy."
-                        {:source source})
-
-      :hermit-destination
-      (descriptor-error :invalid-hermit-destination
-                        "Choose an eligible Hermit destination territory."
-                        {:source source})
-
-      :target
-      (cond
-        (= :place-initial-small source)
-        (descriptor-error :target-space-occupied
-                          "Choose an empty territory or wasteland."
-                          {:source source})
-
-        (rod-move? db source params)
-        (descriptor-error :invalid-rod-target
-                          "Choose a Rod-targetable territory."
-                          {:source source
-                           :rod-mode (:rod-mode params)})
-
-        (disc-move? db source params)
-        (descriptor-error :invalid-disc-target
-                          "Choose a Disc-targetable territory."
-                          {:source source
-                           :disc-target-kind (:disc-target-kind params)})
-
-        (sword-move? db source params)
-        (descriptor-error :invalid-sword-target
-                          "Choose a Sword-targetable territory."
-                          {:source source
-                           :sword-target-kind (:sword-target-kind params)})
-
-        (or (cup-move? db source params)
-            (sun-move? db source params))
-        (descriptor-error :invalid-cup-target
-                          "Choose a Cup-targetable territory."
-                          {:source source})
-
-        :else
-        (descriptor-error :invalid-target-territory
-                          "Choose an available target territory."
-                          {:source source}))
-
-      nil)))
-
-(defn- territory-descriptor-context [db]
-  (let [{:keys [stage]} (move-selection db)]
-    (case stage
-      :source-territory
-      {:active? true
-       :role :source
-       :options (move-source-board-options db)
-       :disabled-error (territory-disabled-error db stage)}
-
-      :world-copy
-      {:active? true
-       :role :copy
-       :options (move-world-copy-options db)
-       :disabled-error (territory-disabled-error db stage)}
-
-      :target
-      {:active? true
-       :role :target
-       :options (move-target-board-options db)
-       :disabled-error (territory-disabled-error db stage)}
-
-      :hermit-destination
-      {:active? true
-       :role :destination
-       :options (move-target-board-options db)
-       :disabled-error (territory-disabled-error db stage)}
-
-      nil)))
-
-(defn- territory-descriptors [db]
-  (let [{:keys [params]} (move-selection db)
-        {:keys [active? role options disabled-error]} (or (territory-descriptor-context db)
-                                                          {})
-        legal-indexes (set (map :index options))
-        selected-indexes (selected-territory-indexes params)]
-    (mapv (fn [{:keys [index row col orientation card] :as cell}]
-            (let [enabled? (contains? legal-indexes index)
-                  status (target-status active? enabled?)]
-              (cond-> {:kind :territory
-                       :role role
-                       :board-index index
-                       :space-key (pieces/territory-space index)
-                       :row row
-                       :col col
-                       :orientation orientation
-                       :card-id (:id card)
-                       :label (:title card)
-                       :cell cell
-                       :active? (true? active?)
-                       :enabled? enabled?
-                       :status status
-                       :selected? (contains? selected-indexes index)}
-                (and active? (not enabled?) disabled-error)
-                (assoc :error (assoc-in disabled-error [:data :board-index] index)
-                       :reason (:message disabled-error)))))
-          (board db))))
-
-(defn- wasteland-disabled-error [db stage]
-  (let [{:keys [source params]} (move-selection db)]
-    (case stage
-      :target
-      (if (= :place-initial-small source)
-        (descriptor-error :target-space-occupied
-                          "Choose an empty territory or wasteland."
-                          {:source source})
-        (descriptor-error :invalid-wasteland-target
-                          "Choose a wasteland targeted by the active move."
-                          {:source source
-                           :power (active-power db source params)}))
-
-      :hermit-destination
-      (descriptor-error :invalid-hermit-destination
-                        "Choose an eligible Hermit destination wasteland."
-                        {:source source})
-
-      nil)))
-
-(defn- wasteland-descriptor-context [db]
-  (let [{:keys [stage]} (move-selection db)]
-    (case stage
-      :target
-      {:active? true
-       :role :target
-       :options (move-target-wasteland-options db)
-       :disabled-error (wasteland-disabled-error db stage)}
-
-      :hermit-destination
-      {:active? true
-       :role :destination
-       :options (move-target-wasteland-options db)
-       :disabled-error (wasteland-disabled-error db stage)}
-
-      nil)))
-
-(defn- wasteland-descriptors [db]
-  (let [{:keys [params]} (move-selection db)
-        {:keys [active? role options disabled-error]} (or (wasteland-descriptor-context db)
-                                                          {})
-        legal-coordinates (set (map (juxt :row :col) options))]
-    (mapv (fn [{:keys [row col] :as space}]
-            (let [enabled? (contains? legal-coordinates [row col])
-                  status (target-status active? enabled?)]
-              (cond-> {:kind :wasteland
-                       :role role
-                       :space-key (pieces/wasteland-space row col)
-                       :row row
-                       :col col
-                       :orientation (:orientation space)
-                       :label (:id space)
-                       :space space
-                       :active? (true? active?)
-                       :enabled? enabled?
-                       :status status
-                       :selected? (selected-wasteland? params space)}
-                (and active? (not enabled?) disabled-error)
-                (assoc :error (assoc disabled-error
-                                     :data (assoc (:data disabled-error)
-                                                  :row row
-                                                  :col col))
-                       :reason (:message disabled-error)))))
-          (layout/wasteland-spaces (board db)))))
-
-(defn- piece-disabled-error [db stage]
-  (let [{:keys [source params]} (move-selection db)]
-    (case stage
-      :piece
-      (descriptor-error :invalid-piece
-                        "Choose one of the current player's pieces."
-                        {:source source})
-
-      :target-piece
-      (cond
-        (rod-move? db source params)
-        (descriptor-error :invalid-target-piece
-                          "Choose a Rod-targetable piece."
-                          {:source source
-                           :rod-mode (:rod-mode params)})
-
-        (disc-move? db source params)
-        (descriptor-error :invalid-target-piece
-                          "Choose a Disc-targetable piece."
-                          {:source source
-                           :disc-target-kind (:disc-target-kind params)})
-
-        (sword-move? db source params)
-        (descriptor-error :invalid-target-piece
-                          "Choose a Sword-targetable piece."
-                          {:source source
-                           :sword-target-kind (:sword-target-kind params)})
-
-        (or (cup-move? db source params)
-            (sun-move? db source params))
-        (descriptor-error :invalid-target-piece
-                          "Choose an enemy piece targeted by the minion."
-                          {:source source})
-
-        :else
-        (descriptor-error :invalid-target-piece
-                          "Choose an available target piece."
-                          {:source source}))
-
-      nil)))
-
-(defn- piece-descriptor-context [db]
-  (let [{:keys [stage]} (move-selection db)]
-    (case stage
-      :piece
-      {:active? true
-       :role :minion
-       :options (move-piece-options db)
-       :disabled-error (piece-disabled-error db stage)}
-
-      :target-piece
-      {:active? true
-       :role :target
-       :options (move-target-piece-options db)
-       :disabled-error (piece-disabled-error db stage)}
-
-      nil)))
-
-(defn- piece-descriptors [db]
-  (let [{:keys [params]} (move-selection db)
-        {:keys [active? role options disabled-error]} (or (piece-descriptor-context db)
-                                                          {})
-        legal-piece-ids (set (map :id options))
-        selected-ids (selected-piece-ids params)
-        source-enabled? (nil? (source-unavailable-reason db :orient-piece))]
-    (mapv (fn [{:keys [id player-id space-index space size orientation] :as piece}]
-            (let [current-player? (current-player-piece? db piece)
-                  enabled? (contains? legal-piece-ids id)
-                  status (target-status active? enabled?)]
-              (cond-> {:kind :piece
-                       :role role
-                       :piece-id id
-                       :player-id player-id
-                       :current-player? current-player?
-                       :source-enabled? (and current-player? source-enabled?)
-                       :space-key (pieces/piece-space-key piece)
-                       :space-index space-index
-                       :space space
-                       :size size
-                       :orientation orientation
-                       :piece piece
-                       :active? (true? active?)
-                       :enabled? enabled?
-                       :status status
-                       :selected? (contains? selected-ids id)}
-                (and active? (not enabled?) disabled-error)
-                (assoc :error (assoc-in disabled-error [:data :piece-id] id)
-                       :reason (:message disabled-error)))))
-          (board-pieces db))))
-
-(defn- replacement-card-descriptor-context [db card-source]
-  (let [{:keys [source params]} (move-selection db)
-        selected-source (selected-replacement-card-source db source params)
-        source-active? (or (nil? selected-source)
-                           (= selected-source card-source))
-        source-options (vec (replacement-card-options-for-source
-                             db
-                             source
-                             params
-                             card-source))
-        hand-card-ids (set (map :id (current-player-hand db)))
-        discard-source-active? (and (= :hand card-source)
-                                    (or (nil? selected-source)
-                                        (= :discard-pile selected-source))
-                                    (contains? (set (replacement-card-source-option-ids
-                                                     db
-                                                     source
-                                                     params))
-                                               :discard-pile))
-        just-discarded-hand-options (when discard-source-active?
-                                      (filterv #(contains? hand-card-ids (:id %))
-                                               (replacement-card-options-for-source
-                                                db
-                                                source
-                                                params
-                                                :discard-pile)))
-        options (if source-active?
-                  (vec (concat source-options just-discarded-hand-options))
-                  (vec just-discarded-hand-options))
-        source-by-card-id (merge
-                           (into {} (map (fn [card]
-                                           [(:id card) card-source])
-                                         source-options))
-                           (into {} (map (fn [card]
-                                           [(:id card) :discard-pile])
-                                         just-discarded-hand-options)))]
-    {:active? true
-     :role :replacement-card
-     :replacement-card-source card-source
-     :replacement-card-source-by-card-id source-by-card-id
-     :options options
-     :disabled-error (replacement-card-disabled-error db card-source)}))
-
-(defn- card-descriptor-context [db]
-  (let [{:keys [source stage]} (move-selection db)]
-    (cond
-      (= :hand-card stage)
-      {:hand {:active? true
-              :role :source
-              :options (move-hand-card-options db)
-              :disabled-error (descriptor-error :invalid-hand-card
-                                                "Choose a card from the current player's hand."
-                                                {:source source})}}
-
-      (and (= :draw-cards source)
-           (contains? #{:draw-count :confirm} stage))
-      {:hand {:active? true
-              :role :discard
-              :options (move-discard-card-options db)
-              :disabled-error nil}
-       :draw-pile {:active? true
-                   :role :draw}}
-
-      (= :one-point-card stage)
-      {:hand {:active? true
-              :role :territory-card
-              :options (move-one-point-card-options db)
-              :disabled-error (descriptor-error :invalid-one-point-card
-                                                "Choose a one-point card from the current player's hand."
-                                                {:source source})}}
-
-      (contains? #{:replacement-card-source :replacement-card} stage)
-      {:hand (replacement-card-descriptor-context db :hand)
-       :discard (replacement-card-descriptor-context db :discard-pile)}
-
-      (= :judgement-card-selection stage)
-      {:discard {:active? true
-                 :role :judgement-card
-                 :options (move-judgement-card-options db)
-                 :disabled-error (descriptor-error :invalid-judgement-card
-                                                   "Choose a card from the discard pile."
-                                                   {:source source})}}
-
-      :else
-      {})))
-
-(defn- card-descriptors-for [cards {:keys [active? role options disabled-error]
-                                    :as context}
-                             selected-card-ids]
-  (let [legal-card-ids (set (map :id options))
-        descriptor-context (select-keys context [:replacement-card-source])]
-    (mapv (fn [{:keys [id title] :as card}]
-            (let [enabled? (contains? legal-card-ids id)
-                  status (target-status active? enabled?)
-                  card-source (get-in context [:replacement-card-source-by-card-id id]
-                                      (:replacement-card-source context))]
-              (cond-> (merge {:kind :card
-                              :role role
-                              :card-id id
-                              :label title
-                              :card card
-                              :active? (true? active?)
-                              :enabled? enabled?
-                              :status status
-                              :selected? (contains? selected-card-ids id)}
-                             (cond-> descriptor-context
-                               card-source
-                               (assoc :replacement-card-source card-source)))
-                (and active? (not enabled?) disabled-error)
-                (assoc :error (assoc-in disabled-error [:data :card-id] id)
-                       :reason (:message disabled-error)))))
-          cards)))
-
-(defn- hand-card-descriptors [db]
-  (let [{:keys [params]} (move-selection db)
-        context (get (card-descriptor-context db) :hand)
-        selected-ids (set (concat [(:hand-card-id params)
-                                   (:one-point-card-id params)
-                                   (:replacement-card-id params)
-                                   (:sun-disc-replacement-card-id params)]
-                                  (:discard-card-ids params)))]
-    (card-descriptors-for (current-player-hand db) context selected-ids)))
-
-(defn- discard-card-descriptors [db]
-  (let [{:keys [params]} (move-selection db)
-        context (get (card-descriptor-context db) :discard)
-        selected-ids (set (concat [(:replacement-card-id params)]
-                                  (:judgement-card-ids params)))]
-    (card-descriptors-for (discard-pile db) context selected-ids)))
-
-(defn- draw-pile-descriptor [db]
-  (let [context (get (card-descriptor-context db) :draw-pile)
-        active? (:active? context)
-        enabled? (and active? (pos? (max-draw-count db)))]
-    (cond-> {:kind :draw-pile
-             :role (:role context)
-             :active? (true? active?)
-             :enabled? (boolean enabled?)
-             :status (target-status active? enabled?)
-             :count (count (get-in db [:game :draw-pile] []))}
-      (and active? (not enabled?))
-      (assoc :reason "The current player cannot draw more cards."
-             :error (descriptor-error :draw-pile-unavailable
-                                      "The current player cannot draw more cards."
-                                      {})))))
-
-(defn- stash-piece-descriptors [db]
-  (let [{:keys [source]} (move-selection db)
-        active? (= :place-initial-small source)
-        player-id (current-player-id db)
-        count (small-stash-count db)
-        enabled? (and active? (pos? count))]
-    (cond-> []
-      active?
-      (conj (cond-> {:kind :stash-piece
-                     :role :source
-                     :player-id player-id
-                     :size :small
-                     :count count
-                     :active? true
-                     :enabled? enabled?
-                     :status (target-status active? enabled?)}
-              (not enabled?)
-              (assoc :reason "The current player has no small pieces in stash."
-                     :error (descriptor-error :stash-piece-unavailable
-                                              "The current player has no small pieces in stash."
-                                              {:player-id player-id
-                                               :size :small})))))))
+  (targets/replacement-card-expected-value (target-context) db source params))
 
 (defn move-legal-targets [db]
-  (let [targets {:territories (territory-descriptors db)
-                 :wastelands (wasteland-descriptors db)
-                 :pieces (piece-descriptors db)
-                 :hand-cards (hand-card-descriptors db)
-                 :discard-cards (discard-card-descriptors db)
-                 :draw-pile (draw-pile-descriptor db)
-                 :stash-pieces (stash-piece-descriptors db)}
-        active? (boolean
-                 (or (some :active? (:territories targets))
-                     (some :active? (:wastelands targets))
-                     (some :active? (:pieces targets))
-                     (some :active? (:hand-cards targets))
-                     (some :active? (:discard-cards targets))
-                     (:active? (:draw-pile targets))
-                     (some :active? (:stash-pieces targets))))]
-    (assoc targets
-           :active? active?
-           :stage (:stage (move-selection db))
-           :role (current-target-role (:stage (move-selection db))))))
+  (targets/move-legal-targets (target-context) db))
 
-(defn- cup-target-command [params]
-  (cond
-    (:target-wasteland params)
-    (let [territory-card-source (or (:territory-card-source params) :hand)]
-      (cond-> {:target (select-keys (:target-wasteland params) [:kind :row :col])
-               :territory-card-source territory-card-source}
-        (= :hand territory-card-source)
-        (assoc :one-point-card-id (:one-point-card-id params))))
-
-    (:target-piece-id params)
-    {:target {:kind :piece
-              :piece-id (:target-piece-id params)}}
-
-    :else
-    {:target {:kind :territory
-              :board-index (:target-board-index params)}
-     :orientation (:orientation params)}))
-
-(defn- cup-command [db source params]
-  (assoc (cup-target-command params)
-         :cup-variant (selected-cup-variant db source params)))
-
-(defn- sun-cup-command [params]
-  (let [cup-target (cup-target-command params)]
-    (if (= :created-territory (:sun-disc-mode params))
-      (select-keys cup-target [:target])
-      cup-target)))
-
-(defn- sun-disc-command [params]
-  (case (:sun-disc-mode params)
-    :skip nil
-
-    :created-piece
-    (cond-> {:target {:kind :created-piece}}
-      (:orientation params)
-      (assoc :orientation (:orientation params)))
-
-    :created-territory
-    {:target {:kind :created-territory}
-     :replacement-card-source :hand
-     :replacement-card-id (:sun-disc-replacement-card-id params)}
-
-    :piece
-    (cond-> {:target {:kind :piece
-                      :piece-id (:sun-disc-target-piece-id params)}}
-      (:sun-disc-orientation params)
-      (assoc :orientation (:sun-disc-orientation params)))
-
-    :territory
-    {:target {:kind :territory
-              :board-index (:sun-disc-target-board-index params)}
-     :replacement-card-source :hand
-     :replacement-card-id (:sun-disc-replacement-card-id params)}
-
-    nil))
-
-(defn- sun-command [_db _source params]
-  (let [disc-command (sun-disc-command params)]
-    (cond-> {:cup (sun-cup-command params)}
-      disc-command
-      (assoc :disc disc-command))))
-
-(defn- piece-orientation-command [params]
-  {:target {:kind :piece
-            :piece-id (:target-piece-id params)}
-   :orientation (:orientation params)})
-
-(defn- hermit-destination-command [params]
-  (if-let [destination-wasteland (:hermit-destination-wasteland params)]
-    (select-keys destination-wasteland [:kind :row :col])
-    {:kind :territory
-     :board-index (:hermit-destination-board-index params)}))
-
-(defn- hermit-command [_db _source params]
-  (cond-> {:target (if (:target-piece-id params)
-                     {:kind :piece
-                      :piece-id (:target-piece-id params)}
-                     {:kind :territory
-                      :board-index (:target-board-index params)})
-           :destination (hermit-destination-command params)}
-    (:orientation params)
-    (assoc :orientation (:orientation params))))
-
-(defn- initial-placement-target-command [params]
-  (if-let [target-wasteland (:target-wasteland params)]
-    (select-keys target-wasteland [:kind :row :col])
-    {:kind :territory
-     :board-index (:target-board-index params)}))
-
-(defn- rod-target-command [params]
-  (case (:rod-mode params)
-    :move-minion {}
-    :push-piece {:target {:kind :piece
-                          :piece-id (:target-piece-id params)}}
-    :push-territory {:target {:kind :territory
-                              :board-index (:target-board-index params)}}))
-
-(defn- rod-command [db source params]
-  (let [rod-variant (selected-rod-variant db source params)]
-    (cond-> (merge {:mode (:rod-mode params)
-                    :distance (:distance params)}
-                   (rod-target-command params))
-      rod-variant
-      (assoc :rod-variant rod-variant)
-
-      (:orientation params)
-      (assoc :orientation (:orientation params)))))
-
-(defn- disc-target-command [db source params]
-  (case (:disc-target-kind params)
-    :piece
-    (cond-> {:target {:kind :piece
-                      :piece-id (:target-piece-id params)}}
-      (:orientation params)
-      (assoc :orientation (:orientation params)))
-
-    :territory
-    (cond-> {:target {:kind :territory
-                      :board-index (:target-board-index params)}
-             :replacement-card-source (selected-disc-replacement-card-source db source params)
-             :replacement-card-id (:replacement-card-id params)}
-      (nil? (:replacement-card-id params))
-      (dissoc :replacement-card-id))
-
-    {}))
-
-(defn- strength-disc-command [db source params]
-  (let [action (disc-target-command db source params)
-        action-count (selected-disc-action-count db source params)]
-    {:disc-variant (selected-disc-variant db source params)
-     :disc-actions (vec (repeat action-count action))}))
-
-(defn- disc-command [db source params]
-  (if (strength-disc-source? db source params)
-    (strength-disc-command db source params)
-    (cond-> (assoc (disc-target-command db source params)
-                   :disc-variant (selected-disc-variant db source params))
-      (and (star-disc-source? db source params)
-           (:minion-orientation params))
-      (assoc :minion-orientation (:minion-orientation params)))))
-
-(defn- sword-target-command [db source params]
-  (case (:sword-target-kind params)
-    :piece
-    (cond-> {:target {:kind :piece
-                      :piece-id (:target-piece-id params)}
-             :damage (:damage params)}
-      (and (sword-orientation-available? db source params)
-           (:orientation params))
-      (assoc :orientation (:orientation params)))
-
-    :territory
-    (cond-> {:target {:kind :territory
-                      :board-index (:target-board-index params)}
-             :damage (:damage params)}
-      (seq (sword-replacement-card-source-option-ids db source params))
-      (assoc :replacement-card-source
-             (selected-sword-replacement-card-source db source params))
-
-      (:replacement-card-id params)
-      (assoc :replacement-card-id (:replacement-card-id params)))
-
-    {}))
-
-(defn- sword-command [db source params]
-  (let [sword-variant (selected-sword-variant db source params)]
-    (cond-> (sword-target-command db source params)
-      sword-variant
-      (assoc :sword-variant sword-variant))))
-
-(defn- sword-major-command [db source params]
-  (let [actions (vec (remove nil?
-                             (conj (completed-major-actions params)
-                                   (sword-major-current-action db source params))))
-        action-by-power (fn [power]
-                          (some #(when (= power (:power %)) %) actions))]
-    (case (active-power db source params)
-      :justice
-      (cond-> {:hand-trade-target (:target (action-by-power :trade-hand))}
-        (action-by-power :sword)
-        (merge (sword-command db source params)))
-
-      :death
-      {:sword-actions (mapv #(dissoc % :power) actions)}
-
-      :tower
-      (merge {:minion-orientation (:orientation (action-by-power :orient-minion))}
-             (sword-command db source params))
-
-      :moon
-      {:rod (dissoc (action-by-power :rod) :power)
-       :sword (dissoc (sword-major-current-action db source params) :power)}
-
-      {})))
-
-(defn- fool-command [_db _source params]
-  (fool-command-map params (stored-fool-reveal-actions params)))
-
-(defn- high-priestess-command [db source params]
-  {:redraws (vec (:redraws (normalize-high-priestess-redraws db source params)))})
-
-(defn- judgement-command [db source params]
-  {:piece-id (:piece-id params)
-   :card-ids (valid-judgement-card-ids db source params (:judgement-card-ids params))})
-
-(defn- devil-command [db source params]
-  (let [actions (vec (remove nil?
-                             (conj (completed-major-actions params)
-                                   (devil-current-action db source params))))]
-    (if (< 1 (count actions))
-      {:actions actions}
-      (piece-orientation-command params))))
-
-(defn- unavailable-power-command [db source params power]
-  (let [card (active-card db source params)]
-    (cond-> {:power power}
-      card
-      (assoc :card-id (:id card)))))
-
-(defn- composite-major-command [db source params]
-  {:actions (vec (remove nil?
-                         (conj (completed-major-actions params)
-                               (composite-current-action db source params))))})
+(defn- command-context []
+  {:selected-cup-variant selected-cup-variant
+   :selected-rod-variant selected-rod-variant
+   :selected-disc-replacement-card-source selected-disc-replacement-card-source
+   :selected-disc-action-count selected-disc-action-count
+   :selected-disc-variant selected-disc-variant
+   :strength-disc-source? strength-disc-source?
+   :star-disc-source? star-disc-source?
+   :sword-orientation-available? sword-orientation-available?
+   :sword-replacement-card-source-option-ids sword-replacement-card-source-option-ids
+   :selected-sword-replacement-card-source selected-sword-replacement-card-source
+   :selected-sword-variant selected-sword-variant
+   :completed-major-actions completed-major-actions
+   :sword-major-current-action sword-major-current-action
+   :active-power active-power
+   :fool-command-map fool-command-map
+   :stored-fool-reveal-actions stored-fool-reveal-actions
+   :normalize-high-priestess-redraws normalize-high-priestess-redraws
+   :valid-judgement-card-ids valid-judgement-card-ids
+   :devil-current-action devil-current-action
+   :active-card active-card
+   :composite-current-action composite-current-action
+   :selected-world-copied-power selected-world-copied-power
+   :copied-suit-powers copied-suit-powers
+   :world-move? world-move?
+   :selected-power selected-power
+   :move-selection move-selection
+   :current-player-id current-player-id
+   :source-command source-command
+   :valid-discard-card-ids valid-discard-card-ids
+   :game game
+   :move-power move-power
+   :move-source move-source
+   :move-ready? move-ready?
+   :source-unavailable-reason source-unavailable-reason
+   :update-move-selection update-move-selection
+   :move-error move-error
+   :empty-move-selection empty-move-selection
+   :game-turn-key game-turn-key})
 
 (defn- gameplay-power-command-for-power [db source params power]
-  (case power
-    :rod (rod-command db source params)
-    :disc (disc-command db source params)
-    :cup (cup-command db source params)
-    :sun (sun-command db source params)
-    :sword (sword-command db source params)
-    (:justice :death :tower :moon)
-    (sword-major-command db source params)
-    :fool (fool-command db source params)
-    :high-priestess (high-priestess-command db source params)
-    :judgement (judgement-command db source params)
-    :hierophant (piece-orientation-command params)
-    :hermit (hermit-command db source params)
-    :devil (devil-command db source params)
-    (:empress :emperor :lovers :chariot :hanged-man :temperance)
-    (composite-major-command db source params)
-    (unavailable-power-command db source params power)))
-
-(defn- world-command [db source params]
-  (let [power (selected-world-copied-power db source params)
-        command (gameplay-power-command-for-power db source params power)]
-    (cond-> (assoc command :copied-board-index (:copied-board-index params))
-      (contains? copied-suit-powers power)
-      (assoc :copied-power power))))
-
-(defn- gameplay-power-command [db source params]
-  (if (world-move? db source params)
-    (world-command db source params)
-    (gameplay-power-command-for-power db source params (selected-power db source params))))
+  (commands/gameplay-power-command-for-power (command-context) db source params power))
 
 (defn move-command [db]
-  (let [{:keys [source params]} (move-selection db)]
-    (when source
-      (case source
-        :activate-territory
-        (merge {:player-id (current-player-id db)
-                :source (source-command source params)}
-               (gameplay-power-command db source params))
-
-        :play-hand-card
-        (merge {:player-id (current-player-id db)
-                :source (source-command source params)}
-               (gameplay-power-command db source params))
-
-        :draw-cards
-        {:source :draw-cards
-         :player-id (current-player-id db)
-         :discard-card-ids (valid-discard-card-ids db (:discard-card-ids params))
-         :draw-count (:draw-count params)}
-
-        :orient-piece
-        {:source :orient-piece
-         :player-id (current-player-id db)
-         :piece-id (:piece-id params)
-         :orientation (:orientation params)}
-
-        :place-initial-small
-        {:source :place-initial-small
-         :player-id (current-player-id db)
-         :target (initial-placement-target-command params)
-         :orientation (:orientation params)}
-
-        {:source source
-         :player-id (current-player-id db)
-         :params params}))))
+  (commands/move-command (command-context) db))
 
 (def ^:private direction-deltas
   {:north [-1 0]
@@ -6746,33 +5780,6 @@
                                (:orientation params))
        :options (move-orientation-options db)})))
 
-(defn- command-uses-draw-pile-territory-card? [value]
-  (cond
-    (map? value)
-    (or (= :draw-pile-top (:territory-card-source value))
-        (some command-uses-draw-pile-territory-card? (vals value)))
-
-    (sequential? value)
-    (some command-uses-draw-pile-territory-card? value)
-
-    :else
-    false))
-
-(defn- command-with-transition-options [command transition-options power]
-  (cond-> command
-    (and (or (= :draw-cards (:source command))
-             (contains? #{:fool :high-priestess} power)
-             (command-uses-draw-pile-territory-card? command))
-         (:shuffle-fn transition-options)
-         (not (contains? command :shuffle-fn)))
-    (assoc :shuffle-fn (:shuffle-fn transition-options))))
-
-(defn- transition-power [db]
-  (let [{:keys [source params]} (move-selection db)]
-    (if (world-move? db source params)
-      (selected-world-copied-power db source params)
-      (move-power db))))
-
 (declare move-preview-result)
 
 (defn move-preview [db]
@@ -6818,129 +5825,12 @@
                           (:summary movement)
                           "Choose orientation")))))
 
-(defn- confirmed-move-result [db command transition-options]
-  (let [power (transition-power db)
-        command (command-with-transition-options command transition-options power)]
-    (cond
-      (= :draw-cards (:source command))
-      (game-state/apply-draw-move (game db) command)
-
-      (= :orient-piece (:source command))
-      (game-state/apply-orient-move (game db) command)
-
-      (= :place-initial-small (:source command))
-      (game-state/apply-initial-placement (game db) command)
-
-      (= :world (move-power db))
-      (game-state/apply-world-move (game db) command)
-
-      (= :cup (move-power db))
-      (game-state/apply-cup-move (game db) command)
-
-      (= :rod (move-power db))
-      (game-state/apply-rod-move (game db) command)
-
-      (= :disc (move-power db))
-      (game-state/apply-disc-move (game db) command)
-
-      (= :sword (move-power db))
-      (game-state/apply-sword-move (game db) command)
-
-      (contains? #{:justice :death :tower :moon} (move-power db))
-      (game-state/apply-sword-move (game db) command)
-
-      (= :sun (move-power db))
-      (game-state/apply-sun-move (game db) command)
-
-      (= :fool (move-power db))
-      (game-state/apply-fool-move (game db) command)
-
-      (= :high-priestess (move-power db))
-      (game-state/apply-high-priestess-move (game db) command)
-
-      (= :judgement (move-power db))
-      (game-state/apply-judgement-move (game db) command)
-
-      (= :hierophant (move-power db))
-      (game-state/apply-hierophant-move (game db) command)
-
-      (= :hermit (move-power db))
-      (game-state/apply-hermit-move (game db) command)
-
-      (= :devil (move-power db))
-      (game-state/apply-devil-move (game db) command)
-
-      (= :empress (move-power db))
-      (game-state/apply-empress-move (game db) command)
-
-      (= :emperor (move-power db))
-      (game-state/apply-emperor-move (game db) command)
-
-      (= :lovers (move-power db))
-      (game-state/apply-lovers-move (game db) command)
-
-      (= :chariot (move-power db))
-      (game-state/apply-chariot-move (game db) command)
-
-      (= :hanged-man (move-power db))
-      (game-state/apply-hanged-man-move (game db) command)
-
-      (= :temperance (move-power db))
-      (game-state/apply-temperance-move (game db) command)
-
-      :else
-      (game-state/failure :move-transition-unavailable
-                          "Move selection is complete, but this gameplay rule transition is not implemented yet."
-                          {:command command}))))
-
-(defn- previewable-move? [db]
-  (let [source (move-source db)
-        power (transition-power db)]
-    (or (contains? #{:orient-piece :place-initial-small} source)
-        (contains? #{:rod :hermit :emperor :lovers :chariot :hanged-man :moon}
-                   power))))
-
 (defn move-preview-result
   ([db] (move-preview-result db {}))
   ([db transition-options]
-   (when (and (move-ready? db)
-              (previewable-move? db))
-     (let [result (confirmed-move-result db (move-command db) transition-options)]
-       (dissoc result :state)))))
-
-(defn- consumed-turn-action [db state]
-  {:consumed? true
-   :turn-key (game-turn-key state)
-   :source (move-source db)})
-
-(defn- apply-confirmed-move-result [db result]
-  (if (:ok? result)
-    (assoc db
-           :game (:state result)
-           :turn-action (consumed-turn-action db (:state result))
-           :move-selection (assoc (empty-move-selection)
-                                  :last-result result))
-    (assoc db :move-selection
-           (assoc (move-selection db)
-                  :stage :rejected
-                  :error (:error result)
-                  :last-result result))))
+   (commands/move-preview-result (command-context) db transition-options)))
 
 (defn confirm-move
   ([db] (confirm-move db {}))
   ([db transition-options]
-   (if-not (move-ready? db)
-     (update-move-selection db assoc
-                            :error
-                            (move-error :incomplete-move
-                                        "Complete the move selection before confirming."
-                                        {:stage (:stage (move-selection db))}))
-     (if-let [reason (source-unavailable-reason db (move-source db))]
-       (apply-confirmed-move-result
-        db
-        (game-state/failure :move-source-unavailable
-                            reason
-                            {:source (move-source db)}))
-      (let [command (move-command db)
-            result (confirmed-move-result db command transition-options)]
-         (apply-confirmed-move-result db result))))))
+   (commands/confirm-move (command-context) db transition-options)))

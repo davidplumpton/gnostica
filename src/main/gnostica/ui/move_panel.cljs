@@ -504,6 +504,11 @@
         (piece-choice-label board piece)
         "No target piece selected.")]]))
 
+(defn- selected-orientation-label [orientation]
+  (if (some? orientation)
+    (pieces/orientation-label orientation)
+    "None"))
+
 (defn- orientation-choices
   ([options selected-orientation]
    (orientation-choices "Orientation" events/set-move-orientation options selected-orientation))
@@ -511,7 +516,7 @@
    [:div.move-step
     [:div.move-step__header
      [:span label]
-     [:strong (pieces/orientation-label selected-orientation)]]
+     [:strong (selected-orientation-label selected-orientation)]]
     [:div.move-choice-list.is-compact
      (for [{:keys [id label]} options]
        ^{:key id}
