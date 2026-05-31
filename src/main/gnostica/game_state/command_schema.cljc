@@ -62,6 +62,26 @@
    [:player-id PlayerId]
    [:source MoveSource]])
 
+(def ActingTerritorySource
+  [:map
+   [:kind [:enum :territory]]
+   [:board-index BoardIndex]
+   [:piece-id PieceId]])
+
+(def ActingHandCardSource
+  [:map
+   [:kind [:enum :hand-card]]
+   [:card-id CardId]
+   [:piece-id PieceId]])
+
+(def ActingMoveSource
+  [:or ActingTerritorySource ActingHandCardSource])
+
+(def ActingSourceCommand
+  [:map
+   [:player-id PlayerId]
+   [:source ActingMoveSource]])
+
 (def TerritoryTarget
   [:map
    [:kind [:enum :territory]]
@@ -105,7 +125,7 @@
    [:shuffle-fn {:optional true} ShuffleFn]])
 
 (def CupCommand
-  [:and SourceCommand CupAction])
+  [:and ActingSourceCommand CupAction])
 
 (def RodTarget
   [:or PieceTarget TerritoryTarget])
@@ -120,7 +140,7 @@
    [:rod-variant {:optional true} :keyword]])
 
 (def RodCommand
-  [:and SourceCommand RodAction])
+  [:and ActingSourceCommand RodAction])
 
 (def DiscTarget
   [:or PieceTarget TerritoryTarget CreatedPieceTarget CreatedTerritoryTarget])
@@ -134,7 +154,7 @@
 
 (def SingleDiscCommand
   [:and
-   SourceCommand
+   ActingSourceCommand
    DiscAction
    [:map
     [:disc-variant {:optional true} :keyword]
@@ -142,7 +162,7 @@
 
 (def StrengthDiscCommand
   [:and
-   SourceCommand
+   ActingSourceCommand
    [:map
     [:disc-variant {:optional true} :keyword]
     [:disc-actions [:vector {:min 1 :max 2} DiscAction]]]])
@@ -169,7 +189,7 @@
 
 (def SunCommand
   [:and
-   SourceCommand
+   ActingSourceCommand
    [:map
     [:cup SunCupAction]
     [:disc {:optional true} SunDiscAction]]])
@@ -206,7 +226,7 @@
 
 (def SingleSwordCommand
   [:and
-   SourceCommand
+   ActingSourceCommand
    SwordAction
    [:map
     [:sword-variant {:optional true} :keyword]
@@ -214,7 +234,7 @@
 
 (def DeathSwordCommand
   [:and
-   SourceCommand
+   ActingSourceCommand
    [:map
     [:sword-variant {:optional true} :keyword]
     [:sword-actions [:vector {:min 1 :max 2} SwordAction]]]])
@@ -225,13 +245,13 @@
 
 (def JusticeSwordCommand
   [:and
-   SourceCommand
+   ActingSourceCommand
    [:fn {:error/message "must include a Justice hand-trade target and any Sword fields must form a Sword action"}
     justice-command?]])
 
 (def MoonCommand
   [:and
-   SourceCommand
+   ActingSourceCommand
    [:map
     [:rod {:optional true} RodAction]
     [:sword {:optional true} SwordAction]]

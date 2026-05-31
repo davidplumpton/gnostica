@@ -111,6 +111,64 @@
                                            :source (assoc hand-source
                                                           :card-id "moon")}))))
 
+(deftest suit-command-contracts-require-acting-minion-source
+  (let [hand-source-without-minion (dissoc hand-source :piece-id)
+        territory-source-without-minion (dissoc territory-source :piece-id)
+        cases [["Cup hand-card source"
+                :cup
+                {:player-id :rose
+                 :source (assoc hand-source-without-minion :card-id "cups2")
+                 :target {:kind :territory
+                          :board-index 4}
+                 :orientation :east}]
+               ["Rod territory source"
+                :rod
+                {:player-id :rose
+                 :source (assoc territory-source-without-minion :board-index 4)
+                 :mode :move-minion
+                 :distance 1
+                 :orientation :south}]
+               ["Disc single action"
+                :disc
+                {:player-id :rose
+                 :source (assoc hand-source-without-minion :card-id "coins2")
+                 :target {:kind :piece
+                          :piece-id :rose-minion}}]
+               ["Disc multi-action"
+                :disc
+                {:player-id :rose
+                 :source (assoc hand-source-without-minion :card-id "strength")
+                 :disc-actions [{:target {:kind :piece
+                                          :piece-id :rose-minion}}]}]
+               ["Sun ordered suit action"
+                :sun
+                {:player-id :rose
+                 :source (assoc hand-source-without-minion :card-id "sun")
+                 :cup {:target {:kind :territory
+                                :board-index 4}
+                       :orientation :east}}]
+               ["Sword single action"
+                :sword
+                {:player-id :rose
+                 :source (assoc hand-source-without-minion :card-id "swords2")
+                 :target {:kind :piece
+                          :piece-id :indigo-target}
+                 :damage 1}]
+               ["Moon Rod/Sword action"
+                :moon
+                {:player-id :rose
+                 :source (assoc hand-source-without-minion :card-id "moon")
+                 :rod {:mode :move-minion
+                       :distance 1
+                       :orientation :east}}]]]
+    (doseq [[label command-kind command] cases]
+      (testing label
+        (let [result (game-state/validate-command command-kind command)]
+          (is (false? (game-state/valid-command? command-kind command)))
+          (is (= :invalid-command-contract
+                 (get-in result [:error :code])))
+          (is (game-state/valid-result? result)))))))
+
 (deftest command-contract-validation-distinguishes-shape-from-rule-semantics
   (let [structurally-valid {:player-id :rose
                             :source territory-source
