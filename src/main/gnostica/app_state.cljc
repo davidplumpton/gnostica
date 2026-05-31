@@ -609,13 +609,12 @@
                              {:missing-player-ids missing-player-ids}))
 
       :else
-      (let [rounds (conj (:rounds starting-bid) current-bids)
-            {:keys [ok? state resolved? winner-id bid-history bid-cards
-                    redraw-order error]
-             :as result}
-            (game-state/resolve-starting-bid-rounds
-             (:initial-game starting-bid)
-             {:rounds rounds})]
+	      (let [rounds (conj (:rounds starting-bid) current-bids)
+	            {:keys [ok? state resolved? winner-id bid-history bid-cards
+	                    redraw-order error]}
+	            (game-state/resolve-starting-bid-rounds
+	             (:initial-game starting-bid)
+	             {:rounds rounds})]
         (if-not ok?
           (assoc-in db [:lobby :error] error)
           (let [next-starting-bid

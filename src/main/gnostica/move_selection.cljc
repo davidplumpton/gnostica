@@ -6371,7 +6371,7 @@
     nil
 
     (board-cell-at-coordinate db [row col])
-    (let [{:keys [index orientation] :as cell} (board-cell-at-coordinate db [row col])]
+    (let [{:keys [index orientation]} (board-cell-at-coordinate db [row col])]
       {:kind :territory
        :board-index index
        :row row
@@ -6556,7 +6556,7 @@
 
     nil))
 
-(defn- sword-mutation-preview [db source params preview-status preview-error]
+(defn- sword-mutation-preview [db _source params preview-status preview-error]
   (case (:sword-target-kind params)
     :piece
     (when-let [piece (piece-by-id db (:target-piece-id params))]
