@@ -95,6 +95,16 @@
     :wasteland (gesture-input/wasteland-target (:row object) (:col object))
     nil))
 
+(defn- active-drag-input [fallback]
+  (or (gesture-input/active-gesture-input)
+      fallback))
+
+(defn- drag-source-object [source-object]
+  (if-let [orientation (some-> (gesture-input/active-gesture-input)
+                               gesture-input/drag-orientation)]
+    (assoc source-object :orientation orientation)
+    source-object))
+
 (defn- preview-for [legal-targets source-object target-object]
   (let [descriptor (when target-object
                      (descriptor-for-object legal-targets target-object))]
@@ -187,12 +197,14 @@
                                             target-object (when dragging-now?
                                                             (target-object-at! event))]
                                         (when (and dragging-now? (not dragging?))
+                                          (gesture-input/set-active-gesture-input!
+                                           input)
                                           (dispatch-gesture! input))
                                         (when dragging-now?
                                           (swap! pointer-down assoc :dragging? true)
                                           (assoc-state! :drag-preview
                                                         (preview-at (current-legal-targets)
-                                                                    source-object
+                                                                    (drag-source-object source-object)
                                                                     target-object
                                                                     canvas
                                                                     event))))))
@@ -214,7 +226,8 @@
                                 (when-not selection-only?
                                   (clear-drag!))
                                 (let [distance (pointer-distance event state)
-                                      same-pointer? (= id (.-pointerId event))]
+                                      same-pointer? (= id (.-pointerId event))
+                                      input (active-drag-input input)]
                                   (cond
                                     (and same-pointer?
                                          selection-only?
@@ -236,9 +249,12 @@
                                     (and same-pointer?
                                          (<= distance click-threshold)
                                          input)
-                                    (dispatch-gesture! input)))))
+                                    (dispatch-gesture! input))
+                                  (when dragging?
+                                    (gesture-input/clear-active-gesture-input!)))))
         pointer-cancel-listener (fn [_]
                                   (reset! pointer-down nil)
+                                  (gesture-input/clear-active-gesture-input!)
                                   (clear-drag!))
         pointer-leave-listener (fn [_]
                                  (assoc-state! :hovered-index nil))

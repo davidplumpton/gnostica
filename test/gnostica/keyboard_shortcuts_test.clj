@@ -3,13 +3,14 @@
             [gnostica.keyboard-shortcuts :as shortcuts]))
 
 (deftest hotkey-command-catalog-is-the-shared-command-model
-  (is (= ["?" "G" "I" "W/A/S/D" "Arrow keys" "Esc"]
+  (is (= ["?" "G" "I" "O" "W/A/S/D" "Arrow keys" "Esc"]
          (vec (shortcuts/hotkey-command-labels))))
   (is (= "Move the 3D board view when the board is focused"
          (:command (shortcuts/command-by-id :pan-board-view))))
   (is (= [:open-hotkey-help
           :open-icon-help
           :toggle-card-icon-mode
+          :cycle-drag-orientation
           :pan-board-view
           :close-help-dialogs]
          (mapv :id shortcuts/hotkey-commands))))

@@ -94,7 +94,7 @@ Consumed-turn disabled:
 - If a replacement can come from hand or discard pile, require `:replacement-card-source` before accepting a card unless the card's zone uniquely determines the source.
 - If Strength, Death, Sun, Chariot, Devil, Justice, or Hanged Man needs an action count, require the count before interpreting later gestures as final actions.
 - If World is selected, require the copied major territory first and copied power second when the copied card exposes more than one implemented power.
-- If the active stage asks for orientation and the gesture cannot infer it from a compass, ring, or keyboard direction, require the orientation control before confirmation.
+- If the active stage asks for orientation and the gesture cannot infer it from a compass, ring, or keyboard direction, require the orientation control before confirmation. During an eligible piece or first-placement stash-piece drag, arrow keys may set the pending orientation before drop and `O` cycles through up, north, east, south, and west.
 
 ## Input Modes
 
@@ -110,7 +110,7 @@ Touch and pen:
 
 Keyboard:
 - Every gesture action has a detailed-control equivalent in `gnostica.ui.move-panel`.
-- Focused objects can be activated with Enter or Space. Arrow keys or WASD remain board panning when the 3D board has focus; orientation choices must use explicit controls or a focused compass, not global panning keys.
+- Focused objects can be activated with Enter or Space. Arrow keys or WASD remain board panning when the 3D board has focus and no drag is active; eligible active piece drags temporarily use arrow keys and `O` for pending orientation without mutating `:game`.
 - The pending tray exposes Confirm, Cancel, and Detailed entry as focusable controls.
 
 Reduced motion:

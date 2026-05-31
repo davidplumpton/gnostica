@@ -9,6 +9,7 @@
             [gnostica.fixtures :as fixtures]
             [gnostica.game-schema :as game-schema]
             [gnostica.game-state :as game-state]
+            [gnostica.gesture-input :as gesture-input]
             [gnostica.pieces :as pieces]))
 
 (def test-player-specs
@@ -1740,6 +1741,58 @@
     (is (game-schema/valid-game? (app-state/game confirmed-db)))
     (is (game-schema/valid-game? (app-state/game territory-confirmed-db)))))
 
+(deftest drag-orientation-keys-update-initial-placement-before-drop
+  (let [db (app-state/initialize {:player-specs test-player-specs
+                                  :game-options {:shuffle-fn identity}
+                                  :demo-board-pieces []})
+        input {:source {:kind :stash-piece
+                        :player-id :rose
+                        :size :small}}
+        source-db (app-state/start-gesture-intent db input)
+        east-result (app-state/gesture-drag-orientation-result
+                     source-db
+                     input
+                     (gesture-input/orientation-key-request {:key "ArrowRight"}))
+        east-db (app-state/set-gesture-drag-orientation source-db east-result)
+        east-input (gesture-input/with-drag-orientation
+                    input
+                    (:orientation east-result))
+        south-result (app-state/gesture-drag-orientation-result
+                      east-db
+                      east-input
+                      (gesture-input/orientation-key-request {:key "O"}))
+        south-db (app-state/set-gesture-drag-orientation east-db south-result)
+        south-input (gesture-input/with-drag-orientation
+                     east-input
+                     (:orientation south-result))
+        pending-db (app-state/start-gesture-intent
+                    south-db
+                    (assoc south-input
+                           :target {:kind :territory
+                                    :board-index 3}))]
+    (is (= {:handled? true
+            :accepted? true
+            :orientation :east}
+           east-result))
+    (is (= :east (get-in east-db [:move-selection :params :orientation])))
+    (is (= :target (:stage (app-state/move-selection east-db))))
+    (is (= {:handled? true
+            :accepted? true
+            :orientation :south}
+           south-result))
+    (is (= :south (get-in south-input [:source :orientation])))
+    (is (= {:target-board-index 3
+            :orientation :south}
+           (app-state/move-params pending-db)))
+    (is (= {:source :place-initial-small
+            :player-id :rose
+            :target {:kind :territory
+                     :board-index 3}
+            :orientation :south}
+           (app-state/move-command pending-db)))
+    (is (true? (:can-confirm? (app-state/pending-move-tray-view
+                               pending-db))))))
+
 (deftest gesture-intent-stages-direct-rod-piece-movement
   (let [enemy-db (app-state/initialize
                   {:player-specs test-player-specs
@@ -1813,6 +1866,89 @@
     (is (= 5 (:space-index own-piece)))
     (is (game-schema/valid-game? (app-state/game enemy-confirmed-db)))
     (is (game-schema/valid-game? (app-state/game own-confirmed-db)))))
+
+(deftest drag-orientation-keys-apply-only-to-eligible-rod-piece-drags
+  (let [own-db (app-state/initialize
+                {:player-specs test-player-specs
+                 :game-options {:deck-order (deck-starting-with ["wands2"])}
+                 :demo-board-pieces [rose-rod-minion
+                                     (assoc rose-rod-target :space-index 4)]})
+        own-active-db (-> own-db
+                          (app-state/select-move-source :play-hand-card)
+                          (app-state/select-move-hand-card "wands2")
+                          (app-state/select-move-piece :rose-rod-minion)
+                          (app-state/select-move-rod-mode :push-piece))
+        own-input {:preserve-selection? true
+                   :fields {:target-piece-id :rose-rod-target}}
+        own-drag-db (app-state/start-gesture-intent own-active-db own-input)
+        own-result (app-state/gesture-drag-orientation-result
+                    own-drag-db
+                    own-input
+                    (gesture-input/orientation-key-request {:key "ArrowDown"}))
+        own-oriented-db (app-state/set-gesture-drag-orientation
+                         own-drag-db
+                         own-result)
+        own-oriented-input (gesture-input/with-drag-orientation
+                            own-input
+                            (:orientation own-result))
+        own-pending-db (app-state/start-gesture-intent
+                        own-oriented-db
+                        (assoc own-oriented-input
+                               :target {:kind :territory
+                                        :board-index 5}))
+        enemy-db (app-state/initialize
+                  {:player-specs test-player-specs
+                   :game-options {:deck-order (deck-starting-with ["wands2"])}
+                   :demo-board-pieces [rose-rod-minion
+                                       indigo-rod-target]})
+        enemy-active-db (-> enemy-db
+                            (app-state/select-move-source :play-hand-card)
+                            (app-state/select-move-hand-card "wands2")
+                            (app-state/select-move-piece :rose-rod-minion)
+                            (app-state/select-move-rod-mode :push-piece))
+        enemy-input {:preserve-selection? true
+                     :fields {:target-piece-id :indigo-rod-target}}
+        enemy-drag-db (app-state/start-gesture-intent enemy-active-db enemy-input)
+        enemy-result (app-state/gesture-drag-orientation-result
+                      enemy-drag-db
+                      enemy-input
+                      (gesture-input/orientation-key-request {:key "ArrowDown"}))
+        enemy-rejected-db (app-state/set-gesture-drag-orientation
+                           enemy-drag-db
+                           enemy-result)
+        enemy-pending-db (app-state/start-gesture-intent
+                          enemy-rejected-db
+                          (assoc enemy-input
+                                 :target {:kind :territory
+                                          :board-index 5}))]
+    (is (= {:handled? true
+            :accepted? true
+            :orientation :south}
+           own-result))
+    (is (= {:player-id :rose
+            :source {:kind :hand-card
+                     :card-id "wands2"
+                     :piece-id :rose-rod-minion}
+            :rod-variant :rod
+            :mode :push-piece
+            :distance 1
+            :target {:kind :piece
+                     :piece-id :rose-rod-target}
+            :orientation :south}
+           (app-state/move-command own-pending-db)))
+    (is (= :drag-orientation-unavailable
+           (get-in enemy-rejected-db [:gesture-intent :error :code])))
+    (is (false? (:accepted? enemy-result)))
+    (is (= {:player-id :rose
+            :source {:kind :hand-card
+                     :card-id "wands2"
+                     :piece-id :rose-rod-minion}
+            :rod-variant :rod
+            :mode :push-piece
+            :distance 1
+            :target {:kind :piece
+                     :piece-id :indigo-rod-target}}
+           (app-state/move-command enemy-pending-db)))))
 
 (deftest gesture-intent-previews-rod-destination-rejections
   (let [full-pieces [rose-rod-minion

@@ -62,6 +62,7 @@
 (def start-gesture-intent :gnostica.app/start-gesture-intent)
 (def cancel-gesture-intent :gnostica.app/cancel-gesture-intent)
 (def open-gesture-detailed-entry :gnostica.app/open-gesture-detailed-entry)
+(def set-gesture-drag-orientation :gnostica.app/set-gesture-drag-orientation)
 (def set-detailed-entry-default :gnostica.app/set-detailed-entry-default)
 (def end-turn :gnostica.app/end-turn)
 (def announce-challenge :gnostica.app/announce-challenge)
@@ -462,6 +463,11 @@ select-move-rod-mode
  open-gesture-detailed-entry
  (fn [db _]
    (app-state/open-gesture-detailed-entry db)))
+
+(rf/reg-event-db
+ set-gesture-drag-orientation
+ (fn [db [_ result]]
+   (app-state/set-gesture-drag-orientation db result)))
 
 (rf/reg-event-db
  set-detailed-entry-default

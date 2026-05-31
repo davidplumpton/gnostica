@@ -11,6 +11,17 @@
 #?(:cljs
    (defonce active-gesture-input* (atom nil)))
 
+(def orientation-cycle-order
+  [:up :north :east :south :west])
+
+(def orientation-key-requests
+  {"arrowup" :up
+   "arrowright" :east
+   "arrowdown" :south
+   "arrowleft" :west})
+
+(def orientation-cycle-key "o")
+
 (defn gesture-input-string [input]
   (pr-str input))
 
@@ -47,13 +58,19 @@
      @active-gesture-input*))
 
 #?(:cljs
+   (defn set-active-gesture-input! [input]
+     (reset! active-gesture-input* input)))
+
+#?(:cljs
    (defn clear-active-gesture-input! []
      (reset! active-gesture-input* nil)))
 
 #?(:cljs
    (defn gesture-input-from-data-transfer [data-transfer]
      (when data-transfer
-       (or (parse-gesture-input-string (.getData data-transfer mime-type))
+       (or (when (gesture-mime-type? data-transfer)
+             (active-gesture-input))
+           (parse-gesture-input-string (.getData data-transfer mime-type))
            (parse-gesture-input-string (.getData data-transfer fallback-mime-type))
            (when (gesture-mime-type? data-transfer)
              (active-gesture-input))))))
@@ -61,7 +78,7 @@
 #?(:cljs
    (defn set-gesture-data! [data-transfer input]
      (when data-transfer
-       (reset! active-gesture-input* input)
+       (set-active-gesture-input! input)
        (let [payload (gesture-input-string input)]
          (.setData data-transfer mime-type payload)
          (.setData data-transfer fallback-mime-type
@@ -120,6 +137,57 @@
 (defn board-space-drag-source? [input-or-source]
   (contains? board-space-drag-source-kinds
              (source-kind input-or-source)))
+
+(defn orientation-drag-input? [input]
+  (boolean
+   (or (board-space-drag-source? input)
+       (get-in input [:fields :piece-id])
+       (get-in input [:fields :target-piece-id])
+       (get-in input [:fields :sun-disc-target-piece-id]))))
+
+(defn drag-orientation [input]
+  (or (get-in input [:fields :orientation])
+      (get-in input [:source :orientation])))
+
+(defn with-drag-orientation [input orientation]
+  (let [source-kind (get-in input [:source :kind])]
+    (cond-> (assoc-in input [:fields :orientation] orientation)
+      (contains? board-space-drag-source-kinds source-kind)
+      (assoc-in [:source :orientation] orientation))))
+
+(defn- orientation-cycle-index [orientation]
+  (first
+   (keep-indexed (fn [index candidate]
+                   (when (= orientation candidate)
+                     index))
+                 orientation-cycle-order)))
+
+(defn next-orientation [orientation]
+  (let [index (orientation-cycle-index orientation)]
+    (nth orientation-cycle-order
+         (if (some? index)
+           (mod (inc index) (count orientation-cycle-order))
+           0))))
+
+(defn orientation-request->orientation [current-orientation request]
+  (cond
+    (= :cycle request)
+    (next-orientation current-orientation)
+
+    (some #{request} orientation-cycle-order)
+    request
+
+    :else
+    nil))
+
+(defn orientation-key-request [{:keys [key code alt? ctrl? meta?]}]
+  (when-not (or alt? ctrl? meta?)
+    (let [key (some-> key str/lower-case)
+          code (some-> code str/lower-case)]
+      (or (get orientation-key-requests key)
+          (when (or (= orientation-cycle-key key)
+                    (= "keyo" code))
+            :cycle)))))
 
 (defn target-key [{:keys [kind board-index row col piece-id]}]
   (case kind

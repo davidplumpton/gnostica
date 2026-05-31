@@ -154,7 +154,9 @@
           (render!))))))
 
 (defn handle-board-key-down! [this event]
-  (when-let [[right-steps forward-steps] (keyboard-pan-delta event)]
+  (when-let [[right-steps forward-steps] (when-not (true? (get-in (r/state this)
+                                                                   [:drag-preview :active?]))
+                                          (keyboard-pan-delta event))]
     (.preventDefault event)
     (.stopPropagation event)
     (pan-camera-view! this right-steps forward-steps)))

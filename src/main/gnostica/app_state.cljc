@@ -2,6 +2,7 @@
   (:require [clojure.string :as str]
             [gnostica.board-layout :as layout]
             [gnostica.cards :as cards]
+            [gnostica.gesture-input :as gesture-input]
             [gnostica.gesture-intent :as gesture-intent]
             [gnostica.game-state :as game-state]
             [gnostica.move-selection :as move-selection]
@@ -1301,6 +1302,66 @@
 (def move-replacement-card-options move-selection/move-replacement-card-options)
 (def move-orientation-options move-selection/move-orientation-options)
 (def move-command move-selection/move-command)
+
+(defn- gesture-drag-orientation-error [input]
+  {:code :drag-orientation-unavailable
+   :message "This drag cannot choose a piece orientation."
+   :data {:source (:source input)
+          :fields (:fields input)}})
+
+(defn- current-player-piece-id? [db piece-id]
+  (move-selection/current-player-piece?
+   db
+   (move-selection/piece-by-id db piece-id)))
+
+(defn- hermit-drag-orientation-available? [db params]
+  (and (= :hermit (:power params))
+       (current-player-piece-id? db (:target-piece-id params))))
+
+(defn- gesture-drag-orientation-available? [db input]
+  (let [{:keys [source params]} (move-selection/move-selection db)]
+    (and (:active? (gesture-intent db))
+         (gesture-input/orientation-drag-input? input)
+         (or (= :place-initial-small source)
+             (= :orient-piece source)
+             (move-selection/move-rod-orientation-required? db)
+             (move-selection/move-hermit-orientation-required? db)
+             (hermit-drag-orientation-available? db params)
+             (move-selection/move-disc-orientation-available? db)
+             (move-selection/move-sun-disc-orientation-available? db)
+             (move-selection/move-sword-orientation-available? db)))))
+
+(defn gesture-drag-orientation-result [db input request]
+  (when (and request
+             (:active? (gesture-intent db))
+             (gesture-input/orientation-drag-input? input))
+    (if (gesture-drag-orientation-available? db input)
+      (if-let [orientation (gesture-input/orientation-request->orientation
+                            (or (get-in db [:move-selection :params :orientation])
+                                (gesture-input/drag-orientation input))
+                            request)]
+        {:handled? true
+         :accepted? true
+         :orientation orientation}
+        {:handled? true
+         :accepted? false
+         :error (gesture-drag-orientation-error input)})
+      {:handled? true
+       :accepted? false
+       :error (gesture-drag-orientation-error input)})))
+
+(defn set-gesture-drag-orientation [db {:keys [orientation error]}]
+  (cond
+    orientation
+    (-> db
+        (set-move-orientation orientation)
+        gesture-intent/refresh-gesture-intent)
+
+    error
+    (assoc-in db [:gesture-intent :error] error)
+
+    :else
+    db))
 
 (defn move-panel-view-model
   [{:keys [current-player selection source-options prompt ready? control-groups

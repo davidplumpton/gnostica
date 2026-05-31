@@ -21,6 +21,10 @@
     :command "Toggle card icon overlays"
     :event :gnostica.app/toggle-card-icon-mode
     :matches [{:key "i"}]}
+   {:id :cycle-drag-orientation
+    :scope :direct-manipulation
+    :keys ["O"]
+    :command "Cycle dragged piece orientation"}
    {:id :pan-board-view
     :scope :board
     :keys ["W/A/S/D" "Arrow keys"]

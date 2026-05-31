@@ -105,3 +105,46 @@
     (is (true? (gesture-input/show-target-highlight?
                 {:source hand-source}
                 territory-target)))))
+
+(deftest drag-orientation-key-requests-are-explicit
+  (is (= :up
+         (gesture-input/orientation-key-request {:key "ArrowUp"})))
+  (is (= :east
+         (gesture-input/orientation-key-request {:key "ArrowRight"})))
+  (is (= :south
+         (gesture-input/orientation-key-request {:key "ArrowDown"})))
+  (is (= :west
+         (gesture-input/orientation-key-request {:key "ArrowLeft"})))
+  (is (= :cycle
+         (gesture-input/orientation-key-request {:key "O"})))
+  (is (= :cycle
+         (gesture-input/orientation-key-request {:code "KeyO"})))
+  (is (nil? (gesture-input/orientation-key-request {:key "O"
+                                                    :ctrl? true})))
+  (is (= :up
+         (gesture-input/orientation-request->orientation nil :cycle)))
+  (is (= :north
+         (gesture-input/orientation-request->orientation :up :cycle)))
+  (is (= :up
+         (gesture-input/orientation-request->orientation :west :cycle)))
+  (is (= :south
+         (gesture-input/orientation-request->orientation :up :south))))
+
+(deftest drag-orientation-is-carried-in-drag-payloads
+  (let [stash-input {:source {:kind :stash-piece
+                              :player-id :rose
+                              :size :small}}
+        minion-input {:preserve-selection? true
+                      :fields {:piece-id :rose-scout}}]
+    (is (true? (gesture-input/orientation-drag-input? stash-input)))
+    (is (true? (gesture-input/orientation-drag-input? minion-input)))
+    (is (= {:source {:kind :stash-piece
+                     :player-id :rose
+                     :size :small
+                     :orientation :east}
+            :fields {:orientation :east}}
+           (gesture-input/with-drag-orientation stash-input :east)))
+    (is (= {:preserve-selection? true
+            :fields {:piece-id :rose-scout
+                     :orientation :south}}
+           (gesture-input/with-drag-orientation minion-input :south)))))
