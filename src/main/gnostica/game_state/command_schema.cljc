@@ -42,6 +42,15 @@
 (def ShuffleFn
   [:fn {:error/message "must be callable"} ifn?])
 
+(def ^:private suit-power-values
+  [:cup :rod :disc :sword])
+
+(def ^:private suit-power-set
+  (set suit-power-values))
+
+(def SuitPower
+  (enum-schema suit-power-values))
+
 (def TerritorySource
   [:map
    [:kind [:enum :territory]]
@@ -279,12 +288,17 @@
     [:piece-id PieceId]
     [:card-ids [:vector CardId]]]])
 
+(declare valid-fool-reveal? valid-world-command?)
+
 (def FoolReveal
-  [:map
-   [:power {:optional true} :keyword]
-   [:piece-id {:optional true} PieceId]
-   [:command {:optional true} :map]
-   [:play-command {:optional true} :map]])
+  [:and
+   [:map
+    [:power {:optional true} :keyword]
+    [:piece-id {:optional true} PieceId]
+    [:command {:optional true} :map]
+    [:play-command {:optional true} :map]]
+   [:fn {:error/message "Fool play commands must match the selected child command shape"}
+    (fn [reveal] (valid-fool-reveal? reveal))]])
 
 (def FoolCommand
   [:and
@@ -354,8 +368,148 @@
    SourceCommand
    [:map
     [:copied-board-index BoardIndex]
-    [:copied-power {:optional true} :keyword]
-    [:power {:optional true} :keyword]]])
+    [:copied-power {:optional true} SuitPower]
+    [:power {:optional true} SuitPower]]
+   [:fn {:error/message "World delegated command fields must match a copied child command shape"}
+    (fn [command] (valid-world-command? command))]])
+
+(def ^:private schema-player-id ::schema-player)
+(def ^:private schema-card-id "schema-card")
+
+(def ^:private delegated-payload-keys
+  #{:actions
+    :card-ids
+    :cup
+    :cup-actions
+    :cup-variant
+    :damage
+    :destination
+    :direction
+    :disc
+    :disc-actions
+    :disc-variant
+    :distance
+    :hand-trade-target
+    :hand-trade-target-piece-id
+    :minion-orientation
+    :mode
+    :one-point-card-id
+    :orientation
+    :orientations
+    :redraws
+    :replacement-card-id
+    :replacement-card-source
+    :reveals
+    :rod
+    :rod-actions
+    :rod-variant
+    :shuffle-fn
+    :sword
+    :sword-actions
+    :sword-variant
+    :target
+    :territory-card-source})
+
+(def ^:private composite-major-payload-keys
+  #{:actions
+    :cup
+    :cup-actions
+    :hand-trade-target
+    :hand-trade-target-piece-id
+    :minion-orientation
+    :rod
+    :rod-actions})
+
+(defn- selected-suit-power [command]
+  (or (:copied-power command)
+      (:power command)))
+
+(defn- matching-selected-suit-powers? [command]
+  (or (not (and (contains? command :copied-power)
+                (contains? command :power)))
+      (= (:copied-power command) (:power command))))
+
+(defn- valid-suit-command? [power command]
+  (case power
+    :cup (m/validate CupCommand command)
+    :rod (m/validate RodCommand command)
+    :disc (m/validate DiscCommand command)
+    :sword (m/validate SwordCommand command)
+    false))
+
+(defn- valid-optional-keyed-command? [schema required-key command]
+  (and (contains? command required-key)
+       (m/validate schema command)))
+
+(defn- valid-composite-major-command? [command]
+  (and (contains-any? command composite-major-payload-keys)
+       (m/validate CompositeMajorCommand command)))
+
+(defn- valid-delegated-command? [command]
+  (or (some #(valid-suit-command? % command) suit-power-values)
+      (m/validate SunCommand command)
+      (m/validate SwordCommand command)
+      (valid-optional-keyed-command? FoolCommand :reveals command)
+      (valid-optional-keyed-command? HighPriestessCommand :redraws command)
+      (m/validate JudgementCommand command)
+      (valid-composite-major-command? command)
+      (m/validate HierophantCommand command)
+      (m/validate HermitCommand command)
+      (m/validate DevilCommand command)))
+
+(defn- valid-world-command? [command]
+  (let [power (selected-suit-power command)]
+    (and (matching-selected-suit-powers? command)
+         (cond
+           (contains? suit-power-set power)
+           (valid-suit-command? power command)
+
+           (not (contains-any? command delegated-payload-keys))
+           true
+
+           :else
+           (valid-delegated-command? command)))))
+
+(defn- fool-play-command-shapes [reveal]
+  (cond-> []
+    (contains? reveal :command) (conj (:command reveal))
+    (contains? reveal :play-command) (conj (:play-command reveal))))
+
+(defn- fool-play-power [reveal command]
+  (or (:power reveal)
+      (:power command)))
+
+(defn- fool-play-piece-id [reveal command]
+  (or (:piece-id reveal)
+      (get-in command [:source :piece-id])))
+
+(defn- fool-play-command-with-source [reveal command acting-source?]
+  (assoc command
+         :player-id schema-player-id
+         :source (cond-> {:kind :hand-card
+                          :card-id schema-card-id}
+                   acting-source?
+                   (assoc :piece-id (fool-play-piece-id reveal command)))))
+
+(defn- valid-fool-suit-play-command? [reveal command power]
+  (valid-suit-command?
+   power
+   (fool-play-command-with-source reveal command true)))
+
+(defn- valid-fool-delegated-play-command? [reveal command]
+  (or (not (contains-any? command delegated-payload-keys))
+      (valid-delegated-command?
+       (fool-play-command-with-source reveal command false))))
+
+(defn- valid-fool-play-command? [reveal command]
+  (let [power (fool-play-power reveal command)]
+    (if (contains? suit-power-set power)
+      (valid-fool-suit-play-command? reveal command power)
+      (valid-fool-delegated-play-command? reveal command))))
+
+(defn- valid-fool-reveal? [reveal]
+  (every? #(valid-fool-play-command? reveal %)
+          (fool-play-command-shapes reveal)))
 
 (def DrawCommand
   [:map

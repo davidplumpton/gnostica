@@ -35,6 +35,7 @@
                   :fool {:player-id :rose
                          :source major-hand-source
                          :reveals [{} {:power :cup
+                                        :piece-id :rose-minion
                                         :play-command {:target {:kind :territory
                                                                 :board-index 4}
                                                        :orientation :south}}]}
@@ -110,6 +111,46 @@
                                           {:player-id :rose
                                            :source (assoc hand-source
                                                           :card-id "moon")}))))
+
+(deftest world-and-fool-command-contracts-validate-delegated-shapes
+  (let [world-cup {:player-id :rose
+                   :source (assoc hand-source :card-id "world")
+                   :copied-board-index 4
+                   :copied-power :cup
+                   :target {:kind :territory
+                            :board-index 5}
+                   :orientation :east}
+        invalid-world-target (assoc world-cup
+                                    :target {:kind :nonsense})
+        invalid-world-extra-target {:player-id :rose
+                                    :source (assoc hand-source :card-id "world")
+                                    :copied-board-index 4
+                                    :target {:kind :nonsense}
+                                    :orientation :east}
+        invalid-world-missing-minion (assoc world-cup
+                                            :source {:kind :hand-card
+                                                     :card-id "world"})
+        fool-cup {:player-id :rose
+                  :source major-hand-source
+                  :reveals [{:power :cup
+                             :piece-id :rose-minion
+                             :play-command {:target {:kind :territory
+                                                     :board-index 4}
+                                            :orientation :south}}]}
+        invalid-fool-target (assoc-in fool-cup
+                                      [:reveals 0 :play-command :target]
+                                      {:kind :nonsense})
+        invalid-fool-missing-minion (update-in fool-cup
+                                               [:reveals 0]
+                                               dissoc
+                                               :piece-id)]
+    (is (game-state/valid-command? :world world-cup))
+    (is (false? (game-state/valid-command? :world invalid-world-target)))
+    (is (false? (game-state/valid-command? :world invalid-world-extra-target)))
+    (is (false? (game-state/valid-command? :world invalid-world-missing-minion)))
+    (is (game-state/valid-command? :fool fool-cup))
+    (is (false? (game-state/valid-command? :fool invalid-fool-target)))
+    (is (false? (game-state/valid-command? :fool invalid-fool-missing-minion)))))
 
 (deftest suit-command-contracts-require-acting-minion-source
   (let [hand-source-without-minion (dissoc hand-source :piece-id)
