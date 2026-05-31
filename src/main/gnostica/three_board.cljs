@@ -2,7 +2,6 @@
   (:require [gnostica.board-layout :as layout]
             [gnostica.icon-view :as icon-view]
             [gnostica.icons :as icons]
-            [gnostica.pieces :as pieces]
             [gnostica.three-board.controls :as controls]
             [gnostica.three-board.lifecycle :as lifecycle]
             [gnostica.three-board.pointer :as pointer]
@@ -45,19 +44,6 @@
 
       :else
       (str "Dragging " source-label))))
-
-(defn- stash-piece-drag-ghost? [{:keys [source pointer]}]
-  (and pointer
-       (= :stash-piece (:kind source))
-       (= :small (:size source))))
-
-(defn- drag-ghost-style [{:keys [source pointer]}]
-  (let [{:keys [x y]} pointer
-        color (get-in pieces/players-by-id [(:player-id source) :css-color])]
-    (cond-> {"--drag-x" (str x "px")
-             "--drag-y" (str y "px")}
-      color
-      (assoc "--piece-color" color))))
 
 (defn- move-preview-class [{:keys [status]}]
   (case status
@@ -156,6 +142,7 @@
             selected-card (get-in cells-by-index [_selected-index :card])
             texture-metadata (card-textures/texture-renderer-metadata)
             drag-preview (:drag-preview state)
+            drag-piece-preview-meta (:drag-piece-preview-meta state)
             popover-index (or (:hovered-index state)
                               (when (:board-focused? state)
                                 _selected-index))
@@ -197,6 +184,14 @@
 	          :data-drag-target-kind (some-> drag-preview :target :kind name)
 	          :data-drag-target-status (some-> drag-preview :target-status name)
 	          :data-drag-target-highlight-count (or (:drag-target-highlight-count state) 0)
+          :data-drag-piece-preview-visible (true? (:visible? drag-piece-preview-meta))
+          :data-drag-piece-preview-size (some-> drag-piece-preview-meta :size name)
+          :data-drag-piece-preview-player-id (some-> drag-piece-preview-meta
+                                                     :player-id
+                                                     name)
+          :data-drag-piece-preview-orientation (some-> drag-piece-preview-meta
+                                                       :orientation
+                                                       name)
 	          :data-move-preview-active (true? (:active? move-preview))
           :data-move-preview-status (some-> move-preview :status name)
           :data-visible-piece-count (scene-graph/visible-piece-count _cells _pieces)
@@ -224,19 +219,6 @@
             {:class (drag-preview-class drag-preview)
              :aria-live "polite"}
             (drag-preview-summary drag-preview)])
-         (when (stash-piece-drag-ghost? drag-preview)
-           [:div.board-three__drag-piece-ghost
-            {:class (drag-preview-class drag-preview)
-             :aria-hidden "true"
-             :data-player-id (some-> drag-preview
-                                      (get-in [:source :player-id])
-                                      name)
-             :data-piece-size (some-> drag-preview
-                                      (get-in [:source :size])
-                                      name)
-             :style (drag-ghost-style drag-preview)}
-            [:span.board-three__drag-piece-ghost-body]
-            [:span.board-three__drag-piece-ghost-pip]])
          (when (:active? move-preview)
            [:div.board-three__move-preview
             {:class (move-preview-class move-preview)

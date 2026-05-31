@@ -7,13 +7,14 @@
             [gnostica.three-board.scene-graph :as scene-graph]
             [reagent.core :as r]))
 
-(declare set-selection!)
+(declare set-selection! set-drag-piece-preview!)
 
 (defn assoc-component-state! [this key value]
   (let [state (r/state this)]
     (when (not= (get state key) value)
       (r/replace-state this (assoc state key value))
       (when (= :drag-preview key)
+        (set-drag-piece-preview! this value)
         (let [[_ _cells _board-pieces selected-index _card-icon-mode
                _texture-errors legal-targets] (r/argv this)]
           (set-selection! this selected-index legal-targets))))))
@@ -130,6 +131,18 @@
       (scene-graph/set-placement-preview! placement-preview (:placement move-preview))
       (when render!
         (render!)))))
+
+(defn set-drag-piece-preview! [this drag-preview]
+  (let [{:keys [active? drag-piece-preview camera renderer render!]} (r/state this)]
+    (when (and active? @active? drag-piece-preview)
+      (let [metadata (scene-graph/set-drag-piece-preview!
+                      drag-piece-preview
+                      drag-preview
+                      camera
+                      (some-> renderer .-domElement))]
+        (assoc-state-when-changed! this :drag-piece-preview-meta metadata)
+        (when render!
+          (render!))))))
 
 (defn set-selection!
   ([this selected-index]
@@ -267,6 +280,8 @@
                                                  :wasteland-selection-meshes (:wasteland-selection-meshes scene-data)
                                                  :piece-selection-meshes (:piece-selection-meshes scene-data)
                                                  :placement-preview (:placement-preview scene-data)
+                                                 :drag-piece-preview (:drag-piece-preview scene-data)
+                                                 :drag-piece-preview-meta {:visible? false}
                                                  :legal-targets-ref legal-targets-ref
                                                  :piece-edge-outline-count (:piece-edge-outline-count scene-data)
                                                  :antialias-enabled? antialias-enabled?
@@ -274,4 +289,5 @@
                                                 pointer-listeners
                                                 (controls/camera-view-metadata camera controls)))
                    (set-placement-preview! this _move-preview)
+                   (set-drag-piece-preview! this nil)
                    (set-selection! this selected-index legal-targets)))))))))))

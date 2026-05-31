@@ -7,12 +7,76 @@
             [gnostica.ui.common :as ui]
             [re-frame.core :as rf]))
 
+(defn- draw-drag-image-path! [context points]
+  (.beginPath context)
+  (let [[x y] (first points)]
+    (.moveTo context x y))
+  (doseq [[x y] (rest points)]
+    (.lineTo context x y))
+  (.closePath context))
+
+(defn- fill-drag-image-face! [context color overlay points]
+  (draw-drag-image-path! context points)
+  (set! (.-fillStyle context) color)
+  (.fill context)
+  (when overlay
+    (draw-drag-image-path! context points)
+    (set! (.-fillStyle context) overlay)
+    (.fill context)))
+
+(defn- stash-piece-drag-image! [data-transfer color]
+  (when (and data-transfer (.-setDragImage data-transfer))
+    (let [size 72
+          color (or color "#ffffff")
+          scale (max 1 (or (.-devicePixelRatio js/window) 1))
+          canvas (.createElement js/document "canvas")
+          context (.getContext canvas "2d")]
+      (set! (.-width canvas) (* size scale))
+      (set! (.-height canvas) (* size scale))
+      (set! (.. canvas -style -width) (str size "px"))
+      (set! (.. canvas -style -height) (str size "px"))
+      (set! (.. canvas -style -position) "fixed")
+      (set! (.. canvas -style -left) "-1000px")
+      (set! (.. canvas -style -top) "-1000px")
+      (set! (.. canvas -style -pointerEvents) "none")
+      (.scale context scale scale)
+      (set! (.-shadowColor context) "rgba(0, 0, 0, 0.42)")
+      (set! (.-shadowBlur context) 10)
+      (set! (.-shadowOffsetY context) 5)
+      (set! (.-fillStyle context) "rgba(0, 0, 0, 0.24)")
+      (.beginPath context)
+      (.ellipse context 36 56 21 7 0 0 (* 2 js/Math.PI))
+      (.fill context)
+      (set! (.-shadowBlur context) 0)
+      (set! (.-shadowOffsetY context) 0)
+      (set! (.-strokeStyle context) "rgba(255, 250, 240, 0.9)")
+      (set! (.-lineWidth context) 1.3)
+      (fill-drag-image-face! context color "rgba(255, 255, 255, 0.2)"
+                             [[36 8] [62 55] [36 66]])
+      (fill-drag-image-face! context color "rgba(0, 0, 0, 0.2)"
+                             [[36 8] [36 66] [10 55]])
+      (draw-drag-image-path! context [[36 8] [62 55] [36 66] [10 55]])
+      (.stroke context)
+      (set! (.-fillStyle context) "rgba(255, 250, 240, 0.95)")
+      (.beginPath context)
+      (.ellipse context 36 52 3.6 4.8 0 0 (* 2 js/Math.PI))
+      (.fill context)
+      (.appendChild (.-body js/document) canvas)
+      (.setDragImage data-transfer canvas 36 54)
+      (js/setTimeout
+       #(when-let [parent (.-parentNode canvas)]
+          (.removeChild parent canvas))
+       0))))
+
 (defn- move-source-picker [options selected-source current-player direct-manipulation]
   [:div.move-source-list
    (for [{:keys [id label summary enabled? reason]} options]
      (let [stash-source? (and (= :place-initial-small id)
                               current-player)
            drag-enabled? (true? (:pointer-drag-enabled? direct-manipulation))
+           player-color (or (:css-color current-player)
+                            (get-in pieces/players-by-id
+                                    [(:id current-player) :css-color]))
            stash-input (when (and stash-source? drag-enabled?)
                          (gesture-input/stash-piece-source-input current-player))]
        ^{:key id}
@@ -25,9 +89,11 @@
          :on-click #(rf/dispatch [events/select-move-source id])
          :on-drag-start (fn [event]
                           (when (and enabled? stash-input)
-                            (gesture-input/set-gesture-data! (.-dataTransfer event)
-                                                             stash-input)
-                            (rf/dispatch [events/start-gesture-intent stash-input])))}
+                            (rf/dispatch [events/start-gesture-intent stash-input])
+                            (let [data-transfer (.-dataTransfer event)]
+                              (gesture-input/set-gesture-data! data-transfer
+                                                               stash-input)
+                              (stash-piece-drag-image! data-transfer player-color))))}
         [:span.move-source-option__label
          (when stash-source?
            [:span.move-source-option__piece
@@ -37,13 +103,14 @@
              :on-drag-start (fn [event]
                               (when (and enabled? stash-input)
                                 (.stopPropagation event)
-                                (gesture-input/set-gesture-data! (.-dataTransfer event)
-                                                                 stash-input)
                                 (rf/dispatch [events/start-gesture-intent
-                                              stash-input])))
-             :style {"--piece-color" (or (:css-color current-player)
-                                          (get-in pieces/players-by-id
-                                                  [(:id current-player) :css-color]))}}
+                                              stash-input])
+                                (let [data-transfer (.-dataTransfer event)]
+                                  (gesture-input/set-gesture-data! data-transfer
+                                                                   stash-input)
+                                  (stash-piece-drag-image! data-transfer
+                                                           player-color))))
+             :style {"--piece-color" player-color}}
             [:span.move-source-option__piece-body]
             [:span.move-source-option__piece-pips
              [:span.move-source-option__piece-pip]]])

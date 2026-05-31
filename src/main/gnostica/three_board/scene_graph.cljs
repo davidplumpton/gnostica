@@ -27,6 +27,7 @@
 (def wasteland-highlight-z 0.006)
 (def piece-highlight-z 0.032)
 (def piece-highlight-radius 0.24)
+(def preview-piece-sizes [:small :medium :large])
 
 (defn- piece-tilt-axis [orientation]
   (let [axis (js/THREE.Vector3.)]
@@ -231,6 +232,21 @@
     (swap! geometries conj edge-geometry)
     (swap! materials conj edge-material)))
 
+(defn- add-piece-detail-meshes! [mesh geometries materials piece-size geometry]
+  (add-piece-edge-outline! mesh geometries materials geometry)
+  (doseq [{:keys [position normal]} (layout/piece-pip-local-markers piece-size)]
+    (let [pip-geometry (js/THREE.CircleGeometry. layout/piece-pip-marker-radius 16)
+          pip-material (js/THREE.MeshBasicMaterial.
+                        #js {:color pip-marker-color
+                             :side js/THREE.DoubleSide})
+          pip-mesh (js/THREE.Mesh. pip-geometry pip-material)
+          [x y marker-z] position]
+      (align-local-z-to-normal! pip-mesh normal)
+      (.set (.-position pip-mesh) x y marker-z)
+      (.add mesh pip-mesh)
+      (swap! geometries conj pip-geometry)
+      (swap! materials conj pip-material))))
+
 (defn- spaces-by-key [spaces]
   (into {}
         (keep (fn [space]
@@ -261,24 +277,16 @@
           x (+ card-x offset-x)
           y (+ card-y offset-y)
           z (layout/piece-center-z piece-size (:orientation piece))]
-      (add-piece-edge-outline! mesh geometries materials geometry)
-      (doseq [{:keys [position normal]} (layout/piece-pip-local-markers piece-size)]
-        (let [pip-geometry (js/THREE.CircleGeometry. layout/piece-pip-marker-radius 16)
-              pip-material (js/THREE.MeshBasicMaterial.
-                            #js {:color pip-marker-color
-                                 :side js/THREE.DoubleSide})
-              pip-mesh (js/THREE.Mesh. pip-geometry pip-material)
-              [x y marker-z] position]
-          (align-local-z-to-normal! pip-mesh normal)
-          (.set (.-position pip-mesh) x y marker-z)
-          (.add mesh pip-mesh)
-          (swap! geometries conj pip-geometry)
-          (swap! materials conj pip-material)))
+      (add-piece-detail-meshes! mesh geometries materials piece-size geometry)
       (.set (.-position mesh) x y z)
       (.set (.-position highlight-mesh) x y piece-highlight-z)
       (set! (.-visible highlight-mesh) false)
       (set-piece-rotation! mesh (:orientation piece) piece-size)
-      (pointer/mark-gesture-object! mesh (gesture-input/piece-target piece))
+      (pointer/mark-gesture-object! mesh
+                                    (assoc (gesture-input/piece-target piece)
+                                           :player-id (:player-id piece)
+                                           :size (:size piece)
+                                           :orientation (:orientation piece)))
       (.add scene highlight-mesh)
       (.add scene mesh)
       (swap! geometries into [geometry highlight-geometry])
@@ -288,35 +296,54 @@
       (swap! piece-selection-meshes assoc (:id piece) highlight-mesh)
       true)))
 
-(defn- add-placement-preview-mesh! [scene geometries materials]
-  (let [piece-size (pieces/size-data {:size :small})
+(defn- add-preview-piece-mesh! [scene geometries materials size opacity]
+  (let [piece-size (pieces/size-data {:size size})
         {:keys [radius height]} piece-size
         geometry (js/THREE.ConeGeometry. radius height 4)
         material (js/THREE.MeshLambertMaterial.
                   #js {:color 0xffffff
                        :transparent true
-                       :opacity 0.96})
+                       :opacity opacity})
         mesh (js/THREE.Mesh. geometry material)]
-    (add-piece-edge-outline! mesh geometries materials geometry)
-    (doseq [{:keys [position normal]} (layout/piece-pip-local-markers piece-size)]
-      (let [pip-geometry (js/THREE.CircleGeometry. layout/piece-pip-marker-radius 16)
-            pip-material (js/THREE.MeshBasicMaterial.
-                          #js {:color pip-marker-color
-                               :side js/THREE.DoubleSide})
-            pip-mesh (js/THREE.Mesh. pip-geometry pip-material)
-            [x y marker-z] position]
-        (align-local-z-to-normal! pip-mesh normal)
-        (.set (.-position pip-mesh) x y marker-z)
-        (.add mesh pip-mesh)
-        (swap! geometries conj pip-geometry)
-        (swap! materials conj pip-material)))
+    (add-piece-detail-meshes! mesh geometries materials piece-size geometry)
     (set! (.-visible mesh) false)
     (.add scene mesh)
     (swap! geometries conj geometry)
     (swap! materials conj material)
     {:mesh mesh
      :material material
+     :size size
      :piece-size piece-size}))
+
+(defn- add-placement-preview-mesh! [scene geometries materials]
+  (add-preview-piece-mesh! scene geometries materials :small 0.96))
+
+(defn- add-drag-piece-preview-mesh! [scene geometries materials]
+  {:meshes-by-size
+   (into {}
+         (map (fn [size]
+                [size (add-preview-piece-mesh! scene geometries materials size 0.94)]))
+         preview-piece-sizes)})
+
+(defn- hide-preview-entry! [{:keys [mesh]}]
+  (when mesh
+    (set! (.-visible mesh) false)))
+
+(defn- pointer-world-position
+  [camera canvas {:keys [x y]} z]
+  (when (and camera canvas (number? x) (number? y))
+    (let [width (.-clientWidth canvas)
+          height (.-clientHeight canvas)]
+      (when (and (pos? width) (pos? height))
+        (let [pointer (js/THREE.Vector2.
+                       (- (* 2 (/ x width)) 1)
+                       (- 1 (* 2 (/ y height))))
+              raycaster (js/THREE.Raycaster.)
+              plane (js/THREE.Plane. (vector3 0 0 1) (- z))
+              point (js/THREE.Vector3.)]
+          (.setFromCamera raycaster pointer camera)
+          (when (.intersectPlane (.-ray raycaster) plane point)
+            [(.-x point) (.-y point)]))))))
 
 (defn set-placement-preview!
   [preview {:keys [target-space player-id orientation]}]
@@ -332,6 +359,42 @@
         (set-piece-rotation! mesh orientation piece-size))
       (when mesh
         (set! (.-visible mesh) false)))))
+
+(defn set-drag-piece-preview!
+  [preview {:keys [active? source pointer]} camera canvas]
+  (let [{:keys [meshes-by-size]} preview
+        preview-source? (contains? #{:stash-piece :piece} (:kind source))
+        size (or (:size source) :small)
+        entry (get meshes-by-size size)]
+    (doseq [[entry-size preview-entry] meshes-by-size
+            :when (not= entry-size size)]
+      (hide-preview-entry! preview-entry))
+    (if (and active?
+             preview-source?
+             entry
+             (:player-id source)
+             pointer)
+      (let [{:keys [mesh material piece-size]} entry
+            player (get pieces/players-by-id (:player-id source))
+            orientation (or (:orientation source) :up)
+            z (layout/piece-center-z piece-size orientation)]
+        (if-let [[x y] (pointer-world-position camera canvas pointer z)]
+          (do
+            (set! (.-visible mesh) true)
+            (.set (.-color material) (or (:color player) 0xffffff))
+            (.set (.-position mesh) x y z)
+            (set-piece-rotation! mesh orientation piece-size)
+            {:visible? true
+             :player-id (:player-id source)
+             :size size
+             :orientation orientation})
+          (do
+            (hide-preview-entry! entry)
+            {:visible? false})))
+      (do
+        (when entry
+          (hide-preview-entry! entry))
+        {:visible? false}))))
 
 (defn- add-piece-meshes!
   [scene geometries materials spaces piece-meshes target-meshes
@@ -486,7 +549,10 @@
                                                          board-pieces)
             placement-preview (add-placement-preview-mesh! scene
                                                            geometries
-                                                           materials)]
+                                                           materials)
+            drag-piece-preview (add-drag-piece-preview-mesh! scene
+                                                             geometries
+                                                             materials)]
         {:geometries @geometries
          :materials @materials
          :textures @textures
@@ -497,4 +563,5 @@
          :wasteland-selection-meshes @wasteland-selection-meshes
          :piece-selection-meshes @piece-selection-meshes
          :placement-preview placement-preview
+         :drag-piece-preview drag-piece-preview
          :piece-edge-outline-count piece-edge-outline-count}))))

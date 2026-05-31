@@ -559,7 +559,10 @@
        firstPieceSourceIconPipVisible: Boolean(firstPiecePip),
 	       pointerDragEnabled: board ? board.dataset.pointerDragEnabled === 'true' : null,
 	       dragActive: board ? board.dataset.dragActive === 'true' : null,
-	       dragGhostVisible: Boolean(document.querySelector('.board-three__drag-piece-ghost')),
+	       dragGhostVisible: board ? board.dataset.dragPiecePreviewVisible === 'true' : false,
+	       dragPiecePreviewVisible: board ? board.dataset.dragPiecePreviewVisible === 'true' : false,
+	       dragPiecePreviewSize: board ? board.dataset.dragPiecePreviewSize : null,
+	       dragPiecePreviewPlayerId: board ? board.dataset.dragPiecePreviewPlayerId : null,
 	       dragTargetKind: board ? board.dataset.dragTargetKind : null,
 	       dragTargetStatus: board ? board.dataset.dragTargetStatus : null,
 	       dragTargetHighlightCount: board ? Number(board.dataset.dragTargetHighlightCount || 0) : null
@@ -597,13 +600,14 @@
 	       const dragOverDispatched = target.dispatchEvent(dragOver);
 	       requestAnimationFrame(() => requestAnimationFrame(() => {
 	         const board = document.querySelector('.board-three');
-	         const ghost = document.querySelector('.board-three__drag-piece-ghost');
-	         const ghostStyle = ghost ? getComputedStyle(ghost) : null;
 	         const beforeDrop = {
 	           boardDragActiveBeforeDrop: board ? board.dataset.dragActive === 'true' : null,
 	           dragTargetKindBeforeDrop: board ? board.dataset.dragTargetKind : null,
 	           dragTargetStatusBeforeDrop: board ? board.dataset.dragTargetStatus : null,
-	           dragTargetHighlightCountBeforeDrop: board ? Number(board.dataset.dragTargetHighlightCount || 0) : null
+	           dragTargetHighlightCountBeforeDrop: board ? Number(board.dataset.dragTargetHighlightCount || 0) : null,
+	           dragPiecePreviewVisibleBeforeDrop: board ? board.dataset.dragPiecePreviewVisible === 'true' : null,
+	           dragPiecePreviewSizeBeforeDrop: board ? board.dataset.dragPiecePreviewSize : null,
+	           dragPiecePreviewPlayerIdBeforeDrop: board ? board.dataset.dragPiecePreviewPlayerId : null
 	         };
 	         const drop = new DragEvent('drop', eventInit);
 	         const dropDispatched = target.dispatchEvent(drop);
@@ -616,12 +620,12 @@
 	           payload: dataTransfer.getData('application/gnostica-gesture'),
 	           fallbackPayload: dataTransfer.getData('text/plain'),
 	           target: {x: eventInit.clientX, y: eventInit.clientY},
-	           ghostVisible: Boolean(ghost),
-	           ghostPlayerId: ghost ? ghost.dataset.playerId : null,
-	           ghostPieceSize: ghost ? ghost.dataset.pieceSize : null,
-	           ghostClassName: ghost ? ghost.className : null,
-	           ghostLeft: ghostStyle ? ghostStyle.left : null,
-	           ghostTop: ghostStyle ? ghostStyle.top : null
+	           ghostVisible: beforeDrop.dragPiecePreviewVisibleBeforeDrop,
+	           ghostPlayerId: beforeDrop.dragPiecePreviewPlayerIdBeforeDrop,
+	           ghostPieceSize: beforeDrop.dragPiecePreviewSizeBeforeDrop,
+	           ghostClassName: null,
+	           ghostLeft: null,
+	           ghostTop: null
 	         }, beforeDrop));
 	       }));
 	     }));

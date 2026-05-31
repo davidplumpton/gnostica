@@ -1184,50 +1184,6 @@ img {
   box-shadow: 0 0 0 2px rgba(255, 138, 122, 0.2);
 }
 
-.board-three__drag-piece-ghost {
-  position: absolute;
-  left: var(--drag-x);
-  top: var(--drag-y);
-  z-index: 4;
-  width: 1.55rem;
-  height: 1.55rem;
-  pointer-events: none;
-  filter: drop-shadow(0 0.22rem 0.22rem rgba(0, 0, 0, 0.5));
-  transform: translate(-50%, -72%);
-}
-
-.board-three__drag-piece-ghost-body {
-  position: absolute;
-  inset: 0;
-  border: 1px solid rgba(255, 250, 240, 0.86);
-  background: var(--piece-color);
-  clip-path: polygon(50% 0, 100% 100%, 0 100%);
-}
-
-.board-three__drag-piece-ghost-pip {
-  position: absolute;
-  left: 50%;
-  bottom: 0.18rem;
-  width: 0.22rem;
-  height: 0.3rem;
-  border-radius: 50% 50% 50% 0;
-  background: rgba(255, 250, 240, 0.94);
-  box-shadow: 0 0 0 1px rgba(38, 49, 47, 0.5);
-  transform: translateX(-50%) rotate(-45deg);
-}
-
-.board-three__drag-piece-ghost.is-legal-target
-.board-three__drag-piece-ghost-body {
-  outline: 2px solid rgba(255, 224, 138, 0.72);
-  outline-offset: 2px;
-}
-
-.board-three__drag-piece-ghost.is-disabled-target
-.board-three__drag-piece-ghost-body {
-  outline: 2px solid rgba(255, 138, 122, 0.64);
-  outline-offset: 2px;
-}
-
 .board-three__move-preview {
   position: absolute;
   left: 50%;
