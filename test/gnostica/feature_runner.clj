@@ -51,7 +51,14 @@
 
 (defn- add-example-row [scenario header row line-number]
   (update scenario :examples conj {:line line-number
+                                   :header header
+                                   :cells row
                                    :values (zipmap header row)}))
+
+(defn- add-example-header [scenario header line-number]
+  (assoc scenario
+         :example-header {:line line-number
+                          :cells header}))
 
 (defn parse-feature-file [path]
   (let [lines (map-indexed (fn [index line]
@@ -119,7 +126,8 @@
             (recur (first remaining)
                    (rest remaining)
                    feature
-                   scenario
+                   (cond-> scenario
+                     scenario (assoc :examples-line line))
                    :examples
                    nil)
 
@@ -135,7 +143,7 @@
                 (recur (first remaining)
                        (rest remaining)
                        feature
-                       scenario
+                       (add-example-header scenario row line)
                        section
                        row)))
 
@@ -178,8 +186,108 @@
             (:examples scenario))
       [(assoc scenario :steps steps)])))
 
+(defn- duplicate-values [values]
+  (->> values
+       frequencies
+       (filter (fn [[_ count]] (> count 1)))
+       (map first)
+       vec))
+
+(declare feature-failure)
+
+(defn- outline-validation-failure [feature scenario code message data]
+  (feature-failure feature
+                   scenario
+                   code
+                   message
+                   (merge {:path (:path feature)
+                           :feature (:name feature)
+                           :scenario (:name scenario)
+                           :scenario-line (:line scenario)}
+                          data)))
+
+(defn- outline-header-failure [feature scenario header]
+  (let [columns (:cells header)
+        blanks (->> columns
+                    (keep-indexed (fn [index column]
+                                    (when (str/blank? column)
+                                      (inc index))))
+                    vec)
+        duplicates (duplicate-values columns)]
+    (cond
+      (seq blanks)
+      (outline-validation-failure
+       feature
+       scenario
+       :malformed-outline-examples
+       "Scenario Outline Examples headers must not contain blank column names."
+       {:line (:line header)
+        :blank-columns blanks
+        :columns columns})
+
+      (seq duplicates)
+      (outline-validation-failure
+       feature
+       scenario
+       :malformed-outline-examples
+       "Scenario Outline Examples headers must not contain duplicate column names."
+       {:line (:line header)
+        :duplicate-columns duplicates
+        :columns columns}))))
+
+(defn- outline-row-failure [feature scenario row]
+  (when (not= (count (:header row)) (count (:cells row)))
+    (outline-validation-failure
+     feature
+     scenario
+     :malformed-outline-examples
+     "Scenario Outline Examples rows must have the same number of cells as the header."
+     {:line (:line row)
+      :expected-columns (count (:header row))
+      :actual-columns (count (:cells row))
+      :header (:header row)
+      :row (:cells row)})))
+
+(defn- outline-validation-failures [feature scenario]
+  (if-not (:outline? scenario)
+    []
+    (cond
+      (nil? (:examples-line scenario))
+      [(outline-validation-failure
+        feature
+        scenario
+        :missing-outline-examples
+        "Scenario Outline entries must include an Examples section."
+        {:line (:line scenario)})]
+
+      (nil? (:example-header scenario))
+      [(outline-validation-failure
+        feature
+        scenario
+        :empty-outline-examples
+        "Scenario Outline Examples sections must include a table header and at least one row."
+        {:line (:examples-line scenario)})]
+
+      (empty? (:examples scenario))
+      [(outline-validation-failure
+        feature
+        scenario
+        :empty-outline-examples
+        "Scenario Outline Examples sections must include at least one data row."
+        {:line (:examples-line scenario)
+         :header-line (get-in scenario [:example-header :line])
+         :header (get-in scenario [:example-header :cells])})]
+
+      :else
+      (vec (keep identity
+                 (cons (outline-header-failure feature scenario (:example-header scenario))
+                       (map #(outline-row-failure feature scenario %) (:examples scenario))))))))
+
 (defn feature-scenarios [feature]
-  (mapcat #(expand-scenario feature %) (:scenarios feature)))
+  (mapcat (fn [scenario]
+            (when-not (seq (outline-validation-failures feature scenario))
+              (expand-scenario feature scenario)))
+          (:scenarios feature)))
 
 (defn- regex-groups [match]
   (if (vector? match)
@@ -271,9 +379,18 @@
 
 (defn run-feature-file [path step-definitions]
   (let [feature (parse-feature-file path)
+        validation-failures (vec (mapcat #(outline-validation-failures feature %)
+                                         (:scenarios feature)))
         scenarios (vec (feature-scenarios feature))]
-    (if (seq scenarios)
+    (cond
+      (seq validation-failures)
+      (vec (concat validation-failures
+                   (mapv #(run-scenario feature step-definitions %) scenarios)))
+
+      (seq scenarios)
       (mapv #(run-scenario feature step-definitions %) scenarios)
+
+      :else
       [(no-scenarios-failure feature)])))
 
 (defn- result-line [scenario step]
