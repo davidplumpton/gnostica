@@ -12,104 +12,30 @@
             [gnostica.game-state.rod :as game-state-rod]
             [gnostica.game-state.sword :as game-state-sword]
             [gnostica.game-state.world :as game-state-world]
-            [gnostica.pieces :as pieces]))
-
-(def player-specs
-  [{:id :rose
-    :name "Rose"}
-   {:id :indigo
-    :name "Indigo"}])
-
-(def three-player-specs
-  [{:id :rose
-    :name "Rose"}
-   {:id :indigo
-    :name "Indigo"}
-   {:id :gold
-    :name "Gold"}])
-
-(defn- card-ids [cards]
-  (mapv :id cards))
-
-(defn- board-card-ids [state]
-  (mapv (comp :id :card) (:board state)))
-
-(defn- hand-card-count [player-count]
-  (* game-state/starting-hand-size player-count))
-
-(defn- board-deck-position [board-index]
-  (+ (hand-card-count (count player-specs))
-     board-index))
-
-(defn- all-card-ids [state]
-  (vec
-   (concat
-    (map :id (mapcat :hand (:players state)))
-    (map (comp :id :card) (:board state))
-    (map :id (:draw-pile state))
-    (map :id (:discard-pile state)))))
-
-(defn- deterministic-game []
-  (:state (game-state/create-game player-specs {:shuffle-fn identity})))
-
-(defn- deck-starting-with [card-ids]
-  (let [front-ids (set card-ids)]
-    (vec
-     (concat
-      (map cards/card-by-id card-ids)
-      (remove #(contains? front-ids (:id %)) cards/deck)))))
-
-(defn- deck-with-board-card [board-index card-id]
-  (let [card (cards/card-by-id card-id)
-        other-cards (vec (remove #(= card-id (:id %)) cards/deck))
-        deck-index (+ (hand-card-count (count player-specs))
-                      board-index)]
-    (vec
-     (concat
-      (take deck-index other-cards)
-      [card]
-      (drop deck-index other-cards)))))
-
-(defn- deck-with-cards-at [position->card-id]
-  (let [placed-card-ids (set (vals position->card-id))]
-    (loop [index 0
-           filler-cards (remove #(contains? placed-card-ids (:id %)) cards/deck)
-           deck []]
-      (if (= (count cards/deck) (count deck))
-        (vec deck)
-        (if-let [card-id (get position->card-id index)]
-          (recur (inc index)
-                 filler-cards
-                 (conj deck (cards/card-by-id card-id)))
-          (recur (inc index)
-                 (rest filler-cards)
-                 (conj deck (first filler-cards))))))))
-
-(defn- state-with-pieces [pieces]
-  (game-state/with-board-pieces (deterministic-game) pieces))
-
-(defn- state-with-board-cards
-  ([board-index->card-id]
-   (state-with-board-cards board-index->card-id {}))
-  ([board-index->card-id opts]
-   (:state (game-state/create-game
-            player-specs
-            (assoc opts
-                   :deck-order
-                   (deck-with-cards-at
-                    (into {}
-                          (map (fn [[board-index card-id]]
-                                 [(board-deck-position board-index) card-id]))
-                          board-index->card-id)))))))
-
-(defn- state-with-board-card [state board-index card-id]
-  (update state :board
-          (fn [cells]
-            (mapv (fn [cell]
-                    (if (= board-index (:index cell))
-                      (assoc cell :card (cards/card-by-id card-id))
-                      cell))
-                  cells))))
+            [gnostica.pieces :as pieces]
+            [gnostica.test-support.board :refer [board-card-ids
+                                                 board-cell-at
+                                                 board-cell-by-index
+                                                 state-with-board-card
+                                                 with-board-cells-at]]
+            [gnostica.test-support.deck :refer [card-ids
+                                                deck-starting-with
+                                                deck-with-board-card
+                                                deck-with-cards-at
+                                                hand-card-count
+                                                board-card-position]]
+            [gnostica.test-support.game-state :refer [all-card-ids
+                                                      deterministic-game
+                                                      move-card-to-discard
+                                                      player-hand-ids
+                                                      player-specs
+                                                      replace-player-hand
+                                                      remove-card-id
+                                                      set-player-eliminated
+                                                      state-with-board-cards
+                                                      state-with-pieces
+                                                      three-player-specs]]
+            [gnostica.test-support.pieces :refer [piece-by-id]]))
 
 (def rose-cup-minion
   {:id :rose-cup-minion
@@ -155,70 +81,6 @@
    :space-index 4
    :size :medium
    :orientation :west})
-
-(defn- piece-by-id [state piece-id]
-  (some #(when (= piece-id (:id %)) %)
-        (get-in state [:pieces :on-board])))
-
-(defn- board-cell-by-index [state board-index]
-  (some #(when (= board-index (:index %)) %)
-        (:board state)))
-
-(defn- board-cell-at [state row col]
-  (some #(when (and (= row (:row %))
-                    (= col (:col %)))
-           %)
-        (:board state)))
-
-(defn- with-board-cells-at [state index-coordinates]
-  (assoc state
-         :board
-         (mapv (fn [[board-index {:keys [row col]}]]
-                 (assoc (board-cell-by-index state board-index)
-                        :row row
-                        :col col
-                        :orientation (board/orientation-for row col)))
-               index-coordinates)))
-
-(defn- player-hand-ids [state player-id]
-  (mapv :id (get-in state [:players-by-id player-id :hand])))
-
-(defn- replace-player-hand [state player-id hand]
-  (let [players (mapv (fn [player]
-                        (if (= player-id (:id player))
-                          (assoc player :hand (vec hand))
-                          player))
-                      (:players state))]
-    (assoc state
-           :players players
-           :players-by-id (into {} (map (juxt :id identity) players)))))
-
-(defn- set-player-eliminated [state player-id eliminated?]
-  (let [players (mapv (fn [player]
-                        (if (= player-id (:id player))
-                          (assoc player :eliminated? eliminated?)
-                          player))
-                      (:players state))]
-    (assoc state
-           :players players
-           :players-by-id (into {} (map (juxt :id identity) players)))))
-
-(defn- remove-card-id [cards card-id]
-  (vec (remove #(= card-id (:id %)) cards)))
-
-(defn- move-card-to-discard [state card-id]
-  (let [card (cards/card-by-id card-id)]
-    (-> (reduce (fn [next-state player-id]
-                  (replace-player-hand next-state
-                                       player-id
-                                       (remove-card-id
-                                        (get-in next-state
-                                                [:players-by-id player-id :hand])
-                                        card-id)))
-                state
-                (map :id (:players state)))
-        (update :draw-pile remove-card-id card-id)
-        (update :discard-pile conj card))))
 
 (deftest creates-deterministic-initial-state
   (let [hand-count (hand-card-count (count player-specs))
@@ -892,7 +754,7 @@
                                   {:deck-order
                                    (deck-with-cards-at
                                     {0 "world"
-                                     (board-deck-position 3) "magician"})}))
+                                     (board-card-position 3) "magician"})}))
                         (game-state/with-board-pieces [rose-cup-minion]))
         world-command {:player-id :rose
                        :source {:kind :hand-card
@@ -2996,8 +2858,8 @@
 
 (deftest sword-move-shrinks-royalty-territory-with-hand-replacement
   (let [deck-order (deck-with-cards-at {0 "cups2"
-                                        (board-deck-position 3) "swords2"
-                                        (board-deck-position 4) "cupsking"})
+                                        (board-card-position 3) "swords2"
+                                        (board-card-position 4) "cupsking"})
         target-piece (assoc rose-target-minion
                             :space-index 4
                             :orientation :south)
@@ -3048,7 +2910,7 @@
 (deftest sword-move-rejects-missing_reused_and_invalid_territory_replacements_without_mutation
   (let [deck-order (deck-with-cards-at {0 "swords2"
                                         1 "swordsking"
-                                        (board-deck-position 4) "cupsking"})
+                                        (board-card-position 4) "cupsking"})
         state (:state (game-state/create-game player-specs {:deck-order deck-order}))
         state (game-state/with-board-pieces state [rose-sword-minion])
         base-command {:player-id :rose
@@ -3081,8 +2943,8 @@
 
 (deftest tower-sword-move-can-shrink-major-territory-from-discard_source
   (let [deck-order (deck-with-cards-at {0 "cupsking"
-                                        (board-deck-position 3) "tower"
-                                        (board-deck-position 4) "star"})
+                                        (board-card-position 3) "tower"
+                                        (board-card-position 4) "star"})
         state (:state (game-state/create-game player-specs {:deck-order deck-order}))
         state (-> state
                   (move-card-to-discard "cupsking")
@@ -3279,8 +3141,8 @@
                        player-specs
                        {:deck-order (deck-with-cards-at
                                      {0 "death"
-                                      (board-deck-position 4) "cups2"
-                                      (board-deck-position 7) "coins2"})}))
+                                      (board-card-position 4) "cups2"
+                                      (board-card-position 7) "coins2"})}))
         state (game-state/with-board-pieces
                state
                [rose-sword-minion second-minion])
@@ -3315,7 +3177,7 @@
                        player-specs
                        {:deck-order (deck-with-cards-at
                                      {0 "death"
-                                      (board-deck-position 4) "cupsking"})}))
+                                      (board-card-position 4) "cupsking"})}))
         state (game-state/with-board-pieces state [rose-sword-minion])
         {:keys [ok? state events]} (game-state/apply-sword-move
                                     state
@@ -3740,7 +3602,7 @@
                        {:deck-order
                         (deck-with-cards-at
                          {0 "world"
-                          (board-deck-position 3) "empress"})}))
+                          (board-card-position 3) "empress"})}))
         state (game-state/with-board-pieces
                state
                (vec (cons rose-cup-minion full-target-pieces)))
@@ -3779,8 +3641,8 @@
                        player-specs
                        {:deck-order
                         (deck-with-cards-at
-                         {(board-deck-position 3) "world"
-                          (board-deck-position 5) "magician"})}))
+                         {(board-card-position 3) "world"
+                          (board-card-position 5) "magician"})}))
         state (game-state/with-board-pieces state [rose-cup-minion])
         {:keys [ok? state events]} (game-state/apply-world-move
                                     state
@@ -3815,8 +3677,8 @@
                        player-specs
                        {:deck-order
                         (deck-with-cards-at
-                         {(board-deck-position 3) "world"
-                          (board-deck-position 4) "cups2"})}))
+                         {(board-card-position 3) "world"
+                          (board-card-position 4) "cups2"})}))
         state (game-state/with-board-pieces state [rose-cup-minion])
         base-command {:player-id :rose
                       :source {:kind :territory
@@ -3838,8 +3700,8 @@
     (is (not (contains? self-result :state)))))
 
 (deftest sword-move-destroys-spot-territory-and-voided-pieces
-  (let [deck-order (deck-with-cards-at {(board-deck-position 0) "cups2"
-                                        (board-deck-position 1) "swords2"})
+  (let [deck-order (deck-with-cards-at {(board-card-position 0) "cups2"
+                                        (board-card-position 1) "swords2"})
         sword-minion (assoc rose-sword-minion
                             :space-index 1
                             :size :small
@@ -3909,8 +3771,8 @@
 
 (deftest disc-move-grows-spot-territory-with-hand-replacement
   (let [deck-order (deck-with-cards-at {0 "cupsking"
-                                        (board-deck-position 3) "coins2"
-                                        (board-deck-position 4) "cups2"})
+                                        (board-card-position 3) "coins2"
+                                        (board-card-position 4) "cups2"})
         target-piece (assoc rose-target-minion
                             :space-index 4
                             :orientation :south)
@@ -3959,7 +3821,7 @@
 (deftest disc-move-hand-source-grows-territory-without-duplicating-cards
   (let [deck-order (deck-with-cards-at {0 "coins2"
                                         1 "cupsking"
-                                        (board-deck-position 4) "cups2"})
+                                        (board-card-position 4) "cups2"})
         state (:state (game-state/create-game player-specs {:deck-order deck-order}))
         state (game-state/with-board-pieces state [rose-disc-minion])
         command {:player-id :rose
@@ -3984,7 +3846,7 @@
 
 (deftest star-disc-move-can-grow-royalty-territory-from-discard_source
   (let [deck-order (deck-with-cards-at {0 "star"
-                                        (board-deck-position 4) "cupsking"})
+                                        (board-card-position 4) "cupsking"})
         state (:state (game-state/create-game player-specs {:deck-order deck-order}))
         state (game-state/with-board-pieces state [rose-disc-minion])
         command {:player-id :rose
@@ -4010,7 +3872,7 @@
 
 (deftest star-disc-orients-minion-before-targeting
   (let [deck-order (deck-with-cards-at {0 "star"
-                                        (board-deck-position 4) "cupsking"})
+                                        (board-card-position 4) "cupsking"})
         state (:state (game-state/create-game player-specs {:deck-order deck-order}))
         state (game-state/with-board-pieces
                state
@@ -4095,7 +3957,7 @@
 (deftest strength-disc-can_skip_intermediate_territory_value
   (let [deck-order (deck-with-cards-at {0 "strength"
                                         1 "star"
-                                        (board-deck-position 4) "cups2"})
+                                        (board-card-position 4) "cups2"})
         state (:state (game-state/create-game player-specs {:deck-order deck-order}))
         state (game-state/with-board-pieces state [rose-disc-minion])
         {:keys [ok? state events]} (game-state/apply-disc-move
@@ -4278,8 +4140,8 @@
 
 (deftest disc-move-rejects-missing-or-invalid-territory_replacements_without_mutation
   (let [deck-order (deck-with-cards-at {0 "sun"
-                                        (board-deck-position 3) "coins2"
-                                        (board-deck-position 4) "cups2"})
+                                        (board-card-position 3) "coins2"
+                                        (board-card-position 4) "cups2"})
         state (:state (game-state/create-game player-specs {:deck-order deck-order}))
         state (game-state/with-board-pieces state [rose-disc-minion])
         base-command {:player-id :rose

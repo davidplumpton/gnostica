@@ -1,6 +1,5 @@
 (ns gnostica.app-state-test
-  (:require [clojure.java.io :as io]
-            [clojure.test :refer [deftest is testing]]
+  (:require [clojure.test :refer [deftest is testing]]
             [gnostica.app.handlers :as app-handlers]
             [gnostica.app-state :as app-state]
             [gnostica.board :as board]
@@ -12,7 +11,20 @@
             [gnostica.game-state :as game-state]
             [gnostica.gesture-input :as gesture-input]
             [gnostica.move-selection.registry :as move-registry]
-            [gnostica.pieces :as pieces]))
+            [gnostica.pieces :as pieces]
+            [gnostica.test-support.app-db :refer [board-cell-by-index
+                                                  discard-card-target
+                                                  hand-card-target
+                                                  mark-game-player-eliminated
+                                                  piece-by-id
+                                                  piece-target
+                                                  remove-board-cell
+                                                  replace-game-player-hand
+                                                  territory-target]]
+            [gnostica.test-support.deck :refer [board-card-position
+                                                deck-starting-with
+                                                deck-with-card-at
+                                                deck-with-cards-at]]))
 
 (def test-player-specs
   [{:id :rose}
@@ -63,108 +75,14 @@
          :space-index 3
          :orientation :east))
 
-(defn- deck-starting-with [card-ids]
-  (let [front-ids (set card-ids)]
-    (vec
-     (concat
-      (map cards/card-by-id card-ids)
-      (remove #(contains? front-ids (:id %)) cards/deck)))))
-
-(defn- deck-with-card-at [index card-id]
-  (let [card (cards/card-by-id card-id)
-        remaining-cards (remove #(= card-id (:id %)) cards/deck)]
-    (vec
-     (concat
-      (take index remaining-cards)
-      [card]
-      (drop index remaining-cards)))))
-
-(defn- deck-with-cards-at [placements]
-  (let [placed-ids (set (vals placements))]
-    (loop [index 0
-           remaining-cards (vec (remove #(contains? placed-ids (:id %)) cards/deck))
-           result []]
-      (cond
-        (= (count result) (count cards/deck))
-        (vec result)
-
-        (contains? placements index)
-        (recur (inc index)
-               remaining-cards
-               (conj result (cards/card-by-id (get placements index))))
-
-        :else
-        (recur (inc index)
-               (subvec remaining-cards 1)
-               (conj result (first remaining-cards)))))))
-
 (defn- contains-data-value? [needle data]
   (boolean
    (some #(= needle %)
          (tree-seq coll? seq data))))
 
-(defn- board-card-position [player-specs board-index]
-  (+ (* game-state/starting-hand-size (count player-specs))
-     board-index))
-
-(defn- piece-by-id [db piece-id]
-  (some #(when (= piece-id (:id %)) %)
-        (app-state/board-pieces db)))
-
-(defn- board-cell-by-index [db board-index]
-  (some #(when (= board-index (:index %)) %)
-        (app-state/board db)))
-
-(defn- territory-target [targets board-index]
-  (some #(when (= board-index (:board-index %)) %)
-        (:territories targets)))
-
-(defn- piece-target [targets piece-id]
-  (some #(when (= piece-id (:piece-id %)) %)
-        (:pieces targets)))
-
-(defn- hand-card-target [targets card-id]
-  (some #(when (= card-id (:card-id %)) %)
-        (:hand-cards targets)))
-
-(defn- discard-card-target [targets card-id]
-  (some #(when (= card-id (:card-id %)) %)
-        (:discard-cards targets)))
-
 (defn- move-control-group-summary [db]
   (mapv #(select-keys % [:type :power :action-power])
         (:control-groups (app-state/move-panel-view db))))
-
-(defn- read-source-forms [path]
-  (with-open [reader (java.io.PushbackReader. (io/reader path))]
-    (loop [forms []]
-      (let [form (read {:eof ::eof} reader)]
-        (if (= ::eof form)
-          forms
-          (recur (conj forms form)))))))
-
-(defn- form-nodes [form]
-  (tree-seq coll? seq form))
-
-(defn- move-panel-render-control-group-branches []
-  (let [forms (read-source-forms "src/main/gnostica/ui/move_panel.cljs")
-        render-form (some #(when (and (seq? %)
-                                      (= 'defn- (first %))
-                                      (= 'render-control-group (second %)))
-                             %)
-                          forms)
-        case-form (some #(when (and (seq? %)
-                                    (= 'case (first %))
-                                    (or (= 'type (second %))
-                                        (= '(move-registry/control-renderer-key type)
-                                           (second %))))
-                           %)
-                        (form-nodes render-form))
-        clauses (drop 2 case-form)
-        branch-clauses (if (odd? (count clauses))
-                         (butlast clauses)
-                         clauses)]
-    (into {} (map vec (partition 2 branch-clauses)))))
 
 (defn- action-ribbon-step-summary [view]
   (mapv #(select-keys % [:power :status :board-index :compound?])
@@ -173,34 +91,6 @@
 (defn- alternative-by-field [tray field]
   (some #(when (= field (:field %)) %)
         (:alternatives tray)))
-
-(defn- remove-board-cell [db board-index]
-  (let [cell (board-cell-by-index db board-index)]
-    (cond-> (update-in db [:game :board]
-                       (fn [cells]
-                         (vec (remove #(= board-index (:index %)) cells))))
-      cell
-      (update-in [:game :discard-pile] conj (:card cell)))))
-
-(defn- replace-game-player-hand [db player-id hand]
-  (let [players (mapv (fn [player]
-                        (if (= player-id (:id player))
-                          (assoc player :hand (vec hand))
-                          player))
-                      (get-in db [:game :players]))]
-    (assoc-in (assoc-in db [:game :players] players)
-              [:game :players-by-id]
-              (into {} (map (juxt :id identity) players)))))
-
-(defn- mark-game-player-eliminated [db player-id]
-  (let [players (mapv (fn [player]
-                        (if (= player-id (:id player))
-                          (assoc player :eliminated? true)
-                          player))
-                      (get-in db [:game :players]))]
-    (assoc-in (assoc-in db [:game :players] players)
-              [:game :players-by-id]
-              (into {} (map (juxt :id identity) players)))))
 
 (def ^:private expected-major-power-options
   {"fool" [:fool]
@@ -2661,19 +2551,23 @@
              :action-power :cup}]
            (move-control-group-summary world-cup-db)))))
 
-(deftest move-panel-renderer-covers-emitted-control-groups
+(deftest move-panel-registry-covers-emitted-control-groups
   (let [emitted-types (move-registry/control-renderer-types)
-        rendered-branches (move-panel-render-control-group-branches)
-        rendered-types (set (keys rendered-branches))
-        missing-types (sort (remove rendered-types emitted-types))
-        nil-render-types (sort (keep (fn [[type rendered-form]]
-                                       (when (and (contains? emitted-types type)
-                                                  (nil? rendered-form))
-                                         type))
-                                     rendered-branches))]
+        registry-types (set (keys move-registry/control-renderer-definitions))
+        power-renderer-types (set (mapcat #(or (:renderer-control-keys
+                                                (move-registry/power-definition %))
+                                               (move-registry/power-control-groups %))
+                                           move-registry/move-power-order))
+        missing-registry-types (sort (remove registry-types emitted-types))
+        missing-power-renderers (sort (remove emitted-types power-renderer-types))
+        nil-renderer-keys (sort (keep (fn [type]
+                                        (when (nil? (move-registry/control-renderer-key type))
+                                          type))
+                                      emitted-types))]
     (is (seq emitted-types))
-    (is (= [] missing-types))
-    (is (= [] nil-render-types))))
+    (is (= [] missing-registry-types))
+    (is (= [] missing-power-renderers))
+    (is (= [] nil-renderer-keys))))
 
 (deftest action-ribbon-tracks-ordered-major-steps
   (let [db (app-state/initialize
