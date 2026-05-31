@@ -193,6 +193,27 @@
         :mutation "Change"
         "Path")]]))
 
+(defn- preview-piece-class [{:keys [orientation]}]
+  (str "board-move-preview__piece-marker"
+       " is-" (name (or orientation :up))))
+
+(defn- preview-piece [bounds status {:keys [target-space player-id orientation]}]
+  (when target-space
+    (let [color (get-in pieces/players-by-id [player-id :css-color])]
+      [:div.board-move-preview__piece
+       {:class (str "is-" (name (:orientation target-space))
+                    (preview-status-class status))
+        :style (board-space-style bounds target-space)
+        :data-preview-role "placement"
+        :data-preview-space-kind (name (:kind target-space))
+        :data-preview-orientation (some-> orientation name)
+        :title (str "Place small piece on " (:label target-space))}
+       [:span
+        {:class (preview-piece-class {:orientation orientation})
+         :style (when color {"--piece-color" color})}
+        [:span.board-move-preview__piece-marker-body]
+        [:span.board-move-preview__piece-marker-pip]]])))
+
 (defn- orientation-compass [bounds {:keys [field space selected-orientation options]}]
   (when (and field space (seq options))
     (let [event-id (orientation-event field)]
@@ -221,7 +242,7 @@
             :west "W")])])))
 
 (defn- board-move-preview [bounds {:keys [active? status movement mutation
-                                          summary error]
+                                          placement summary error]
                                    :as preview}]
   (when active?
     [:div.board-move-preview
@@ -235,6 +256,7 @@
        (preview-space bounds :destination status destination-space))
      (when-let [target-space (:target-space mutation)]
        (preview-space bounds :mutation status target-space))
+     [preview-piece bounds status placement]
      [orientation-compass bounds (:orientation-compass preview)]
      (when summary
        [:div.board-move-preview__summary

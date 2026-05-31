@@ -6663,6 +6663,18 @@
     :else
     nil))
 
+(defn- initial-placement-preview [db source params preview-status preview-error]
+  (when (= :place-initial-small source)
+    (when-let [coordinate (target-coordinate-from-params db params)]
+      {:kind :placement
+       :status preview-status
+       :error preview-error
+       :target-space (coordinate-space db coordinate)
+       :player-id (current-player-id db)
+       :piece-size :small
+       :orientation (:orientation params)
+       :summary "Place small piece"})))
+
 (defn- compass-field [db source params]
   (let [stage (:stage (move-selection db))]
     (cond
@@ -6783,8 +6795,9 @@
                    :else
                    nil)
         mutation (mutation-preview db source params preview-status preview-error)
+        placement (initial-placement-preview db source params preview-status preview-error)
         compass (orientation-compass db source params movement)]
-    (cond-> {:active? (boolean (or movement mutation compass))
+    (cond-> {:active? (boolean (or movement mutation placement compass))
              :status preview-status
              :error preview-error}
       movement
@@ -6793,11 +6806,15 @@
       mutation
       (assoc :mutation mutation)
 
+      placement
+      (assoc :placement placement)
+
       compass
       (assoc :orientation-compass compass)
 
-      (or movement mutation compass)
+      (or movement mutation placement compass)
       (assoc :summary (or (:summary mutation)
+                          (:summary placement)
                           (:summary movement)
                           "Choose orientation")))))
 

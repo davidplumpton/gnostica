@@ -1689,6 +1689,18 @@
            (app-state/move-command pending-db)))
     (is (= :orientation
            (get-in partial-preview [:orientation-compass :field])))
+    (is (= {:kind :placement
+            :player-id :rose
+            :piece-size :small
+            :orientation nil}
+           (select-keys (:placement partial-preview)
+                        [:kind :player-id :piece-size :orientation])))
+    (is (= {:kind :wasteland
+            :row 0
+            :col 3}
+           (select-keys (get-in partial-preview [:placement :target-space])
+                        [:kind :row :col])))
+    (is (= "Place small piece" (:summary partial-preview)))
     (is (= {:kind :wasteland
             :row 0
             :col 3}
