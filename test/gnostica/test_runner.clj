@@ -7,6 +7,7 @@
             [gnostica.fixtures-test]
             [gnostica.gameplay-feature-test]
             [gnostica.game-schema-test]
+            [gnostica.game-state.command-schema-test]
             [gnostica.game-state-test]
             [gnostica.game-state.spatial-test]
             [gnostica.gesture-input-test]
@@ -23,6 +24,7 @@
                                         'gnostica.fixtures-test
                                         'gnostica.pieces-test
                                         'gnostica.game-schema-test
+                                        'gnostica.game-state.command-schema-test
                                         'gnostica.game-state.spatial-test
                                         'gnostica.game-state-test
                                         'gnostica.gesture-input-test
