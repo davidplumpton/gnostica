@@ -4,6 +4,7 @@
             [gnostica.game-state :as game-state]
             [gnostica.game-state.spatial :as spatial]
             [gnostica.move-selection.commands :as commands]
+            [gnostica.move-selection.confirmation :as confirmation]
             [gnostica.move-selection.controls :as controls]
             [gnostica.move-selection.registry :as registry]
             [gnostica.move-selection.targets :as targets]
@@ -5235,22 +5236,29 @@
     :move-selection move-selection
     :current-player-id current-player-id
     :source-command source-command
-    :valid-discard-card-ids valid-discard-card-ids
-    :game game
-    :move-power move-power
-    :move-source move-source
-    :move-ready? move-ready?
-    :source-unavailable-reason source-unavailable-reason
-    :update-move-selection update-move-selection
-    :move-error move-error
-    :empty-move-selection empty-move-selection
-    :game-turn-key game-turn-key}))
+    :valid-discard-card-ids valid-discard-card-ids}))
 
 (defn- gameplay-power-command-for-power [db source params power]
   (commands/gameplay-power-command-for-power (command-context) db source params power))
 
 (defn move-command [db]
   (commands/move-command (command-context) db))
+
+(defn- confirmation-context []
+  (confirmation/make-context
+   {:game game
+    :move-selection move-selection
+    :move-source move-source
+    :move-power move-power
+    :move-ready? move-ready?
+    :move-command move-command
+    :world-move? world-move?
+    :selected-world-copied-power selected-world-copied-power
+    :source-unavailable-reason source-unavailable-reason
+    :update-move-selection update-move-selection
+    :move-error move-error
+    :empty-move-selection empty-move-selection
+    :game-turn-key game-turn-key}))
 
 (def ^:private direction-deltas
   {:north [-1 0]
@@ -5708,9 +5716,15 @@
 (defn move-preview-result
   ([db] (move-preview-result db {}))
   ([db transition-options]
-   (commands/move-preview-result (command-context) db transition-options)))
+   (confirmation/move-preview-result
+    (confirmation-context)
+    db
+    transition-options)))
 
 (defn confirm-move
   ([db] (confirm-move db {}))
   ([db transition-options]
-   (commands/confirm-move (command-context) db transition-options)))
+   (confirmation/confirm-move
+    (confirmation-context)
+    db
+    transition-options)))

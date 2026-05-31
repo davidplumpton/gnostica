@@ -1,6 +1,7 @@
 (ns gnostica.move-selection.context-test
   (:require [clojure.test :refer [deftest is testing]]
             [gnostica.move-selection.commands :as commands]
+            [gnostica.move-selection.confirmation :as confirmation]
             [gnostica.move-selection.controls :as controls]
             [gnostica.move-selection.targets :as targets]))
 
@@ -17,7 +18,10 @@
             targets/required-context-keys]
            ["gnostica.move-selection.commands"
             commands/make-context
-            commands/required-context-keys]]]
+            commands/required-context-keys]
+           ["gnostica.move-selection.confirmation"
+            confirmation/make-context
+            confirmation/required-context-keys]]]
     (testing label
       (let [missing-key (first (sort-by pr-str required-keys))]
         (try

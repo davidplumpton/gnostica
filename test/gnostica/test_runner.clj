@@ -14,6 +14,7 @@
             [gnostica.icon-layout-test]
             [gnostica.keyboard-shortcuts-test]
             [gnostica.major-sequence-test]
+            [gnostica.move-selection.confirmation-test]
             [gnostica.move-selection.context-test]
             [gnostica.pieces-test]))
 
@@ -32,6 +33,7 @@
                                         'gnostica.icon-layout-test
                                         'gnostica.keyboard-shortcuts-test
                                         'gnostica.major-sequence-test
+                                        'gnostica.move-selection.confirmation-test
                                         'gnostica.move-selection.context-test
                                         'gnostica.gameplay-feature-test)]
     (System/exit (if (zero? (+ fail error)) 0 1))))
