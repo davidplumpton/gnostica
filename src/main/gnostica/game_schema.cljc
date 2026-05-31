@@ -53,6 +53,9 @@
 (defn- card-ids [state]
   (keep :id (card-zones state)))
 
+(defn- active-piece-ids [state]
+  (keep :id (get-in state [:pieces :on-board])))
+
 (defn- duplicate-values [values]
   (->> values
        frequencies
@@ -63,6 +66,10 @@
 
 (defn- all-card-ids-unique? [state]
   (let [ids (card-ids state)]
+    (= (count ids) (count (set ids)))))
+
+(defn- active-piece-ids-unique? [state]
+  (let [ids (active-piece-ids state)]
     (= (count ids) (count (set ids)))))
 
 (defn- board-indexes-unique? [cells]
@@ -183,6 +190,13 @@
         :message "Cards must appear only once across hands, board, draw pile, and discard pile."
         :data {:card-ids duplicates}}])))
 
+(defn- duplicate-active-piece-errors [state]
+  (let [duplicates (duplicate-values (active-piece-ids state))]
+    (when (seq duplicates)
+      [{:code :duplicate-active-piece-ids
+        :message "Active pieces must have unique ids."
+        :data {:piece-ids duplicates}}])))
+
 (defn- piece-owner-errors [state]
   (let [ids (player-id-set state)]
     (->> (get-in state [:pieces :on-board])
@@ -288,6 +302,7 @@
     (player-count-errors state)
     (hand-limit-errors state)
     (duplicate-card-errors state)
+    (duplicate-active-piece-errors state)
     (piece-owner-errors state)
     (piece-location-errors state)
     (piece-space-errors state)
@@ -473,6 +488,7 @@
    [:fn {:error/message "turn order must match players"} turn-order-matches-players?]
    [:fn {:error/message "current player must match the turn index"} current-player-matches-turn-index?]
    [:fn {:error/message "piece owners must be participating players"} pieces-owned-by-players?]
+   [:fn {:error/message "active piece ids must be unique"} active-piece-ids-unique?]
    [:fn {:error/message "pieces must include exactly one location field"} pieces-have-exactly-one-location?]
    [:fn {:error/message "piece space indexes must reference board cells"} piece-space-indexes-match-board?]
    [:fn {:error/message "wasteland pieces must reference current wasteland coordinates"} piece-wasteland-spaces-current?]

@@ -93,6 +93,42 @@
     (is (re-find (re-pattern (:id duplicate-card))
                  (pr-str explanation)))))
 
+(deftest rejects-duplicate-active-piece-ids
+  (let [state (game-for 2)
+        duplicate-id :duplicate-scout
+        same-player-state (game-state/with-board-pieces
+                           state
+                           [{:id duplicate-id
+                             :player-id :rose
+                             :space-index 0
+                             :size :small
+                             :orientation :up}
+                            {:id duplicate-id
+                             :player-id :rose
+                             :space-index 1
+                             :size :small
+                             :orientation :north}])
+        cross-player-state (game-state/with-board-pieces
+                            state
+                            [{:id duplicate-id
+                              :player-id :rose
+                              :space-index 0
+                              :size :small
+                              :orientation :up}
+                             {:id duplicate-id
+                              :player-id :indigo
+                              :space-index 1
+                              :size :small
+                              :orientation :north}])]
+    (doseq [invalid-state [same-player-state cross-player-state]
+            :let [explanation (game-schema/explain-game invalid-state)]]
+      (is (false? (game-schema/valid-game? invalid-state)))
+      (is (= [{:code :duplicate-active-piece-ids
+               :message "Active pieces must have unique ids."
+               :data {:piece-ids [duplicate-id]}}]
+             (:invariants explanation)))
+      (is (re-find #":duplicate-scout" (pr-str explanation))))))
+
 (deftest rejects-pieces-owned-by-unknown-players
   (let [state (game-for 2)
         unknown-piece {:id :obsidian-scout
