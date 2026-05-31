@@ -1362,6 +1362,13 @@
     :else
     db))
 
+(defn- selected-piece-target-summary [legal-targets piece-id]
+  (when piece-id
+    (some #(when (= piece-id (:piece-id %))
+             (select-keys % [:piece-id :player-id :space-index :space
+                             :size :orientation :piece :label]))
+          (:pieces legal-targets))))
+
 (defn move-panel-view-model
   [{:keys [current-player selection source-options prompt ready? control-groups
            action-ribbon direct-manipulation
@@ -1382,58 +1389,67 @@
            sun-disc-orientation-available?
            sword-orientation-available? distance-options damage-options draw-options
            legal-targets]}]
-  {:current-player current-player
-   :selection selection
-   :source-options source-options
-   :prompt prompt
-   :ready? ready?
-   :control-groups control-groups
-   :action-ribbon action-ribbon
-   :direct-manipulation (normalize-direct-manipulation
-                         {:direct-manipulation direct-manipulation})
-   :controls {:board board
-              :power power
-              :power-options power-options
-              :world-copy-options world-copy-options
-              :world-copied-power-options world-copied-power-options
-              :world-copied-power world-copied-power
-              :rod-mode-options rod-mode-options
-              :disc-action-count-options disc-action-count-options
-              :major-action-count-options major-action-count-options
-              :major-action-count major-action-count
-              :sword-action-count-options sword-action-count-options
-              :devil-action-count-options devil-action-count-options
-              :sun-disc-mode-options sun-disc-mode-options
-              :fool-reveal-count-options fool-reveal-count-options
-              :fool-reveal-state fool-reveal-state
-              :fool-play-power-options fool-play-power-options
-              :fool-play-power fool-play-power
-              :high-priestess-redraw-count-options high-priestess-redraw-count-options
-              :high-priestess-redraw-options high-priestess-redraw-options
-              :judgement-card-options judgement-card-options
-              :judgement-card-maximum judgement-card-maximum
-              :disc-minion-orientation-required? disc-minion-orientation-required?
-              :disc-target-kind-options disc-target-kind-options
-              :sword-target-kind-options sword-target-kind-options
-              :piece-options piece-options
-              :target-piece-options target-piece-options
-              :hand-options hand-options
-              :discard-card-options discard-card-options
-              :source-board-options source-board-options
-              :target-board-options target-board-options
-              :target-wasteland-options target-wasteland-options
-              :legal-targets legal-targets
-              :territory-card-source-options territory-card-source-options
-              :one-point-card-options one-point-card-options
-              :replacement-card-options replacement-card-options
-              :orientation-options orientation-options
-              :orientation-required? orientation-required?
-              :disc-orientation-available? disc-orientation-available?
-              :sun-disc-orientation-available? sun-disc-orientation-available?
-              :sword-orientation-available? sword-orientation-available?
-              :distance-options distance-options
-              :damage-options damage-options
-              :draw-options draw-options}})
+  (let [params (:params selection)
+        sun-cup-target-piece (selected-piece-target-summary
+                              legal-targets
+                              (:target-piece-id params))
+        sun-disc-target-piece (selected-piece-target-summary
+                               legal-targets
+                               (:sun-disc-target-piece-id params))]
+    {:current-player current-player
+     :selection selection
+     :source-options source-options
+     :prompt prompt
+     :ready? ready?
+     :control-groups control-groups
+     :action-ribbon action-ribbon
+     :direct-manipulation (normalize-direct-manipulation
+                           {:direct-manipulation direct-manipulation})
+     :controls {:board board
+                :power power
+                :power-options power-options
+                :world-copy-options world-copy-options
+                :world-copied-power-options world-copied-power-options
+                :world-copied-power world-copied-power
+                :rod-mode-options rod-mode-options
+                :disc-action-count-options disc-action-count-options
+                :major-action-count-options major-action-count-options
+                :major-action-count major-action-count
+                :sword-action-count-options sword-action-count-options
+                :devil-action-count-options devil-action-count-options
+                :sun-disc-mode-options sun-disc-mode-options
+                :sun-cup-target-piece sun-cup-target-piece
+                :sun-disc-target-piece sun-disc-target-piece
+                :fool-reveal-count-options fool-reveal-count-options
+                :fool-reveal-state fool-reveal-state
+                :fool-play-power-options fool-play-power-options
+                :fool-play-power fool-play-power
+                :high-priestess-redraw-count-options high-priestess-redraw-count-options
+                :high-priestess-redraw-options high-priestess-redraw-options
+                :judgement-card-options judgement-card-options
+                :judgement-card-maximum judgement-card-maximum
+                :disc-minion-orientation-required? disc-minion-orientation-required?
+                :disc-target-kind-options disc-target-kind-options
+                :sword-target-kind-options sword-target-kind-options
+                :piece-options piece-options
+                :target-piece-options target-piece-options
+                :hand-options hand-options
+                :discard-card-options discard-card-options
+                :source-board-options source-board-options
+                :target-board-options target-board-options
+                :target-wasteland-options target-wasteland-options
+                :legal-targets legal-targets
+                :territory-card-source-options territory-card-source-options
+                :one-point-card-options one-point-card-options
+                :replacement-card-options replacement-card-options
+                :orientation-options orientation-options
+                :orientation-required? orientation-required?
+                :disc-orientation-available? disc-orientation-available?
+                :sun-disc-orientation-available? sun-disc-orientation-available?
+                :sword-orientation-available? sword-orientation-available?
+                :distance-options distance-options
+                :damage-options damage-options
+                :draw-options draw-options}}))
 
 (defn move-panel-view [db]
   (move-panel-view-model

@@ -467,25 +467,42 @@
          (piece-choice-label board piece)])]
      [:p.move-step__empty "No pieces available."])])
 
-(defn- target-piece-choices [board pieces selected-piece-id]
-  [:div.move-step
-   [:div.move-step__header
-    [:span "Target piece"]
-    [:strong
-     (if-let [piece (some #(when (= selected-piece-id (:id %)) %) pieces)]
-       (ui/piece-summary piece)
-       "None")]]
-   (if (seq pieces)
-     [:div.move-choice-list
-      (for [piece pieces]
-        ^{:key (:id piece)}
-        [:button.move-chip
-         {:type "button"
-          :class (when (= selected-piece-id (:id piece)) "is-selected")
-          :aria-pressed (= selected-piece-id (:id piece))
-          :on-click #(rf/dispatch [events/select-move-target-piece (:id piece)])}
-         (piece-choice-label board piece)])]
-     [:p.move-step__empty "No target pieces available."])])
+(defn- target-piece-choices
+  ([board pieces selected-piece-id]
+   (target-piece-choices "Target piece" board pieces selected-piece-id))
+  ([label board pieces selected-piece-id]
+   [:div.move-step
+    [:div.move-step__header
+     [:span label]
+     [:strong
+      (if-let [piece (some #(when (= selected-piece-id (:id %)) %) pieces)]
+        (ui/piece-summary piece)
+        "None")]]
+    (if (seq pieces)
+      [:div.move-choice-list
+       (for [piece pieces]
+         ^{:key (:id piece)}
+         [:button.move-chip
+          {:type "button"
+           :class (when (= selected-piece-id (:id piece)) "is-selected")
+           :aria-pressed (= selected-piece-id (:id piece))
+           :on-click #(rf/dispatch [events/select-move-target-piece (:id piece)])}
+          (piece-choice-label board piece)])]
+      [:p.move-step__empty "No target pieces available."])]))
+
+(defn- target-piece-summary [label board target-piece]
+  (let [piece (:piece target-piece)]
+    [:div.move-step
+     [:div.move-step__header
+      [:span label]
+      [:strong
+       (if piece
+         (ui/piece-summary piece)
+         "None")]]
+     [:p.move-step__summary
+      (if piece
+        (piece-choice-label board piece)
+        "No target piece selected.")]]))
 
 (defn- orientation-choices
   ([options selected-orientation]
@@ -824,7 +841,8 @@
 (defn- sun-move-controls
   [params board sun-disc-mode-options target-piece-options target-board-options
    target-wasteland-options one-point-card-options replacement-card-options
-   orientation-options sun-disc-orientation-available? legal-targets]
+   orientation-options sun-cup-target-piece sun-disc-orientation-available?
+   legal-targets]
   (let [cup-target-ready? (or (:target-piece-id params)
                               (:target-wasteland params)
                               (and (some? (:target-board-index params))
@@ -842,7 +860,13 @@
      (when (and (not (:sun-disc-mode params))
                 (not (:target-board-index params))
                 (not (:target-wasteland params)))
-       [target-piece-choices board target-piece-options (:target-piece-id params)])
+       [target-piece-choices "Cup target piece"
+        board
+        target-piece-options
+        (:target-piece-id params)])
+     (when (and (:sun-disc-mode params)
+                (:target-piece-id params))
+       [target-piece-summary "Cup target piece" board sun-cup-target-piece])
      (when (:target-board-index params)
        [orientation-choices orientation-options (:orientation params)])
      (when cup-target-ready?
@@ -859,7 +883,8 @@
 
        :piece
        [:<>
-        [target-piece-choices board
+        [target-piece-choices "Disc target piece"
+         board
          target-piece-options
          (:sun-disc-target-piece-id params)]
         (when (and (:sun-disc-target-piece-id params)
@@ -1018,6 +1043,7 @@
                 disc-action-count-options major-action-count-options major-action-count
                 sword-action-count-options devil-action-count-options
                 sun-disc-mode-options
+                sun-cup-target-piece
                 fool-reveal-count-options fool-reveal-state
                 fool-play-power-options fool-play-power
                 high-priestess-redraw-count-options
@@ -1105,6 +1131,7 @@
        one-point-card-options
        replacement-card-options
        orientation-options
+       sun-cup-target-piece
        sun-disc-orientation-available?
        legal-targets]
 

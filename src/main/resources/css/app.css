@@ -2303,6 +2303,7 @@ img {
 
 .move-panel__prompt,
 .move-step__empty,
+.move-step__summary,
 .move-error {
   margin: 0;
   color: var(--muted);

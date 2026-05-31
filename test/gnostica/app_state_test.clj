@@ -1645,6 +1645,40 @@
                                  replacement-tray
                                  :replacement-card-id)))))))
 
+(deftest sun-piece-cup-target-stays-distinct-from-disc-target-in-move-panel-view
+  (let [db (app-state/initialize
+            {:player-specs test-player-specs
+             :game-options {:deck-order (deck-starting-with ["sun"])}
+             :demo-board-pieces [rose-hand-cup-enemy-piece
+                                 rose-rod-target
+                                 indigo-rod-target]})
+        cup-target-db (-> db
+                          (app-state/select-move-source :play-hand-card)
+                          (app-state/select-move-hand-card "sun")
+                          (app-state/select-move-piece :rose-striker)
+                          (app-state/select-move-power :sun)
+                          (app-state/select-move-target-piece :indigo-rod-target))
+        skip-db (app-state/select-move-sun-disc-mode cup-target-db :skip)
+        disc-piece-db (-> cup-target-db
+                          (app-state/select-move-sun-disc-mode :piece)
+                          (app-state/select-move-target-piece :rose-striker))
+        skip-controls (:controls (app-state/move-panel-view skip-db))
+        disc-piece-controls (:controls (app-state/move-panel-view disc-piece-db))]
+    (is (= :indigo-rod-target
+           (get-in skip-controls [:sun-cup-target-piece :piece-id])))
+    (is (nil? (:sun-disc-target-piece skip-controls)))
+    (is (= :indigo-rod-target
+           (get-in disc-piece-controls [:sun-cup-target-piece :piece-id])))
+    (is (= :rose-striker
+           (get-in disc-piece-controls [:sun-disc-target-piece :piece-id])))
+    (is (= {:target-piece-id :indigo-rod-target
+            :sun-disc-mode :piece
+            :sun-disc-target-piece-id :rose-striker}
+           (select-keys (app-state/move-params disc-piece-db)
+                        [:target-piece-id
+                         :sun-disc-mode
+                         :sun-disc-target-piece-id])))))
+
 (deftest gesture-intent-stages-initial-placement-from-stash-piece
   (let [db (app-state/initialize {:player-specs test-player-specs
                                   :game-options {:shuffle-fn identity}
