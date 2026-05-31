@@ -1,5 +1,6 @@
 (ns gnostica.ui.board
   (:require [gnostica.app.events :as events]
+            [gnostica.board-layout :as layout]
             [gnostica.gesture-input :as gesture-input]
             [gnostica.pieces :as pieces]
             [gnostica.three-board :as three-board]
@@ -278,7 +279,20 @@
 (defn- piece-drag-input [piece descriptor]
   (gesture-input/piece-drag-input piece descriptor))
 
-(defn- board-piece-marker [slot piece descriptor drag-enabled? drag-hover]
+(defn- css-percent [value]
+  (str value "%"))
+
+(defn- board-piece-style [player slot piece-count space-orientation]
+  (let [[left top] (layout/piece-slot-css-position slot
+                                                   piece-count
+                                                   space-orientation)]
+    {"--piece-color" (:css-color player)
+     "--piece-scale" (str (layout/piece-slot-scale piece-count))
+     "left" (css-percent left)
+     "top" (css-percent top)}))
+
+(defn- board-piece-marker [slot piece-count space-orientation piece descriptor
+                            drag-enabled? drag-hover]
   (let [pips (pieces/pips piece)
         player (pieces/player-for piece)
         drag-input (when drag-enabled?
@@ -296,7 +310,7 @@
 	                                        :piece-id (:id piece)}
 	                                       descriptor)
 	                  (when (:selected? descriptor) " is-selected-target"))
-      :style {"--piece-color" (:css-color player)}
+      :style (board-piece-style player slot piece-count space-orientation)
       :title (target-reason descriptor)
       :data-piece-id (name (:id piece))
       :data-move-target-status (some-> (:status descriptor) name)
@@ -326,16 +340,23 @@
          ^{:key pip}
          [:span.board-piece__pip])]]]))
 
-(defn- board-piece-markers [board-pieces piece-targets drag-enabled? drag-hover]
-  (when (seq board-pieces)
-    [:div.board-card__pieces
-     (for [[slot piece] (map-indexed vector
-                                     (take pieces/max-pieces-per-space board-pieces))]
-       (board-piece-marker slot
-                           piece
-                           (get piece-targets (:id piece))
-                           drag-enabled?
-                           drag-hover))]))
+(defn- board-piece-markers [space-orientation board-pieces piece-targets
+                            drag-enabled? drag-hover]
+  (when-let [space-pieces (seq board-pieces)]
+    (let [piece-count (count space-pieces)]
+      [:div.board-card__pieces
+       {:data-piece-count piece-count
+        :data-overflow-piece-count (max 0
+                                        (- piece-count
+                                           pieces/max-pieces-per-space))}
+       (for [[slot piece] (layout/visible-piece-slots space-pieces)]
+         (board-piece-marker slot
+                             piece-count
+                             space-orientation
+                             piece
+                             (get piece-targets (:id piece))
+                             drag-enabled?
+                             drag-hover))])))
 
 (defn- pieces-label [board-pieces]
   (apply str (interpose "; " (map ui/piece-summary board-pieces))))
@@ -373,7 +394,11 @@
       :aria-hidden (when-not (seq board-pieces) "true")
       :on-drag-over #(on-drag-over-target % drag-hover target descriptor)
       :on-drop #(on-drop-gesture % target drag-hover)}
-     (board-piece-markers board-pieces piece-targets drag-enabled? drag-hover)]))
+     (board-piece-markers orientation
+                          board-pieces
+                          piece-targets
+                          drag-enabled?
+                          drag-hover)]))
 
 (defn board-card [bounds {:keys [index row col orientation card] :as cell}
                   selected? board-pieces card-icon-mode descriptor piece-targets
@@ -427,10 +452,14 @@
       :on-drag-end #(do
                       (gesture-input/clear-active-gesture-input!)
                       (reset! drag-hover nil))
-      :on-drag-over #(on-drag-over-target % drag-hover target descriptor)
-      :on-drop #(on-drop-gesture % target drag-hover)}
+     :on-drag-over #(on-drag-over-target % drag-hover target descriptor)
+     :on-drop #(on-drop-gesture % target drag-hover)}
      [card-ui/card-face card "board-card__face" card-icon-mode]
-     (board-piece-markers board-pieces piece-targets drag-enabled? drag-hover)]))
+     (board-piece-markers orientation
+                          board-pieces
+                          piece-targets
+                          drag-enabled?
+                          drag-hover)]))
 
 (defn- board-stage-content [drag-hover]
   (let [{:keys [cells board-pieces pieces-by-space wastelands space-bounds

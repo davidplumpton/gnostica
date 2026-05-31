@@ -25,6 +25,10 @@
   (is (some #(= pieces/max-pieces-per-space (count %))
             (vals (pieces/pieces-by-space fixtures/demo-board-pieces)))))
 
+(deftest overflow-board-pieces-exercise-unbounded-layout
+  (is (some #(> (count %) pieces/max-pieces-per-space)
+            (vals (pieces/pieces-by-space fixtures/overflow-board-pieces)))))
+
 (deftest smoke-board-pieces-exercise-wasteland-rendering
   (is (= [fixtures/smoke-wasteland-piece]
          (pieces/pieces-for-wasteland fixtures/smoke-board-pieces 0 3))))

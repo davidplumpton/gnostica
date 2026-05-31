@@ -4,6 +4,7 @@
             [gnostica.app.handlers :as app-handlers]
             [gnostica.app-state :as app-state]
             [gnostica.board :as board]
+            [gnostica.board-layout :as layout]
             [gnostica.cards :as cards]
             [gnostica.deterministic-shuffle :as deterministic-shuffle]
             [gnostica.fixtures :as fixtures]
@@ -941,6 +942,25 @@
     (is (false? (:three-renderer-available? view)))
     (is (= "Three.js WebGL rendering is unavailable; using the CSS board. No WebGL"
            (:three-renderer-message view)))))
+
+(deftest board-view-keeps-overflow-space-pieces-visible-to-target-descriptors
+  (let [player-specs (mapv #(select-keys % [:id :name]) pieces/players)
+        db (app-state/initialize {:player-specs player-specs
+                                  :game-options {:shuffle-fn identity}
+                                  :demo-board-pieces fixtures/overflow-board-pieces})
+        view (app-state/board-view db)
+        overflow-space (pieces/territory-space 4)
+        overflow-pieces (get (:pieces-by-space view) overflow-space)
+        overflow-ids (set (map :id overflow-pieces))
+        descriptor-ids (->> (get-in view [:legal-targets :pieces])
+                            (filter #(= overflow-space (:space-key %)))
+                            (map :piece-id)
+                            set)]
+    (is (< pieces/max-pieces-per-space (count overflow-pieces)))
+    (is (= overflow-ids descriptor-ids))
+    (is (= overflow-ids
+           (set (map (comp :id second)
+                     (layout/visible-piece-slots overflow-pieces)))))))
 
 (deftest legal-target-descriptors-track-gapped-and-appended-board-indexes
   (let [deck-order (deck-with-cards-at {0 "coins2"

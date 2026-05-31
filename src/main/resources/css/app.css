@@ -1742,12 +1742,15 @@ img {
 
 .board-piece {
   --piece-footprint: 1.35rem;
+  --piece-scale: 1;
   position: absolute;
   display: block;
   width: var(--piece-footprint);
   height: var(--piece-footprint);
   filter: drop-shadow(0 0.12rem 0.18rem rgba(0, 0, 0, 0.42));
   pointer-events: auto;
+  transform: translate(-50%, -50%) scale(var(--piece-scale));
+  transform-origin: center;
 }
 
 .board-piece.is-draggable {

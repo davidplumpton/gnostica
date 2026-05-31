@@ -78,12 +78,13 @@
       (is (= cell (layout/cell-by-index cells (:index cell)))))
     (is (nil? (layout/cell-by-index cells 99)))))
 
-(deftest piece-slots-are-stable-and-limited
+(deftest piece-slots-are-stable-and-overflow-aware
   (let [space-pieces (mapv #(assoc (first fixtures/demo-board-pieces) :id %)
                            [:a :b :c :d])]
     (is (= [[0 (space-pieces 0)]
             [1 (space-pieces 1)]
-            [2 (space-pieces 2)]]
+            [2 (space-pieces 2)]
+            [3 (space-pieces 3)]]
            (vec (layout/visible-piece-slots space-pieces))))
     (is (= [0 -0.03] (layout/piece-slot-offset 0 1)))
     (is (= [-0.17 0.11] (layout/piece-slot-offset 0 2)))
@@ -91,7 +92,11 @@
     (is (= [-0.21 -0.17] (layout/piece-slot-offset 0 3)))
     (is (= [0.21 -0.17] (layout/piece-slot-offset 1 3)))
     (is (= [0 0.18] (layout/piece-slot-offset 2 3)))
-    (is (= [0 0] (layout/piece-slot-offset 3 3)))))
+    (is (= [0 0] (layout/piece-slot-offset 3 3)))
+    (is (not= [0 0] (layout/piece-slot-offset 3 4)))
+    (is (= 0.84 (layout/piece-slot-scale 4)))
+    (is (roughly-vector= [50 52]
+                         (layout/piece-slot-css-position 0 1 :portrait)))))
 
 (deftest piece-rotation-and-height-math-is-browser-free
   (let [piece-size (:medium pieces/piece-sizes)]

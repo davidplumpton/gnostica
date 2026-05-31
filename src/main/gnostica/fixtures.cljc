@@ -54,6 +54,14 @@
 (def smoke-board-pieces
   (conj demo-board-pieces smoke-wasteland-piece))
 
+(def overflow-board-pieces
+  (conj demo-board-pieces
+        {:id :violet-overflow-keeper
+         :player-id :violet
+         :space-index 4
+         :size :small
+         :orientation :east}))
+
 (defn demo-board-pieces-for [player-specs]
   (let [player-ids (set (map :id player-specs))]
     (filterv #(contains? player-ids (:player-id %))

@@ -10,6 +10,14 @@
   #?(:clj (Math/sqrt value)
      :cljs (js/Math.sqrt value)))
 
+(defn- sin [value]
+  #?(:clj (Math/sin value)
+     :cljs (js/Math.sin value)))
+
+(defn- cos [value]
+  #?(:clj (Math/cos value)
+     :cljs (js/Math.cos value)))
+
 (def card-short 1)
 (def card-long 1.5)
 (def card-gap 0.14)
@@ -124,15 +132,42 @@
   (get (cells-by-index cells) index))
 
 (defn piece-slot-offset [slot piece-count]
-  (get (case piece-count
-         1 [[0 -0.03]]
-         2 [[-0.17 0.11] [0.17 -0.11]]
-         [[-0.21 -0.17] [0.21 -0.17] [0 0.18]])
-       slot
-       [0 0]))
+  (cond
+    (or (neg? slot)
+        (not (pos? piece-count))
+        (<= piece-count slot))
+    [0 0]
+
+    (<= piece-count pieces/max-pieces-per-space)
+    (get (case piece-count
+           1 [[0 -0.03]]
+           2 [[-0.17 0.11] [0.17 -0.11]]
+           [[-0.21 -0.17] [0.21 -0.17] [0 0.18]])
+         slot
+         [0 0])
+
+    :else
+    (let [golden-angle (* pi (- 3 (sqrt 5)))
+          radius-scale (sqrt (/ (inc slot) piece-count))
+          angle (* slot golden-angle)]
+      [(* 0.36 radius-scale (cos angle))
+       (* 0.48 radius-scale (sin angle))])))
+
+(defn piece-slot-css-position [slot piece-count orientation]
+  (let [[offset-x offset-y] (piece-slot-offset slot piece-count)
+        [width height] (space-dimensions {:orientation orientation})]
+    [(* 100 (+ 0.5 (/ offset-x width)))
+     (* 100 (- 0.5 (/ offset-y height)))]))
+
+(defn piece-slot-scale [piece-count]
+  (cond
+    (<= piece-count pieces/max-pieces-per-space) 1
+    (<= piece-count 6) 0.84
+    (<= piece-count 9) 0.72
+    :else 0.62))
 
 (defn visible-piece-slots [space-pieces]
-  (map-indexed vector (take pieces/max-pieces-per-space space-pieces)))
+  (map-indexed vector space-pieces))
 
 (defn piece-compass-z-rotation [orientation]
   (case orientation
