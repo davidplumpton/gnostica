@@ -90,6 +90,8 @@ The smoke check also verifies that the main card zones remain visible in the Thr
 
 **Note:** `br` is non-invasive and never executes git commands. After `br sync --flush-only`, manually commit `.beads/` changes with Jujutsu.
 
+This repository is intentionally `br`-only. Do not use the legacy Go `bd` CLI here: ignored local embedded-Dolt caches under `.beads/embeddeddolt/` are unsupported, and active issue state lives in the br SQLite/JSONL files under `.beads/`.
+
 This project uses `br` from beads_rust for issue tracking:
 
 ```sh

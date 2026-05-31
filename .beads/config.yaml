@@ -1,4 +1,6 @@
-# Beads Project Configuration
+# Gnostica issue tracking is br/beads_rust only.
+# Historical issue ids may still use the bd prefix for continuity.
+# Do not use the legacy Go bd CLI; .beads/embeddeddolt is unsupported.
 # issue_prefix: bd
 # default_priority: 2
 # default_type: task

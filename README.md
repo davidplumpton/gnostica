@@ -114,6 +114,8 @@ Run `clojure -M:release` before `clojure -M:server` or the default `clojure -M:s
 
 This repo tracks work with `br` from beads_rust. Start from `br ready` and `br show <id>` when picking up tickets; see `AGENTS.md` for the detailed workflow and command reference.
 
+This repository is intentionally `br`-only. Do not use the legacy Go `bd` CLI here: old local embedded-Dolt caches under `.beads/embeddeddolt/` are ignored and unsupported, while the active tracker state is the br SQLite/JSONL pair under `.beads/`.
+
 After updating issues, run `br sync --flush-only` and include the resulting `.beads/` changes in the current Jujutsu change or commit. `br` does not run git or Jujutsu commands for you.
 
 ## Version Control
