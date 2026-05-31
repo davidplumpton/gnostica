@@ -1,6 +1,7 @@
 (ns gnostica.app-state-test
   (:require [clojure.test :refer [deftest is testing]]
             [gnostica.app.handlers :as app-handlers]
+            [gnostica.app.subscriptions :as app-subscriptions]
             [gnostica.app-state :as app-state]
             [gnostica.board :as board]
             [gnostica.board-layout :as layout]
@@ -83,6 +84,9 @@
 (defn- move-control-group-summary [db]
   (mapv #(select-keys % [:type :power :action-power])
         (:control-groups (app-state/move-panel-view db))))
+
+(defn- move-panel-subscription-view [db]
+  (app-subscriptions/move-panel-view db [:gnostica.app/move-panel-view]))
 
 (defn- action-ribbon-step-summary [view]
   (mapv #(select-keys % [:power :status :board-index :compound?])
@@ -2550,6 +2554,51 @@
              :power :empress
              :action-power :cup}]
            (move-control-group-summary world-cup-db)))))
+
+(deftest move-panel-subscription-view-matches-app-state-facade
+  (let [composite-db (app-state/initialize
+                      {:player-specs test-player-specs
+                       :game-options {:deck-order (deck-starting-with ["empress"])}
+                       :demo-board-pieces [rose-hand-piece]})
+        hand-source-db (app-state/select-move-source composite-db :play-hand-card)
+        composite-power-db (-> hand-source-db
+                               (app-state/select-move-hand-card "empress")
+                               (app-state/select-move-piece :rose-striker)
+                               (app-state/select-move-power :empress))
+        composite-cup-db (app-state/set-move-minion-orientation
+                          composite-power-db
+                          :east)
+        gesture-db (app-state/start-gesture-intent
+                    composite-db
+                    {:source {:kind :hand-card
+                              :card-id "empress"}
+                     :fields {:piece-id :rose-striker
+                              :power :empress
+                              :minion-orientation :east}
+                     :target {:kind :territory
+                              :board-index 3}})
+        world-db (app-state/initialize
+                  {:player-specs test-player-specs
+                   :game-options
+                   {:deck-order
+                    (deck-with-cards-at
+                     {0 "world"
+                      (board-card-position test-player-specs 3) "empress"})}
+                   :demo-board-pieces [(assoc rose-source-piece
+                                              :orientation :north)]})
+        world-copy-db (-> world-db
+                          (app-state/select-move-source :play-hand-card)
+                          (app-state/select-move-hand-card "world")
+                          (app-state/select-move-piece :rose-scout)
+                          (app-state/select-move-world-copy 3))]
+    (doseq [[label db] [["hand source" hand-source-db]
+                        ["ordered major" composite-power-db]
+                        ["ordered major next step" composite-cup-db]
+                        ["gesture-staged move" gesture-db]
+                        ["world copy" world-copy-db]]]
+      (testing label
+        (is (= (app-state/move-panel-view db)
+               (move-panel-subscription-view db)))))))
 
 (deftest move-panel-registry-covers-emitted-control-groups
   (let [emitted-types (move-registry/control-renderer-types)

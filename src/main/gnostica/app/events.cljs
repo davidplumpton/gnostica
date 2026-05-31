@@ -1,5 +1,6 @@
 (ns gnostica.app.events
   (:require [gnostica.app.keyboard :as keyboard]
+            [gnostica.app.subscriptions :as app-subscriptions]
             [gnostica.app-state :as app-state]
             [gnostica.app.handlers :as handlers]
             [gnostica.game-state :as game-state]
@@ -979,127 +980,7 @@ move-rod-orientation-required?
 
 (rf/reg-sub
  move-panel-view
- :<- [current-player]
- :<- [move-selection]
- :<- [move-source-options]
- :<- [move-prompt]
- :<- [move-ready?]
- :<- [move-control-groups]
- :<- [move-action-ribbon]
- :<- [direct-manipulation]
- :<- [board]
- :<- [move-power]
- :<- [move-power-options]
- :<- [move-world-copy-options]
- :<- [move-world-copied-power-options]
- :<- [move-world-copied-power]
- :<- [move-rod-mode-options]
- :<- [move-disc-action-count-options]
- :<- [move-major-action-count-options]
- :<- [move-major-action-count]
- :<- [move-sword-action-count-options]
- :<- [move-devil-action-count-options]
- :<- [move-sun-disc-mode-options]
- :<- [move-fool-reveal-count-options]
- :<- [move-fool-reveal-state]
- :<- [move-fool-play-power-options]
- :<- [move-fool-play-power]
- :<- [move-high-priestess-redraw-count-options]
- :<- [move-high-priestess-redraw-options]
- :<- [move-judgement-card-options]
- :<- [move-judgement-card-maximum]
- :<- [move-disc-minion-orientation-required?]
- :<- [move-disc-target-kind-options]
- :<- [move-sword-target-kind-options]
- :<- [move-piece-options]
- :<- [move-target-piece-options]
- :<- [move-hand-card-options]
- :<- [move-discard-card-options]
- :<- [move-source-board-options]
- :<- [move-target-board-options]
- :<- [move-target-wasteland-options]
- :<- [move-territory-card-source-options]
- :<- [move-one-point-card-options]
- :<- [move-replacement-card-options]
- :<- [move-orientation-options]
- :<- [move-rod-orientation-required?]
- :<- [move-disc-orientation-available?]
- :<- [move-sun-disc-orientation-available?]
- :<- [move-sword-orientation-available?]
- :<- [move-distance-options]
- :<- [move-damage-options]
- :<- [draw-count-options]
- :<- [move-legal-targets]
-(fn [[current-player selection source-options prompt ready? control-groups
-       action-ribbon direct-manipulation board power
-       power-options world-copy-options world-copied-power-options world-copied-power
-       rod-mode-options disc-action-count-options
-       major-action-count-options major-action-count
-       sword-action-count-options devil-action-count-options
-       sun-disc-mode-options fool-reveal-count-options
-       fool-reveal-state fool-play-power-options fool-play-power
-       high-priestess-redraw-count-options high-priestess-redraw-options
-       judgement-card-options judgement-card-maximum
-       disc-minion-orientation-required? disc-target-kind-options
-       sword-target-kind-options piece-options target-piece-options
-       hand-options discard-card-options source-board-options target-board-options
-       target-wasteland-options territory-card-source-options
-       one-point-card-options replacement-card-options orientation-options orientation-required?
-       disc-orientation-available? sun-disc-orientation-available?
-       sword-orientation-available?
-       distance-options damage-options draw-options legal-targets] _]
-   (app-state/move-panel-view-model
-    {:current-player current-player
-     :selection selection
-     :source-options source-options
-     :prompt prompt
-     :ready? ready?
-     :control-groups control-groups
-     :action-ribbon action-ribbon
-     :direct-manipulation direct-manipulation
-     :board board
-     :power power
-     :power-options power-options
-     :world-copy-options world-copy-options
-     :world-copied-power-options world-copied-power-options
-     :world-copied-power world-copied-power
-     :rod-mode-options rod-mode-options
-     :disc-action-count-options disc-action-count-options
-     :major-action-count-options major-action-count-options
-     :major-action-count major-action-count
-     :sword-action-count-options sword-action-count-options
-     :devil-action-count-options devil-action-count-options
-     :sun-disc-mode-options sun-disc-mode-options
-     :fool-reveal-count-options fool-reveal-count-options
-     :fool-reveal-state fool-reveal-state
-     :fool-play-power-options fool-play-power-options
-     :fool-play-power fool-play-power
-     :high-priestess-redraw-count-options high-priestess-redraw-count-options
-     :high-priestess-redraw-options high-priestess-redraw-options
-     :judgement-card-options judgement-card-options
-     :judgement-card-maximum judgement-card-maximum
-     :disc-minion-orientation-required? disc-minion-orientation-required?
-     :disc-target-kind-options disc-target-kind-options
-     :sword-target-kind-options sword-target-kind-options
-     :piece-options piece-options
-     :target-piece-options target-piece-options
-     :hand-options hand-options
-     :discard-card-options discard-card-options
-     :source-board-options source-board-options
-     :target-board-options target-board-options
-     :target-wasteland-options target-wasteland-options
-     :legal-targets legal-targets
-     :territory-card-source-options territory-card-source-options
-     :one-point-card-options one-point-card-options
-     :replacement-card-options replacement-card-options
-     :orientation-options orientation-options
-     :orientation-required? orientation-required?
-     :disc-orientation-available? disc-orientation-available?
-     :sun-disc-orientation-available? sun-disc-orientation-available?
-     :sword-orientation-available? sword-orientation-available?
-     :distance-options distance-options
-     :damage-options damage-options
-     :draw-options draw-options})))
+ app-subscriptions/move-panel-view)
 
 (rf/reg-sub
  help-dialogs-view
