@@ -8,6 +8,7 @@
             [gnostica.game-state.manipulation :as manipulation]
             [gnostica.game-state.placement :as placement]
             [gnostica.game-state.rod :as rod]
+            [gnostica.game-state.spatial :as spatial]
             [gnostica.game-state.sword :as sword]
             [gnostica.game-state.world :as world]))
 
@@ -119,7 +120,7 @@
   (apply-source-turn-action state command cup/apply-cup-move))
 
 (def rod-modes rod/rod-modes)
-(def rod-direction-offsets rod/rod-direction-offsets)
+(def rod-direction-offsets spatial/cardinal-direction-offsets)
 (defn rod-destination-coordinate [coordinate direction distance]
   (rod/rod-destination-coordinate coordinate direction distance))
 
@@ -130,7 +131,7 @@
   (apply-source-turn-action state command rod/apply-rod-move))
 
 (def disc-territory-card-sources disc/disc-territory-card-sources)
-(def disc-direction-offsets disc/disc-direction-offsets)
+(def disc-direction-offsets spatial/cardinal-direction-offsets)
 (defn disc-target-coordinate [coordinate orientation]
   (disc/disc-target-coordinate coordinate orientation))
 
@@ -147,7 +148,7 @@
   (apply-source-turn-action state command disc/apply-sun-move))
 
 (def sword-territory-card-sources sword/sword-territory-card-sources)
-(def sword-direction-offsets sword/sword-direction-offsets)
+(def sword-direction-offsets spatial/cardinal-direction-offsets)
 (defn sword-target-coordinate [coordinate orientation]
   (sword/sword-target-coordinate coordinate orientation))
 

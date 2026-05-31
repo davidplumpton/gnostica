@@ -1,56 +1,22 @@
 (ns gnostica.game-state.rod
   (:require [gnostica.board :as board]
             [gnostica.cards :as cards]
+            [gnostica.game-state.card-source :as card-source]
             [gnostica.game-state.core :as core]
+            [gnostica.game-state.spatial :as spatial]
             [gnostica.pieces :as pieces]))
 
 (def rod-modes #{:move-minion
                  :push-piece
                  :push-territory})
 
-(def rod-direction-offsets
-  {:north [-1 0]
-   :east [0 1]
-   :south [1 0]
-   :west [0 -1]})
-
-(defn- discard-pile-card [state card-id]
-  (some (fn [card]
-          (when (= card-id (:id card))
-            card))
-        (:discard-pile state)))
-
-(defn- coordinate-map [coordinate]
-  (cond
-    (map? coordinate)
-    (when (and (int? (:row coordinate))
-               (int? (:col coordinate)))
-      (select-keys coordinate [:row :col]))
-
-    (sequential? coordinate)
-    (let [[row col] coordinate]
-      (when (and (int? row) (int? col))
-        {:row row
-         :col col}))))
-
 (defn rod-destination-coordinate [coordinate direction distance]
-  (when-let [[row-offset col-offset] (get rod-direction-offsets direction)]
-    (when-let [{:keys [row col]} (coordinate-map coordinate)]
-      (when (int? distance)
-        {:row (+ row (* row-offset distance))
-         :col (+ col (* col-offset distance))}))))
-
-(defn- same-coordinate? [left right]
-  (= (coordinate-map left)
-     (coordinate-map right)))
+  (spatial/offset-coordinate coordinate direction distance))
 
 (defn- rod-targetable-coordinate? [actor-coordinate target-coordinate direction target-self?]
   (or target-self?
-      (same-coordinate? target-coordinate
-                        (rod-destination-coordinate actor-coordinate direction 1))))
-
-(defn- target-summary [target]
-  (select-keys target [:kind :piece-id :board-index :row :col]))
+      (spatial/same-coordinate? target-coordinate
+                                (rod-destination-coordinate actor-coordinate direction 1))))
 
 (defn- territory-target-cell [state target]
   (cond
@@ -201,7 +167,7 @@
                 :power-card power-card
                 :rod-variant (:rod-variant variant-result)
                 :piece piece
-                :piece-coordinate (coordinate-map piece-coordinate)
+                :piece-coordinate (spatial/coordinate-map piece-coordinate)
                 :direction (:orientation piece)}
                variant-result))))
 
@@ -209,7 +175,7 @@
        (let [card (or source-card
                       (core/player-hand-card state player-id (:card-id source))
                       (when source-card-already-discarded?
-                        (discard-pile-card state (:card-id source))))]
+                        (card-source/discard-pile-card state (:card-id source))))]
          (cond
            (nil? card)
            (core/failure :invalid-hand-card
@@ -235,7 +201,7 @@
                 :rod-variant (:rod-variant variant-result)
                 :discard-source-card? (not source-card-already-discarded?)
                 :piece piece
-                :piece-coordinate (coordinate-map piece-coordinate)
+                :piece-coordinate (spatial/coordinate-map piece-coordinate)
                 :direction (:orientation piece)}
                variant-result))))
 
@@ -296,7 +262,7 @@
 (defn- normalize-rod-piece-target [state player-id source-result target-piece distance orientation]
   (let [{:keys [piece direction]
          source-coordinate :piece-coordinate} source-result
-        target-coordinate (coordinate-map (core/piece-coordinate state target-piece))
+        target-coordinate (spatial/coordinate-map (core/piece-coordinate state target-piece))
         target-self? (= (:id piece) (:id target-piece))]
     (cond
       (nil? target-coordinate)
@@ -339,7 +305,7 @@
       (if (and (some? target)
                (not= {:kind :piece
                       :piece-id (:id piece)}
-                     (target-summary target)))
+                     (spatial/target-summary target)))
         (core/failure :invalid-rod-target
                  "Move-minion Rod commands move the acting minion and do not need another target."
                  {:target target
@@ -564,17 +530,6 @@
                    :row row
                    :col col}}))
 
-(defn- move-piece-to-space [piece piece-space orientation]
-  (let [piece (cond-> piece
-                orientation (assoc :orientation orientation))]
-    (if-let [space-index (:space-index piece-space)]
-      (-> piece
-          (dissoc :space)
-          (assoc :space-index space-index))
-      (-> piece
-          (dissoc :space-index)
-          (assoc :space (:space piece-space))))))
-
 (defn- apply-rod-piece-move
   [state player-id {:keys [command source-card discard-source-card? target-piece]} opts]
   (let [{:keys [mode source target distance direction rod-variant]} command
@@ -585,9 +540,9 @@
                                                   opts)]
     (if-not (:ok? destination-result)
       destination-result
-      (let [moved-piece (move-piece-to-space target-piece
-                                             (:piece-space destination-result)
-                                             (:orientation target))
+      (let [moved-piece (spatial/move-piece-to-space target-piece
+                                                     (:piece-space destination-result)
+                                                     (:orientation target))
             event {:type (case mode
                            :move-minion :rod/minion-moved
                            :push-piece :rod/piece-pushed)

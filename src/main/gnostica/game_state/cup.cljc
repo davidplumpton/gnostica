@@ -1,46 +1,19 @@
 (ns gnostica.game-state.cup
   (:require [gnostica.board :as board]
             [gnostica.cards :as cards]
+            [gnostica.game-state.card-source :as card-source]
             [gnostica.game-state.core :as core]
+            [gnostica.game-state.spatial :as spatial]
             [gnostica.pieces :as pieces]))
 
 (def cup-territory-card-sources #{:hand :draw-pile-top})
 
-(def cup-direction-offsets
-  {:north [-1 0]
-   :east [0 1]
-   :south [1 0]
-   :west [0 -1]})
-
-(defn- coordinate-map [coordinate]
-  (cond
-    (map? coordinate)
-    (when (and (int? (:row coordinate))
-               (int? (:col coordinate)))
-      (select-keys coordinate [:row :col]))
-
-    (sequential? coordinate)
-    (let [[row col] coordinate]
-      (when (and (int? row)
-                 (int? col))
-        {:row row
-         :col col}))))
-
 (defn- cup-target-coordinate [state source]
-  (when-let [{:keys [row col]} (coordinate-map (core/piece-coordinate state (:piece source)))]
-    (if (= :up (get-in source [:piece :orientation]))
-      {:row row
-       :col col}
-      (when-let [[row-offset col-offset] (get cup-direction-offsets
-                                               (get-in source [:piece :orientation]))]
-        {:row (+ row row-offset)
-         :col (+ col col-offset)}))))
-
-(defn- target-summary [target]
-  (select-keys target [:kind :piece-id :board-index :row :col]))
+  (spatial/target-coordinate (core/piece-coordinate state (:piece source))
+                             (get-in source [:piece :orientation])))
 
 (defn- cup-targetable-coordinate? [state source target-coordinate]
-  (= (coordinate-map target-coordinate)
+  (= (spatial/coordinate-map target-coordinate)
      (cup-target-coordinate state source)))
 
 (defn- cup-target-out-of-range [state source target target-coordinate]
@@ -48,20 +21,14 @@
                 "Cup targets must be in the acting minion's target space."
                 {:piece-id (get-in source [:piece :id])
                  :orientation (get-in source [:piece :orientation])
-                 :target (target-summary target)
-                 :target-coordinate (coordinate-map target-coordinate)
+                 :target (spatial/target-summary target)
+                 :target-coordinate (spatial/coordinate-map target-coordinate)
                  :expected-coordinate (cup-target-coordinate state source)}))
 
 (defn validate-target-coordinate [state source target target-coordinate]
   (if (cup-targetable-coordinate? state source target-coordinate)
     {:ok? true}
     (cup-target-out-of-range state source target target-coordinate)))
-
-(defn- discard-pile-card [state card-id]
-  (some (fn [card]
-          (when (= card-id (:id card))
-            card))
-        (:discard-pile state)))
 
 (defn- resolve-cup-variant [card requested-variant source]
   (let [variants (cards/cup-variants card)
@@ -162,7 +129,7 @@
       (let [card (or source-card
                      (core/player-hand-card state player-id (:card-id source))
                      (when source-card-already-discarded?
-                       (discard-pile-card state (:card-id source))))]
+                       (card-source/discard-pile-card state (:card-id source))))]
         (cond
           (nil? card)
           (core/failure :invalid-hand-card

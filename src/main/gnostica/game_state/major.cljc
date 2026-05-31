@@ -1,5 +1,6 @@
 (ns gnostica.game-state.major
-  (:require [gnostica.game-state.core :as core]))
+  (:require [gnostica.game-state.card-source :as card-source]
+            [gnostica.game-state.core :as core]))
 
 (defn- major-card? [card]
   (= :major (:arcana card)))
@@ -14,12 +15,6 @@
 (defn- source-summary [source-result]
   (core/source-summary (:source source-result)))
 
-(defn- discard-pile-card [state card-id]
-  (some (fn [card]
-          (when (= card-id (:id card))
-            card))
-        (:discard-pile state)))
-
 (defn- no-minions-failure [player-id source]
   (core/failure :no-major-minions
                 "Major arcana sources require at least one current-player minion."
@@ -32,7 +27,7 @@
   ([state player-id source {:keys [source-card source-card-already-discarded?]}]
    (let [hand-card (core/player-hand-card state player-id (:card-id source))
          discard-card (when source-card-already-discarded?
-                        (discard-pile-card state (:card-id source)))
+                        (card-source/discard-pile-card state (:card-id source)))
          card (cond
                 source-card-already-discarded? (or discard-card source-card)
                 source-card source-card

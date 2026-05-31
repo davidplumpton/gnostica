@@ -2,6 +2,7 @@
   (:require [gnostica.board-layout :as layout]
             [gnostica.cards :as cards]
             [gnostica.game-state :as game-state]
+            [gnostica.game-state.spatial :as spatial]
             [gnostica.move-selection.commands :as commands]
             [gnostica.move-selection.controls :as controls]
             [gnostica.move-selection.registry :as registry]
@@ -220,9 +221,6 @@
   (filterv #(= [row col] (piece-coordinate db %))
            (board-pieces db)))
 
-(defn- same-coordinate? [left right]
-  (= left right))
-
 (defn- minion-target-coordinate [db piece]
   (when-let [coordinate (piece-coordinate db piece)]
     (when-let [{:keys [row col]} (game-state/target-coordinate coordinate
@@ -235,14 +233,14 @@
          piece
          target-coordinate
          (or (= (:id minion) (:id piece))
-             (same-coordinate? target-coordinate
-                               (minion-target-coordinate db minion))))))
+             (spatial/same-coordinate? target-coordinate
+                                       (minion-target-coordinate db minion))))))
 
 (defn- targetable-territory? [db minion cell]
   (and minion
        cell
-       (same-coordinate? [(:row cell) (:col cell)]
-                         (minion-target-coordinate db minion))))
+       (spatial/same-coordinate? [(:row cell) (:col cell)]
+                                 (minion-target-coordinate db minion))))
 
 (defn current-player-piece? [db piece]
   (= (current-player-id db) (:player-id piece)))

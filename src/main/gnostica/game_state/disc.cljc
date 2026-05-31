@@ -2,18 +2,14 @@
   (:require [gnostica.board :as board]
             [gnostica.cards :as cards]
             [gnostica.game-state.cup :as cup]
+            [gnostica.game-state.card-source :as card-source]
             [gnostica.game-state.core :as core]
             [gnostica.game-state.major-power :as major-power]
             [gnostica.game-state.placement :as placement]
+            [gnostica.game-state.spatial :as spatial]
             [gnostica.pieces :as pieces]))
 
 (def disc-territory-card-sources #{:hand :discard-pile})
-
-(def disc-direction-offsets
-  {:north [-1 0]
-   :east [0 1]
-   :south [1 0]
-   :west [0 -1]})
 
 (def disc-piece-size-ranks
   {:small 0
@@ -28,54 +24,19 @@
        (+ (get disc-piece-size-ranks size -100)
           action-count)))
 
-(defn- discard-pile-card [state card-id]
-  (some (fn [card]
-          (when (= card-id (:id card))
-            card))
-        (:discard-pile state)))
-
 (defn- card-worth-more? [replacement-card original-card action-count]
   (let [original-value (cards/card-point-value original-card)
         replacement-value (cards/card-point-value replacement-card)]
     (and (some? original-value)
          (= (+ original-value action-count) replacement-value))))
 
-(defn- coordinate-map [coordinate]
-  (cond
-    (map? coordinate)
-    (when (and (int? (:row coordinate))
-               (int? (:col coordinate)))
-      (select-keys coordinate [:row :col]))
-
-    (sequential? coordinate)
-    (let [[row col] coordinate]
-      (when (and (int? row) (int? col))
-        {:row row
-         :col col}))))
-
 (defn disc-target-coordinate [coordinate orientation]
-  (when-let [{:keys [row col]} (coordinate-map coordinate)]
-    (cond
-      (= :up orientation)
-      {:row row
-       :col col}
-
-      :else
-      (when-let [[row-offset col-offset] (get disc-direction-offsets orientation)]
-        {:row (+ row row-offset)
-         :col (+ col col-offset)}))))
-
-(defn- same-coordinate? [left right]
-  (= (coordinate-map left)
-     (coordinate-map right)))
+  (spatial/target-coordinate coordinate orientation))
 
 (defn- disc-targetable-coordinate? [actor-coordinate target-coordinate orientation target-self?]
   (or target-self?
-      (same-coordinate? target-coordinate
-                        (disc-target-coordinate actor-coordinate orientation))))
-
-(defn- target-summary [target]
-  (select-keys target [:kind :piece-id :board-index :row :col]))
+      (spatial/same-coordinate? target-coordinate
+                                (disc-target-coordinate actor-coordinate orientation))))
 
 (defn- territory-target-cell [state target]
   (cond
@@ -220,7 +181,7 @@
                 :power-card power-card
                 :disc-variant (:disc-variant variant-result)
                 :piece piece
-                :piece-coordinate (coordinate-map piece-coordinate)
+                :piece-coordinate (spatial/coordinate-map piece-coordinate)
                 :orientation (:orientation piece)}
                variant-result))))
 
@@ -228,7 +189,7 @@
        (let [card (or source-card
                       (core/player-hand-card state player-id (:card-id source))
                       (when source-card-already-discarded?
-                        (discard-pile-card state (:card-id source))))]
+                        (card-source/discard-pile-card state (:card-id source))))]
          (cond
            (nil? card)
            (core/failure :invalid-hand-card
@@ -254,7 +215,7 @@
                 :disc-variant (:disc-variant variant-result)
                 :discard-source-card? (not source-card-already-discarded?)
                 :piece piece
-                :piece-coordinate (coordinate-map piece-coordinate)
+                :piece-coordinate (spatial/coordinate-map piece-coordinate)
                 :orientation (:orientation piece)}
                variant-result))))
 
@@ -290,7 +251,7 @@
   (let [{:keys [piece]
          source-orientation :orientation
          source-coordinate :piece-coordinate} source-result
-        target-coordinate (coordinate-map (core/piece-coordinate state target-piece))
+        target-coordinate (spatial/coordinate-map (core/piece-coordinate state target-piece))
         target-self? (= (:id piece) (:id target-piece))]
     (cond
       (nil? target-coordinate)
@@ -408,7 +369,7 @@
     :else
     (core/failure :invalid-disc-target
              "Disc move targets must be :piece or :territory."
-             {:target (target-summary target)})))
+             {:target (spatial/target-summary target)})))
 
 (defn- resolve-replacement-card-options
   [source-result target replacement-card-source replacement-card-id]
@@ -544,7 +505,7 @@
   [state player-id replacement-card-source replacement-card-id]
   (case replacement-card-source
     :hand (core/player-hand-card state player-id replacement-card-id)
-    :discard-pile (discard-pile-card state replacement-card-id)
+    :discard-pile (card-source/discard-pile-card state replacement-card-id)
     nil))
 
 (defn- remove-replacement-card

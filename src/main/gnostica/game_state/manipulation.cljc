@@ -3,51 +3,16 @@
             [gnostica.game-state.core :as core]
             [gnostica.game-state.major :as major]
             [gnostica.game-state.major-power :as major-power]
+            [gnostica.game-state.spatial :as spatial]
             [gnostica.pieces :as pieces]))
 
-(def target-direction-offsets
-  {:north [-1 0]
-   :east [0 1]
-   :south [1 0]
-   :west [0 -1]})
-
-(defn- coordinate-map [coordinate]
-  (cond
-    (map? coordinate)
-    (when (and (int? (:row coordinate))
-               (int? (:col coordinate)))
-      (select-keys coordinate [:row :col]))
-
-    (sequential? coordinate)
-    (let [[row col] coordinate]
-      (when (and (int? row)
-                 (int? col))
-        {:row row
-         :col col}))))
-
 (defn target-coordinate [coordinate orientation]
-  (when-let [{:keys [row col]} (coordinate-map coordinate)]
-    (cond
-      (= :up orientation)
-      {:row row
-       :col col}
-
-      :else
-      (when-let [[row-offset col-offset] (get target-direction-offsets orientation)]
-        {:row (+ row row-offset)
-         :col (+ col col-offset)}))))
-
-(defn- same-coordinate? [left right]
-  (= (coordinate-map left)
-     (coordinate-map right)))
+  (spatial/target-coordinate coordinate orientation))
 
 (defn- targetable-coordinate? [actor-coordinate target-coord orientation target-self?]
   (or target-self?
-      (same-coordinate? target-coord
-                        (target-coordinate actor-coordinate orientation))))
-
-(defn- target-summary [target]
-  (select-keys target [:kind :piece-id :board-index :row :col]))
+      (spatial/same-coordinate? target-coord
+                                (target-coordinate actor-coordinate orientation))))
 
 (defn- command-action [command power]
   (assoc (dissoc command :player-id :source)
@@ -97,11 +62,11 @@
         target-piece-id (:piece-id target)
         minion (:action-minion context)
         source-orientation (:orientation minion)
-        source-coordinate (coordinate-map (core/piece-coordinate state minion))
+        source-coordinate (spatial/coordinate-map (core/piece-coordinate state minion))
         target-piece (when target-piece-id
                        (core/piece-by-id state target-piece-id))
         target-coord (when target-piece
-                       (coordinate-map (core/piece-coordinate state target-piece)))
+                       (spatial/coordinate-map (core/piece-coordinate state target-piece)))
         target-self? (= (:id minion) (:id target-piece))]
     (cond
       (not (map? target))
@@ -208,7 +173,7 @@
       cell-result
       (let [cell (:cell cell-result)
             minion (:action-minion context)
-            source-coordinate (coordinate-map (core/piece-coordinate state minion))
+            source-coordinate (spatial/coordinate-map (core/piece-coordinate state minion))
             source-orientation (:orientation minion)
             target-coord (select-keys cell [:row :col])]
         (cond
@@ -232,7 +197,7 @@
                                        false))
           (core/failure :invalid-major-target
                         (str action-name " territory targets must occupy the current space for upright minions or the adjacent space in the minion direction.")
-                        {:target (target-summary (:target action))
+                        {:target (spatial/target-summary (:target action))
                          :orientation source-orientation
                          :source-coordinate source-coordinate
                          :target-coordinate target-coord
@@ -443,17 +408,6 @@
       {:ok? true
        :destination normalized-destination})))
 
-(defn- move-piece-to-space [piece piece-space orientation]
-  (let [piece (cond-> piece
-                orientation (assoc :orientation orientation))]
-    (if-let [space-index (:space-index piece-space)]
-      (-> piece
-          (dissoc :space)
-          (assoc :space-index space-index))
-      (-> piece
-          (dissoc :space-index)
-          (assoc :space (:space piece-space))))))
-
 (defn- resolve-hermit-piece-orientation [player-id target-piece orientation]
   (cond
     (nil? orientation)
@@ -496,9 +450,9 @@
                                (:orientation action))]
         (if-not (:ok? orientation-check)
           orientation-check
-          (let [moved-piece (move-piece-to-space target-piece
-                                                 (:piece-space destination-result)
-                                                 (:orientation orientation-check))
+          (let [moved-piece (spatial/move-piece-to-space target-piece
+                                                         (:piece-space destination-result)
+                                                         (:orientation orientation-check))
                 event (cond-> {:type :hermit/piece-moved
                                :player-id player-id
                                :source (core/source-summary (:action-source context))

@@ -1,19 +1,15 @@
 (ns gnostica.game-state.sword
   (:require [gnostica.cards :as cards]
+            [gnostica.game-state.card-source :as card-source]
             [gnostica.game-state.core :as core]
             [gnostica.game-state.major :as major]
             [gnostica.game-state.major-power :as major-power]
             [gnostica.game-state.placement :as placement]
             [gnostica.game-state.rod :as rod]
+            [gnostica.game-state.spatial :as spatial]
             [gnostica.pieces :as pieces]))
 
 (def sword-territory-card-sources #{:hand :discard-pile})
-
-(def sword-direction-offsets
-  {:north [-1 0]
-   :east [0 1]
-   :south [1 0]
-   :west [0 -1]})
 
 (def sword-piece-size-ranks
   {:small 1
@@ -23,54 +19,19 @@
 (def sword-piece-sizes-by-rank
   (into {} (map (fn [[size rank]] [rank size]) sword-piece-size-ranks)))
 
-(defn- discard-pile-card [state card-id]
-  (some (fn [card]
-          (when (= card-id (:id card))
-            card))
-        (:discard-pile state)))
-
 (defn- sword-piece-size-after [size damage]
   (get sword-piece-sizes-by-rank
        (- (get sword-piece-size-ranks size -100)
           damage)))
 
-(defn- coordinate-map [coordinate]
-  (cond
-    (map? coordinate)
-    (when (and (int? (:row coordinate))
-               (int? (:col coordinate)))
-      (select-keys coordinate [:row :col]))
-
-    (sequential? coordinate)
-    (let [[row col] coordinate]
-      (when (and (int? row) (int? col))
-        {:row row
-         :col col}))))
-
 (defn sword-target-coordinate [coordinate orientation]
-  (when-let [{:keys [row col]} (coordinate-map coordinate)]
-    (cond
-      (= :up orientation)
-      {:row row
-       :col col}
-
-      :else
-      (when-let [[row-offset col-offset] (get sword-direction-offsets orientation)]
-        {:row (+ row row-offset)
-         :col (+ col col-offset)}))))
-
-(defn- same-coordinate? [left right]
-  (= (coordinate-map left)
-     (coordinate-map right)))
+  (spatial/target-coordinate coordinate orientation))
 
 (defn- sword-targetable-coordinate?
   [actor-coordinate target-coordinate orientation target-self?]
   (or target-self?
-      (same-coordinate? target-coordinate
-                        (sword-target-coordinate actor-coordinate orientation))))
-
-(defn- target-summary [target]
-  (select-keys target [:kind :piece-id :board-index :row :col]))
+      (spatial/same-coordinate? target-coordinate
+                                (sword-target-coordinate actor-coordinate orientation))))
 
 (defn- territory-target-cell [state target]
   (cond
@@ -221,7 +182,7 @@
                 :power-card power-card
                 :sword-variant (:sword-variant variant-result)
                 :piece piece
-                :piece-coordinate (coordinate-map piece-coordinate)
+                :piece-coordinate (spatial/coordinate-map piece-coordinate)
                 :orientation (:orientation piece)}
                variant-result))))
 
@@ -229,7 +190,7 @@
        (let [card (or source-card
                       (core/player-hand-card state player-id (:card-id source))
                       (when source-card-already-discarded?
-                        (discard-pile-card state (:card-id source))))]
+                        (card-source/discard-pile-card state (:card-id source))))]
          (cond
            (nil? card)
            (core/failure :invalid-hand-card
@@ -255,7 +216,7 @@
                 :sword-variant (:sword-variant variant-result)
                 :discard-source-card? (not source-card-already-discarded?)
                 :piece piece
-                :piece-coordinate (coordinate-map piece-coordinate)
+                :piece-coordinate (spatial/coordinate-map piece-coordinate)
                 :orientation (:orientation piece)}
                variant-result))))
 
@@ -333,7 +294,7 @@
   (let [{:keys [piece]
          source-orientation :orientation
          source-coordinate :piece-coordinate} source-result
-        target-coordinate (coordinate-map (core/piece-coordinate state target-piece))
+        target-coordinate (spatial/coordinate-map (core/piece-coordinate state target-piece))
         target-self? (= (:id piece) (:id target-piece))
         max-damage (get sword-piece-size-ranks (:size piece))
         target-pips (get sword-piece-size-ranks (:size target-piece))]
@@ -503,7 +464,7 @@
     :else
     (core/failure :invalid-sword-target
                   "Sword move targets must be :piece or :territory."
-                  {:target (target-summary target)})))
+                  {:target (spatial/target-summary target)})))
 
 (defn- resolve-replacement-card-options
   [source-result target destroyed? replacement-card-source replacement-card-id]
@@ -689,7 +650,7 @@
   [state player-id replacement-card-source replacement-card-id]
   (case replacement-card-source
     :hand (core/player-hand-card state player-id replacement-card-id)
-    :discard-pile (discard-pile-card state replacement-card-id)
+    :discard-pile (card-source/discard-pile-card state replacement-card-id)
     nil))
 
 (defn- remove-replacement-card
@@ -1318,7 +1279,7 @@
 
       :else
       (if-let [target-piece (core/piece-by-id state (:piece-id target))]
-        (let [target-coordinate (coordinate-map (core/piece-coordinate state target-piece))
+        (let [target-coordinate (spatial/coordinate-map (core/piece-coordinate state target-piece))
               target-self? (= (:id source-piece) (:id target-piece))]
           (cond
             (nil? target-coordinate)

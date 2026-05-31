@@ -6,6 +6,7 @@
             [gnostica.game-state.manipulation :as manipulation]
             [gnostica.game-state.placement :as placement]
             [gnostica.game-state.rod :as rod]
+            [gnostica.game-state.spatial :as spatial]
             [gnostica.pieces :as pieces]))
 
 (defn- action-piece-id [command action]
@@ -154,29 +155,11 @@
                         opts))]
      (with-affected-pieces result player-id))))
 
-(defn- coordinate-map [coordinate]
-  (cond
-    (map? coordinate)
-    (when (and (int? (:row coordinate))
-               (int? (:col coordinate)))
-      (select-keys coordinate [:row :col]))
-
-    (sequential? coordinate)
-    (let [[row col] coordinate]
-      (when (and (int? row)
-                 (int? col))
-        {:row row
-         :col col}))))
-
-(defn- same-coordinate? [left right]
-  (= (coordinate-map left)
-     (coordinate-map right)))
-
 (defn- targetable-coordinate? [actor-coordinate target-coordinate orientation target-self?]
   (or target-self?
-      (same-coordinate? target-coordinate
-                        (manipulation/target-coordinate actor-coordinate
-                                                        orientation))))
+      (spatial/same-coordinate? target-coordinate
+                                (manipulation/target-coordinate actor-coordinate
+                                                                orientation))))
 
 (defn- hand-trade-target [action]
   (or (:target action)
@@ -190,9 +173,9 @@
         target-piece-id (:piece-id target)
         target-piece (when target-piece-id
                        (core/piece-by-id state target-piece-id))
-        source-coordinate (coordinate-map (core/piece-coordinate state minion))
+        source-coordinate (spatial/coordinate-map (core/piece-coordinate state minion))
         target-coordinate (when target-piece
-                            (coordinate-map (core/piece-coordinate state target-piece)))
+                            (spatial/coordinate-map (core/piece-coordinate state target-piece)))
         target-self? (= (:id minion) (:id target-piece))]
     (cond
       (not (map? target))
@@ -414,17 +397,6 @@
                           {:piece-id (:id moved-piece)
                            :destination destination})))))))
 
-(defn- move-piece-to-space [piece piece-space orientation]
-  (let [piece (cond-> piece
-                orientation (assoc :orientation orientation))]
-    (if-let [space-index (:space-index piece-space)]
-      (-> piece
-          (dissoc :space)
-          (assoc :space-index space-index))
-      (-> piece
-          (dissoc :space-index)
-          (assoc :space (:space piece-space))))))
-
 (defn- supported-chariot-shortcut? [context left-action right-action moved-piece]
   (and (= (:player-id context) (:player-id moved-piece))
        (= (:piece-id right-action) (:id moved-piece))
@@ -443,8 +415,8 @@
                                             moved-piece))
       (let [left-minion (:action-minion context)
             left-direction (:orientation left-minion)
-            moved-coordinate (coordinate-map (core/piece-coordinate state moved-piece))
-            left-minion-coordinate (coordinate-map (core/piece-coordinate state left-minion))
+            moved-coordinate (spatial/coordinate-map (core/piece-coordinate state moved-piece))
+            left-minion-coordinate (spatial/coordinate-map (core/piece-coordinate state left-minion))
             target-self? (= (:id left-minion) (:id moved-piece))
             first-orientation (or (:orientation left-action)
                                   (:orientation moved-piece))
@@ -522,7 +494,7 @@
                                     final-destination)]
             (if-not (:ok? destination-result)
               destination-result
-              (let [moved-piece (move-piece-to-space
+              (let [moved-piece (spatial/move-piece-to-space
                                  moved-piece
                                  (:piece-space destination-result)
                                  final-orientation)
