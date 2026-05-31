@@ -1,6 +1,6 @@
 (ns gnostica.app-state-test
   (:require [clojure.java.io :as io]
-            [clojure.test :refer [deftest is]]
+            [clojure.test :refer [deftest is testing]]
             [gnostica.app.handlers :as app-handlers]
             [gnostica.app-state :as app-state]
             [gnostica.board :as board]
@@ -1157,6 +1157,129 @@
     (is (= :invalid-sword-target
            (get-in (territory-target (app-state/move-legal-targets sword-db) 0)
                    [:error :code])))))
+
+(deftest resolver-probed-targets-confirm-with-shared-command-builders
+  (testing "Rod"
+    (let [db (app-state/initialize {:player-specs test-player-specs
+                                    :game-options {:deck-order (deck-starting-with ["wands2"])}
+                                    :demo-board-pieces [rose-rod-minion
+                                                        indigo-rod-target]})
+          source-db (-> db
+                        (app-state/select-move-source :play-hand-card)
+                        (app-state/select-move-hand-card "wands2")
+                        (app-state/select-move-piece :rose-rod-minion)
+                        (app-state/select-move-rod-mode :push-piece))]
+      (is (some #(= :indigo-rod-target (:id %))
+                (app-state/move-target-piece-options source-db)))
+      (is (:ok? (get-in (-> source-db
+                            (app-state/select-move-target-piece :indigo-rod-target)
+                            (app-state/set-move-distance 1)
+                            app-state/confirm-move)
+                      [:move-selection :last-result])))))
+  (testing "Disc"
+    (let [db (app-state/initialize {:player-specs test-player-specs
+                                    :game-options {:deck-order
+                                                   (deck-with-cards-at
+                                                    {0 "coins2"
+                                                     1 "cupsking"
+                                                     (board-card-position test-player-specs 4) "cups2"})}
+                                    :demo-board-pieces [rose-rod-minion]})
+          source-db (-> db
+                        (app-state/select-move-source :play-hand-card)
+                        (app-state/select-move-hand-card "coins2")
+                        (app-state/select-move-piece :rose-rod-minion)
+                        (app-state/select-move-disc-target-kind :territory))]
+      (is (some #(= 4 (:index %))
+                (app-state/move-target-board-options source-db)))
+      (is (:ok? (get-in (-> source-db
+                            (app-state/select-board-card 4)
+                            (app-state/select-move-replacement-card "cupsking")
+                            app-state/confirm-move)
+                      [:move-selection :last-result])))))
+  (testing "Sword"
+    (let [db (app-state/initialize {:player-specs test-player-specs
+                                    :game-options {:deck-order
+                                                   (deck-with-cards-at
+                                                    {0 "swords2"
+                                                     1 "cups2"
+                                                     (board-card-position test-player-specs 4) "cupsking"})}
+                                    :demo-board-pieces [rose-rod-minion]})
+          source-db (-> db
+                        (app-state/select-move-source :play-hand-card)
+                        (app-state/select-move-hand-card "swords2")
+                        (app-state/select-move-piece :rose-rod-minion)
+                        (app-state/select-move-sword-target-kind :territory))]
+      (is (some #(= 4 (:index %))
+                (app-state/move-target-board-options source-db)))
+      (is (:ok? (get-in (-> source-db
+                            (app-state/select-board-card 4)
+                            (app-state/set-move-damage 1)
+                            (app-state/select-move-replacement-card "cups2")
+                            app-state/confirm-move)
+                      [:move-selection :last-result])))))
+  (testing "Sun"
+    (let [db (app-state/initialize {:player-specs test-player-specs
+                                    :game-options {:deck-order (deck-starting-with ["sun"])}
+                                    :demo-board-pieces [rose-hand-cup-enemy-piece
+                                                        rose-rod-target
+                                                        indigo-rod-target]})
+          source-db (-> db
+                        (app-state/select-move-source :play-hand-card)
+                        (app-state/select-move-hand-card "sun")
+                        (app-state/select-move-piece :rose-striker)
+                        (app-state/select-move-power :sun)
+                        (app-state/select-move-target-piece :indigo-rod-target)
+                        (app-state/select-move-sun-disc-mode :piece))]
+      (is (some #(= :rose-striker (:id %))
+                (app-state/move-target-piece-options source-db)))
+      (is (:ok? (get-in (-> source-db
+                            (app-state/select-move-target-piece :rose-striker)
+                            (app-state/set-move-sun-disc-orientation :west)
+                            app-state/confirm-move)
+                      [:move-selection :last-result])))))
+  (testing "Moon"
+    (let [db (app-state/initialize {:player-specs test-player-specs
+                                    :game-options {:deck-order (deck-starting-with ["moon"])}
+                                    :demo-board-pieces [rose-rod-minion
+                                                        indigo-rod-target]})
+          source-db (-> db
+                        (app-state/select-move-source :play-hand-card)
+                        (app-state/select-move-hand-card "moon")
+                        (app-state/select-move-piece :rose-rod-minion)
+                        (app-state/select-move-power :moon)
+                        (app-state/select-move-rod-mode :move-minion)
+                        (app-state/set-move-distance 1)
+                        (app-state/set-move-orientation :up)
+                        (app-state/select-move-sword-target-kind :piece))]
+      (is (some #(= :indigo-rod-target (:id %))
+                (app-state/move-target-piece-options source-db)))
+      (is (:ok? (get-in (-> source-db
+                            (app-state/select-move-target-piece :indigo-rod-target)
+                            (app-state/set-move-damage 1)
+                            app-state/confirm-move)
+                      [:move-selection :last-result])))))
+  (testing "World copied Rod"
+    (let [db (app-state/initialize {:player-specs test-player-specs
+                                    :game-options {:deck-order
+                                                   (deck-with-cards-at
+                                                    {0 "world"
+                                                     (board-card-position test-player-specs 3) "magician"})}
+                                    :demo-board-pieces [rose-rod-minion
+                                                        indigo-rod-target]})
+          source-db (-> db
+                        (app-state/select-move-source :play-hand-card)
+                        (app-state/select-move-hand-card "world")
+                        (app-state/select-move-piece :rose-rod-minion)
+                        (app-state/select-move-world-copy 3)
+                        (app-state/select-move-power :rod)
+                        (app-state/select-move-rod-mode :push-piece))]
+      (is (some #(= :indigo-rod-target (:id %))
+                (app-state/move-target-piece-options source-db)))
+      (is (:ok? (get-in (-> source-db
+                            (app-state/select-move-target-piece :indigo-rod-target)
+                            (app-state/set-move-distance 1)
+                            app-state/confirm-move)
+                      [:move-selection :last-result]))))))
 
 (deftest board-view-model-uses-stored-three-runtime-status
   (let [runtime-status {:ok? true

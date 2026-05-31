@@ -35,7 +35,7 @@
       (select-keys cup-target [:target])
       cup-target)))
 
-(defn- sun-disc-command [params]
+(defn sun-disc-command [params]
   (case (:sun-disc-mode params)
     :skip nil
 
@@ -115,7 +115,7 @@
       (:orientation params)
       (assoc :orientation (:orientation params)))))
 
-(defn- disc-target-command [ctx db source params]
+(defn disc-target-command [ctx db source params]
   (case (:disc-target-kind params)
     :piece
     (cond-> {:target {:kind :piece
@@ -158,8 +158,8 @@
     (cond-> {:target {:kind :piece
                       :piece-id (:target-piece-id params)}
              :damage (:damage params)}
-      (and (call ctx :sword-orientation-available? db source params)
-           (:orientation params))
+      (and (:orientation params)
+           (call ctx :sword-orientation-available? db source params))
       (assoc :orientation (:orientation params)))
 
     :territory
@@ -175,7 +175,7 @@
 
     {}))
 
-(defn- sword-command [ctx db source params]
+(defn sword-command [ctx db source params]
   (let [sword-variant (call ctx :selected-sword-variant db source params)]
     (cond-> (sword-target-command ctx db source params)
       sword-variant
@@ -258,12 +258,16 @@
     (composite-major-command ctx db source params)
     (unavailable-power-command ctx db source params power)))
 
-(defn- world-command [ctx db source params]
-  (let [power (call ctx :selected-world-copied-power db source params)
+(defn- world-command-for-power [ctx db source params power]
+  (let [power (or power
+                  (call ctx :selected-world-copied-power db source params))
         command (gameplay-power-command-for-power ctx db source params power)]
     (cond-> (assoc command :copied-board-index (:copied-board-index params))
       (contains? (value ctx :copied-suit-powers) power)
       (assoc :copied-power power))))
+
+(defn- world-command [ctx db source params]
+  (world-command-for-power ctx db source params nil))
 
 (defn- gameplay-power-command [ctx db source params]
   (if (call ctx :world-move? db source params)
@@ -274,19 +278,69 @@
                                       params
                                       (call ctx :selected-power db source params))))
 
+(defn gameplay-command-for-power [ctx db source params power]
+  (when source
+    (merge {:player-id (call ctx :current-player-id db)
+            :source (call ctx :source-command source params)}
+           (if (call ctx :world-move? db source params)
+             (world-command-for-power ctx db source params power)
+             (gameplay-power-command-for-power ctx db source params power)))))
+
+(defn gameplay-command [ctx db source params]
+  (when source
+    (merge {:player-id (call ctx :current-player-id db)
+            :source (call ctx :source-command source params)}
+           (gameplay-power-command ctx db source params))))
+
+(defn rod-resolver-command [ctx db source params]
+  (gameplay-command-for-power ctx db source params :rod))
+
+(defn disc-resolver-command [ctx db source params]
+  (let [command (gameplay-command-for-power ctx db source params :disc)]
+    (if-let [action (first (:disc-actions command))]
+      (merge (select-keys command [:player-id
+                                   :source
+                                   :copied-board-index
+                                   :copied-power
+                                   :disc-variant])
+             action)
+      command)))
+
+(defn sword-resolver-command [ctx db source params]
+  (let [power (call ctx :active-power db source params)
+        command (gameplay-command-for-power
+                 ctx
+                 db
+                 source
+                 params
+                 (if (contains? #{:justice :death :tower :moon} power)
+                   power
+                   :sword))]
+    (if-let [action (last (:sword-actions command))]
+      (merge (select-keys command [:player-id
+                                   :source
+                                   :copied-board-index
+                                   :copied-power
+                                   :sword-variant])
+             action)
+      command)))
+
+(defn sun-disc-resolver-command [ctx db source params]
+  (when-let [disc-command (sun-disc-command params)]
+    (merge {:player-id (call ctx :current-player-id db)
+            :source (call ctx :source-command source params)
+            :disc-variant :disc}
+           disc-command)))
+
 (defn move-command [ctx db]
   (let [{:keys [source params]} (call ctx :move-selection db)]
     (when source
       (case source
         :activate-territory
-        (merge {:player-id (call ctx :current-player-id db)
-                :source (call ctx :source-command source params)}
-               (gameplay-power-command ctx db source params))
+        (gameplay-command ctx db source params)
 
         :play-hand-card
-        (merge {:player-id (call ctx :current-player-id db)
-                :source (call ctx :source-command source params)}
-               (gameplay-power-command ctx db source params))
+        (gameplay-command ctx db source params)
 
         :draw-cards
         {:source :draw-cards

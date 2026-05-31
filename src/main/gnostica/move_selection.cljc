@@ -581,7 +581,8 @@
   (count (completed-major-actions params)))
 
 (declare hand-trade-major-action-count-option-values
-         selected-hand-trade-major-action-count)
+         selected-hand-trade-major-action-count
+         command-context)
 
 (defn- composite-major-move? [db source-id params]
   (contains? composite-major-powers (active-power db source-id params)))
@@ -677,42 +678,46 @@
   (when (rod-move? db source-id params)
     (cards/rod-variant (active-card db source-id params))))
 
-(defn- rod-base-command [db source-id params]
-  (when (and (rod-move? db source-id params)
-             (current-player-id db)
-             (:piece-id params))
-    (cond-> {:player-id (current-player-id db)
-             :source (source-command source-id params)}
-      (selected-rod-variant db source-id params)
-      (assoc :rod-variant (selected-rod-variant db source-id params)))))
-
-(defn- rod-command-resolves? [db command]
+(defn- rod-command-resolves? [db source-id params command]
   (boolean
-   (and (game db)
-        command
-        (:ok? (game-state/resolve-rod-command (game db) command)))))
+   (when (and (game db) command)
+     (:ok? (if (world-move? db source-id params)
+             (game-state/apply-world-move (game db) command)
+             (game-state/resolve-rod-command (game db) command))))))
 
 (defn- rod-piece-target? [db source-id params piece]
   (and piece
        (= :push-piece (:rod-mode params))
-      (rod-command-resolves?
-       db
-        (assoc (rod-base-command db source-id params)
-               :mode :push-piece
-               :target {:kind :piece
-                        :piece-id (:id piece)}
-               :distance 1))))
+       (let [candidate-params (assoc params
+                                      :rod-mode :push-piece
+                                      :target-piece-id (:id piece)
+                                      :distance 1)]
+         (rod-command-resolves?
+          db
+          source-id
+          candidate-params
+          (commands/rod-resolver-command
+           (command-context)
+           db
+           source-id
+           candidate-params)))))
 
 (defn- rod-territory-target? [db source-id params cell]
   (and cell
        (= :push-territory (:rod-mode params))
-      (rod-command-resolves?
-       db
-        (assoc (rod-base-command db source-id params)
-               :mode :push-territory
-               :target {:kind :territory
-                        :board-index (:index cell)}
-               :distance 1))))
+       (let [candidate-params (assoc params
+                                      :rod-mode :push-territory
+                                      :target-board-index (:index cell)
+                                      :distance 1)]
+         (rod-command-resolves?
+          db
+          source-id
+          candidate-params
+          (commands/rod-resolver-command
+           (command-context)
+           db
+           source-id
+           candidate-params)))))
 
 (defn- disc-move? [db source-id params]
   (= :disc (active-power db source-id params)))
@@ -844,19 +849,6 @@
 (defn- target-board-cell [db params]
   (board-cell-by-index db (:target-board-index params)))
 
-(defn- disc-base-command [db source-id params]
-  (when (and (disc-move? db source-id params)
-             (current-player-id db)
-             (:piece-id params))
-    (cond-> {:player-id (current-player-id db)
-             :source (source-command source-id params)}
-      (selected-disc-variant db source-id params)
-      (assoc :disc-variant (selected-disc-variant db source-id params))
-
-      (and (star-disc-source? db source-id params)
-           (:minion-orientation params))
-      (assoc :minion-orientation (:minion-orientation params)))))
-
 (defn- disc-resolution-state [state command]
   (if-let [orientation (:minion-orientation command)]
     (let [orient-result (game-state/apply-orient-move
@@ -882,24 +874,34 @@
 (defn- disc-piece-target? [db source-id params piece]
   (and piece
        (= :piece (:disc-target-kind params))
-       (disc-command-resolves?
-        db
-        source-id
-        params
-        (assoc (disc-base-command db source-id params)
-               :target {:kind :piece
-                        :piece-id (:id piece)}))))
+       (let [candidate-params (assoc params
+                                      :disc-target-kind :piece
+                                      :target-piece-id (:id piece))]
+        (disc-command-resolves?
+         db
+         source-id
+         candidate-params
+         (commands/disc-resolver-command
+          (command-context)
+          db
+          source-id
+          candidate-params)))))
 
 (defn- disc-territory-target? [db source-id params cell]
   (and cell
        (= :territory (:disc-target-kind params))
-       (disc-command-resolves?
-        db
-        source-id
-        params
-        (assoc (disc-base-command db source-id params)
-               :target {:kind :territory
-                        :board-index (:index cell)}))))
+       (let [candidate-params (assoc params
+                                      :disc-target-kind :territory
+                                      :target-board-index (:index cell))]
+         (disc-command-resolves?
+          db
+          source-id
+          candidate-params
+          (commands/disc-resolver-command
+           (command-context)
+           db
+           source-id
+           candidate-params)))))
 
 (defn- disc-target-piece [db params]
   (let [source (get-in db [:move-selection :source])
@@ -971,15 +973,6 @@
   (or (:minion-orientation params)
       (:orientation (completed-major-action-by-power params :orient-minion))))
 
-(defn- sword-base-command [db source-id params]
-  (when (and (sword-move? db source-id params)
-             (current-player-id db)
-             (:piece-id params))
-    (cond-> {:player-id (current-player-id db)
-             :source (source-command source-id params)}
-      (selected-sword-variant db source-id params)
-      (assoc :sword-variant (selected-sword-variant db source-id params)))))
-
 (defn- sword-resolution-state [db source-id params command]
   (let [state (game db)]
     (cond
@@ -999,23 +992,18 @@
       :else
       state)))
 
-(defn- moon-command-resolves? [db source-id params command]
+(defn- moon-command-resolves? [db source-id params]
   (let [rod-action (completed-major-action-by-power params :rod)]
     (boolean
      (and rod-action
-          (let [moon-command {:player-id (current-player-id db)
-                              :source (source-command source-id params)
-                              :rod rod-action
-                              :sword (assoc (dissoc command
-                                                     :player-id
-                                                     :source
-                                                     :sword-variant)
-                                            :piece-id (:piece-id params))}
+          (let [moon-command (commands/gameplay-command-for-power
+                              (command-context)
+                              db
+                              source-id
+                              params
+                              :moon)
                 result (if (world-move? db source-id params)
-                         (game-state/apply-world-move
-                          (game db)
-                          (assoc moon-command
-                                 :copied-board-index (:copied-board-index params)))
+                         (game-state/apply-world-move (game db) moon-command)
                          (game-state/apply-moon-move (game db) moon-command))]
             (:ok? result))))))
 
@@ -1025,7 +1013,7 @@
      (and state
           command
           (if (= :moon (active-power db source-id params))
-            (moon-command-resolves? db source-id params command)
+            (moon-command-resolves? db source-id params)
             (when-let [resolution-state (sword-resolution-state
                                          db
                                          source-id
@@ -1039,26 +1027,36 @@
 (defn- sword-piece-target? [db source-id params piece]
   (and piece
        (= :piece (:sword-target-kind params))
-       (sword-command-resolves?
-        db
-        source-id
-        params
-        (assoc (sword-base-command db source-id params)
-               :target {:kind :piece
-                        :piece-id (:id piece)}
-               :damage 1))))
+       (let [candidate-params (assoc params
+                                      :sword-target-kind :piece
+                                      :target-piece-id (:id piece)
+                                      :damage 1)]
+         (sword-command-resolves?
+          db
+          source-id
+          candidate-params
+          (commands/sword-resolver-command
+           (command-context)
+           db
+           source-id
+           candidate-params)))))
 
 (defn- sword-territory-target? [db source-id params cell]
   (and cell
        (= :territory (:sword-target-kind params))
-       (sword-command-resolves?
-        db
-        source-id
-        params
-        (assoc (sword-base-command db source-id params)
-               :target {:kind :territory
-                        :board-index (:index cell)}
-               :damage 1))))
+       (let [candidate-params (assoc params
+                                      :sword-target-kind :territory
+                                      :target-board-index (:index cell)
+                                      :damage 1)]
+         (sword-command-resolves?
+          db
+          source-id
+          candidate-params
+          (commands/sword-resolver-command
+           (command-context)
+           db
+           source-id
+           candidate-params)))))
 
 (defn- sword-target-piece [db source-id params]
   (let [piece (piece-by-id db (:target-piece-id params))]
@@ -1150,7 +1148,7 @@
         []))))
 
 (defn- sword-orientation-available? [db source-id params]
-  (let [target-piece (sword-target-piece db source-id params)
+  (let [target-piece (piece-by-id db (:target-piece-id params))
         target-pips (pieces/pips target-piece)
         damage (:damage params)]
     (and (sword-move? db source-id params)
@@ -1459,38 +1457,47 @@
        (not= :created-territory
              (selected-sun-disc-mode db source-id params))))
 
-(defn- sun-disc-base-command [db source-id params]
-  (when (and (sun-move? db source-id params)
-             (current-player-id db)
-             (:piece-id params))
-    {:player-id (current-player-id db)
-     :source (source-command source-id params)
-     :disc-variant :disc}))
-
-(defn- sun-disc-command-resolves? [db command]
+(defn- sun-disc-command-resolves? [db source-id params command]
   (let [state (game db)]
     (boolean
      (and state
           command
-          (:ok? (game-state/resolve-disc-command state command))))))
+          (:ok? (game-state/resolve-disc-command
+                 state
+                 command
+                 (or (world-source-opts db source-id params) {})))))))
 
 (defn- sun-disc-piece-target? [db source-id params piece]
   (and piece
        (= :piece (selected-sun-disc-mode db source-id params))
-       (sun-disc-command-resolves?
-        db
-        (assoc (sun-disc-base-command db source-id params)
-               :target {:kind :piece
-                        :piece-id (:id piece)}))))
+       (let [candidate-params (assoc params
+                                      :sun-disc-mode :piece
+                                      :sun-disc-target-piece-id (:id piece))]
+         (sun-disc-command-resolves?
+          db
+          source-id
+          candidate-params
+          (commands/sun-disc-resolver-command
+           (command-context)
+           db
+           source-id
+           candidate-params)))))
 
 (defn- sun-disc-territory-target? [db source-id params cell]
   (and cell
        (= :territory (selected-sun-disc-mode db source-id params))
-       (sun-disc-command-resolves?
-        db
-        (assoc (sun-disc-base-command db source-id params)
-               :target {:kind :territory
-                        :board-index (:index cell)}))))
+       (let [candidate-params (assoc params
+                                      :sun-disc-mode :territory
+                                      :sun-disc-target-board-index (:index cell))]
+         (sun-disc-command-resolves?
+          db
+          source-id
+          candidate-params
+          (commands/sun-disc-resolver-command
+           (command-context)
+           db
+           source-id
+           candidate-params)))))
 
 (defn- sun-disc-target-piece [db source-id params]
   (let [piece (piece-by-id db (:sun-disc-target-piece-id params))]
@@ -2701,20 +2708,14 @@
 (declare gameplay-power-command-for-power
          select-move-world-copy)
 
-(defn- command-fragment-context []
-  {:selected-rod-variant selected-rod-variant
-   :sword-orientation-available? sword-orientation-available?
-   :sword-replacement-card-source-option-ids sword-replacement-card-source-option-ids
-   :selected-sword-replacement-card-source selected-sword-replacement-card-source})
-
 (defn- cup-target-command [params]
   (commands/cup-target-command params))
 
 (defn- rod-command [db source params]
-  (commands/rod-command (command-fragment-context) db source params))
+  (commands/rod-command (command-context) db source params))
 
 (defn- sword-target-command [db source params]
-  (commands/sword-target-command (command-fragment-context) db source params))
+  (commands/sword-target-command (command-context) db source params))
 
 (def ^:private current-major-action-param-keys
   [:target-board-index
