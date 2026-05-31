@@ -121,8 +121,8 @@
                            (interpose ", " (map :player-name
                                                  tied-players)))))]])
 
-(defn- redraw-order-row [{:keys [player-name cards active? complete?
-                                 selected-count needed-count]}]
+(defn- redraw-order-row [{:keys [player-id player-name cards active? complete?
+                                 selected-count needed-count can-clear?]}]
   [:li
    {:class (cond-> "starting-bid__redraw-row"
              active?
@@ -134,7 +134,17 @@
    [:span.starting-bid__redraw-cards
     (if (seq cards)
       (apply str (interpose ", " (map :title cards)))
-      "")]
+      "")
+    (when (and can-clear? (seq cards))
+      " ")
+    (when can-clear?
+      [:button.lobby-remove
+       {:type "button"
+        :aria-label (str "Clear " player-name " redraw cards")
+        :on-click #(rf/dispatch [events/select-lobby-redraw-card
+                                  player-id
+                                  ""])}
+       "Clear"])]
    [:span.starting-bid__redraw-count
     (str selected-count "/" needed-count)]])
 

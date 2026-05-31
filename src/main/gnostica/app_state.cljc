@@ -100,6 +100,11 @@
     :incomplete-starting-bid-round
     :starting-bid-unresolved})
 
+(def ^:private starting-bid-redraw-error-codes
+  #{:inactive-starting-bid-redraw-player
+    :invalid-bid-redraw-card
+    :starting-bid-redraw-incomplete})
+
 (defn- clear-lobby-error-codes [db error-codes]
   (if (contains? error-codes (get-in db [:lobby :error :code]))
     (update db :lobby dissoc :error)
@@ -650,10 +655,17 @@
       (nil? starting-bid)
       db
 
-      (not= :redrawing (:stage starting-bid))
+      (not (contains? #{:redrawing :resolved} (:stage starting-bid)))
       db
 
       (str/blank? card-id)
+      (-> db
+          (update-in [:lobby :starting-bid :redraws] dissoc player-id)
+          (update-in [:lobby :starting-bid]
+                     with-starting-bid-redraw-stage)
+          (clear-lobby-error-codes starting-bid-redraw-error-codes))
+
+      (not= :redrawing (:stage starting-bid))
       db
 
       (not= player-id active-player-id)
@@ -783,7 +795,10 @@
      :needed-count needed-count
      :selected-count (count card-ids)
      :active? (= player-id active-player-id)
-     :complete? (= needed-count (count card-ids))}))
+     :complete? (= needed-count (count card-ids))
+     :can-clear? (boolean
+                  (and (contains? #{:redrawing :resolved} (:stage starting-bid))
+                       (seq card-ids)))}))
 
 (defn- starting-bid-redraw-view [players starting-bid]
   (when (contains? #{:redrawing :resolved} (:stage starting-bid))

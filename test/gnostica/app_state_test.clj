@@ -676,6 +676,80 @@
                              [:starting-bid :redraw :card-options]))))
     (is (nil? (app-state/game second-redraw-db)))))
 
+(deftest lobby-starting-bid-redraw-selections-can-be-cleared-and-changed
+  (let [db (app-state/initialize
+            {:start-in-lobby? true
+             :player-specs test-player-specs
+             :game-options {:deck-order (deck-with-cards-at
+                                          {0 "cupsking"
+                                           6 "fool"})}})
+        redrawing-db (-> db
+                         app-state/start-lobby-bidding
+                         (app-state/select-lobby-bid-card :rose "cupsking")
+                         (app-state/select-lobby-bid-card :indigo "fool")
+                         app-state/reveal-lobby-bids)
+        rose-redraw-db (app-state/select-lobby-redraw-card redrawing-db
+                                                           :rose
+                                                           "fool")
+        rose-redraw-view (app-state/lobby-view rose-redraw-db)
+        cleared-db (app-state/select-lobby-redraw-card rose-redraw-db
+                                                       :rose
+                                                       "")
+        cleared-view (app-state/lobby-view cleared-db)
+        changed-db (app-state/select-lobby-redraw-card cleared-db
+                                                       :rose
+                                                       "cupsking")
+        changed-view (app-state/lobby-view changed-db)
+        resolved-db (app-state/select-lobby-redraw-card changed-db
+                                                        :indigo
+                                                        "fool")
+        resolved-cleared-db (app-state/select-lobby-redraw-card resolved-db
+                                                                :rose
+                                                                "")
+        resolved-cleared-view (app-state/lobby-view resolved-cleared-db)
+        final-db (app-state/select-lobby-redraw-card resolved-cleared-db
+                                                     :rose
+                                                     "cupsking")
+        started-db (app-state/confirm-lobby-bidding final-db)
+        state (app-state/game started-db)]
+    (is (= {:rose ["fool"]}
+           (get-in rose-redraw-db [:lobby :starting-bid :redraws])))
+    (is (true? (get-in rose-redraw-view
+                       [:starting-bid :redraw-order 0 :can-clear?])))
+    (is (= :indigo (get-in rose-redraw-view
+                           [:starting-bid :redraw :active-player-id])))
+    (is (= {}
+           (get-in cleared-db [:lobby :starting-bid :redraws])))
+    (is (= :redrawing (get-in cleared-view [:starting-bid :stage])))
+    (is (= :rose (get-in cleared-view
+                         [:starting-bid :redraw :active-player-id])))
+    (is (= ["cupsking" "fool"]
+           (mapv :id (get-in cleared-view
+                             [:starting-bid :redraw :card-options]))))
+    (is (= {:rose ["cupsking"]}
+           (get-in changed-db [:lobby :starting-bid :redraws])))
+    (is (= :indigo (get-in changed-view
+                           [:starting-bid :redraw :active-player-id])))
+    (is (= ["fool"]
+           (mapv :id (get-in changed-view
+                             [:starting-bid :redraw :card-options]))))
+    (is (= :resolved (get-in (app-state/lobby-view resolved-db)
+                             [:starting-bid :stage])))
+    (is (= :redrawing (get-in resolved-cleared-view
+                              [:starting-bid :stage])))
+    (is (= :rose (get-in resolved-cleared-view
+                         [:starting-bid :redraw :active-player-id])))
+    (is (= ["cupsking"]
+           (mapv :id (get-in resolved-cleared-view
+                             [:starting-bid :redraw :card-options]))))
+    (is (nil? (app-state/lobby started-db)))
+    (is (= [{:player-id :rose
+             :card-ids ["cupsking"]}
+            {:player-id :indigo
+             :card-ids ["fool"]}]
+           (get-in state [:setup :bid-redraws])))
+    (is (game-schema/valid-game? state))))
+
 (deftest casual-lobby-start-is-blocked-while-starting-bid-is-staged
   (let [db (app-state/initialize
             {:start-in-lobby? true
