@@ -198,6 +198,32 @@
    :step step
    :failure failure})
 
+(defn- feature-failure [feature scenario code message data]
+  {:ok? false
+   :feature feature
+   :scenario scenario
+   :failure {:code code
+             :message message
+             :data data}})
+
+(defn- no-scenarios-failure [feature]
+  (feature-failure feature
+                   nil
+                   :empty-feature
+                   "Feature files must contain at least one executable scenario."
+                   {:path (:path feature)
+                    :feature (:name feature)}))
+
+(defn- empty-scenario-failure [feature scenario]
+  (feature-failure feature
+                   scenario
+                   :empty-scenario
+                   "Feature scenarios must contain at least one executable step."
+                   {:path (:path feature)
+                    :feature (:name feature)
+                    :scenario (:name scenario)
+                    :line (:line scenario)}))
+
 (defn- run-step [world step step-definition]
   (if-not step-definition
     {:ok? false
@@ -228,38 +254,57 @@
                           :ex-data (ex-data error)}}}))))
 
 (defn run-scenario [feature step-definitions scenario]
-  (loop [world {}
-         [step & remaining] (:steps scenario)]
-    (if-not step
-      {:ok? true
-       :feature feature
-       :scenario scenario
-       :world world}
-      (let [step-result (run-step world step (matching-step-definition step-definitions step))]
-        (if (:ok? step-result)
-          (recur (:world step-result) remaining)
-          (merge (step-failure scenario step (:failure step-result))
-                 {:feature feature}))))))
+  (if-not (seq (:steps scenario))
+    (empty-scenario-failure feature scenario)
+    (loop [world {}
+           [step & remaining] (:steps scenario)]
+      (if-not step
+        {:ok? true
+         :feature feature
+         :scenario scenario
+         :world world}
+        (let [step-result (run-step world step (matching-step-definition step-definitions step))]
+          (if (:ok? step-result)
+            (recur (:world step-result) remaining)
+            (merge (step-failure scenario step (:failure step-result))
+                   {:feature feature})))))))
 
 (defn run-feature-file [path step-definitions]
-  (let [feature (parse-feature-file path)]
-    (mapv #(run-scenario feature step-definitions %)
-          (feature-scenarios feature))))
+  (let [feature (parse-feature-file path)
+        scenarios (vec (feature-scenarios feature))]
+    (if (seq scenarios)
+      (mapv #(run-scenario feature step-definitions %) scenarios)
+      [(no-scenarios-failure feature)])))
+
+(defn- result-line [scenario step]
+  (or (:line step)
+      (:line scenario)
+      1))
+
+(defn- result-scenario-name [scenario]
+  (or (:name scenario) "<none>"))
+
+(defn- result-step-label [step]
+  (if step
+    (str (:keyword step) " " (:text step))
+    "<no executable step>"))
 
 (defn format-result [result]
   (if (:ok? result)
     (str "Feature scenario passed: " (get-in result [:scenario :name]))
     (let [{:keys [feature scenario step failure]} result]
       (str "Feature scenario failed\n"
-           "File: " (:path feature) ":" (:line step) "\n"
+           "File: " (:path feature) ":" (result-line scenario step) "\n"
            "Feature: " (:name feature) "\n"
-           "Scenario: " (:name scenario) "\n"
-           "Step: " (:keyword step) " " (:text step) "\n"
+           "Scenario: " (result-scenario-name scenario) "\n"
+           "Step: " (result-step-label step) "\n"
            "Reason: " (:message failure) "\n"
            "Code: " (:code failure) "\n"
            "Data:\n" (indented-data (:data failure))))))
 
 (defn assert-results-pass [results]
+  (is (seq results) "Expected at least one feature scenario result.")
   (doseq [result results]
     (is (:ok? result) (format-result result)))
-  (every? :ok? results))
+  (boolean (and (seq results)
+                (every? :ok? results))))

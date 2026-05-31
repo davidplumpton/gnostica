@@ -13,11 +13,25 @@
        sort
        vec))
 
+(defn- parsed-scenarios [feature-file]
+  (let [feature (feature-runner/parse-feature-file feature-file)
+        scenarios (vec (feature-runner/feature-scenarios feature))]
+    (is (seq scenarios)
+        (str "Expected at least one gameplay scenario in " feature-file "."))
+    {:feature feature
+     :scenarios scenarios}))
+
+(defn- temp-feature-file [contents]
+  (doto (java.io.File/createTempFile "gnostica-feature-runner-" ".feature")
+    (.deleteOnExit)
+    (spit contents)))
+
 (deftest gameplay-features
   (is (seq feature-files) "Expected at least one gameplay feature file.")
   (doseq [feature-file feature-files]
-    (feature-runner/assert-results-pass
-     (feature-runner/run-feature-file feature-file feature-steps/steps))))
+    (let [{:keys [feature scenarios]} (parsed-scenarios feature-file)]
+      (feature-runner/assert-results-pass
+       (mapv #(feature-runner/run-scenario feature feature-steps/steps %) scenarios)))))
 
 (deftest feature-failure-output-includes-scenario-and-step
   (let [result (feature-runner/run-scenario
@@ -34,3 +48,17 @@
     (is (str/includes? formatted "Scenario: Broken example"))
     (is (str/includes? formatted "Step: Then an unmatched step"))
     (is (str/includes? formatted "Code: :undefined-step"))))
+
+(deftest empty-feature-file-produces-a-failing-result
+  (let [feature-file (temp-feature-file "")
+        results (feature-runner/run-feature-file (str feature-file) [])]
+    (is (= 1 (count results)))
+    (is (false? (:ok? (first results))))
+    (is (= :empty-feature (get-in (first results) [:failure :code])))))
+
+(deftest empty-scenario-produces-a-failing-result
+  (let [feature-file (temp-feature-file "Feature: Empty examples\n\nScenario: No steps\n")
+        results (feature-runner/run-feature-file (str feature-file) [])]
+    (is (= 1 (count results)))
+    (is (false? (:ok? (first results))))
+    (is (= :empty-scenario (get-in (first results) [:failure :code])))))
