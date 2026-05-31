@@ -3269,6 +3269,79 @@
     (is (= 5 (get-in state [:pieces :stashes :indigo :medium])))
     (is (game-schema/valid-game? state))))
 
+(deftest death-row-col-territory-targets-can-apply-sequentially
+  (let [second-minion {:id :rose-death-second-minion
+                       :player-id :rose
+                       :space-index 6
+                       :size :small
+                       :orientation :east}
+        state (:state (game-state/create-game
+                       player-specs
+                       {:deck-order (deck-with-cards-at
+                                     {0 "death"
+                                      (board-deck-position 4) "cups2"
+                                      (board-deck-position 7) "coins2"})}))
+        state (game-state/with-board-pieces
+               state
+               [rose-sword-minion second-minion])
+        {:keys [ok? state events]} (game-state/apply-sword-move
+                                    state
+                                    {:player-id :rose
+                                     :source {:kind :hand-card
+                                              :card-id "death"}
+                                     :sword-actions [{:piece-id :rose-sword-minion
+                                                      :target {:kind :territory
+                                                               :row 1
+                                                               :col 1}
+                                                      :damage 1}
+                                                     {:piece-id :rose-death-second-minion
+                                                      :target {:kind :territory
+                                                               :row 2
+                                                               :col 1}
+                                                      :damage 1}]})]
+    (is ok?)
+    (is (= [:sword/territory-destroyed
+            :sword/territory-destroyed]
+           (mapv :type events)))
+    (is (every? nil? (map :shortcut? events)))
+    (is (nil? (board-cell-by-index state 4)))
+    (is (nil? (board-cell-by-index state 7)))
+    (is (= ["death" "cups2" "coins2"]
+           (mapv :id (:discard-pile state))))
+    (is (game-schema/valid-game? state))))
+
+(deftest death-row-col-territory-targets-can-use-shortcut
+  (let [state (:state (game-state/create-game
+                       player-specs
+                       {:deck-order (deck-with-cards-at
+                                     {0 "death"
+                                      (board-deck-position 4) "cupsking"})}))
+        state (game-state/with-board-pieces state [rose-sword-minion])
+        {:keys [ok? state events]} (game-state/apply-sword-move
+                                    state
+                                    {:player-id :rose
+                                     :source {:kind :hand-card
+                                              :card-id "death"}
+                                     :sword-actions [{:piece-id :rose-sword-minion
+                                                      :target {:kind :territory
+                                                               :row 1
+                                                               :col 1}
+                                                      :damage 1}
+                                                     {:piece-id :rose-sword-minion
+                                                      :target {:kind :territory
+                                                               :row 1
+                                                               :col 1}
+                                                      :damage 1}]})]
+    (is ok?)
+    (is (= [:sword/territory-destroyed]
+           (mapv :type events)))
+    (is (= 2 (get-in events [0 :action-count])))
+    (is (true? (get-in events [0 :shortcut?])))
+    (is (nil? (board-cell-by-index state 4)))
+    (is (= ["death" "cupsking"]
+           (mapv :id (:discard-pile state))))
+    (is (game-schema/valid-game? state))))
+
 (deftest moon-can-enter-full-territory-if-sword-restores_piece_limit
   (let [full-space-pieces [{:id :indigo-moon-target
                             :player-id :indigo

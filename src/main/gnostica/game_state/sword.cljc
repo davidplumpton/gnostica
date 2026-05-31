@@ -1078,7 +1078,12 @@
     (and (= (:kind left) (:kind right))
          (case (:kind left)
            :piece (= (:piece-id left) (:piece-id right))
-           :territory (= (:board-index left) (:board-index right))
+           :territory (or (and (some? (:board-index left))
+                                (= (:board-index left) (:board-index right)))
+                           (and (int? (:row left))
+                                (int? (:col left))
+                                (= (:row left) (:row right))
+                                (= (:col left) (:col right))))
            false))))
 
 (defn- sword-target-pips [result]
