@@ -270,6 +270,7 @@
                                      (dispatch-gesture! (cond-> input
                                                           target
                                                           (assoc :target target))))
+                                   (gesture-input/clear-active-gesture-input!)
                                    (clear-drag!)))
         external-drag-leave-listener (fn [_]
                                       (clear-drag!))]

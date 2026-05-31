@@ -127,6 +127,7 @@
     (.preventDefault event)
     (.stopPropagation event)
     (reset! drag-hover nil)
+    (gesture-input/clear-active-gesture-input!)
     (rf/dispatch [events/start-gesture-intent (assoc input :target target)])))
 
 (defn- territory-targets-by-index [legal-targets]
@@ -312,7 +313,9 @@
                          (gesture-input/set-gesture-data! (.-dataTransfer event)
                                                           drag-input)
                          (rf/dispatch [events/start-gesture-intent drag-input])))
-      :on-drag-end #(reset! drag-hover nil)
+      :on-drag-end #(do
+                      (gesture-input/clear-active-gesture-input!)
+                      (reset! drag-hover nil))
       :on-drag-over on-drag-over-gesture
       :on-drop #(on-drop-gesture % {:kind :piece
                                     :piece-id (:id piece)}
@@ -421,7 +424,9 @@
                          (gesture-input/set-gesture-data! (.-dataTransfer event)
                                                           drag-input)
                          (rf/dispatch [events/start-gesture-intent drag-input])))
-      :on-drag-end #(reset! drag-hover nil)
+      :on-drag-end #(do
+                      (gesture-input/clear-active-gesture-input!)
+                      (reset! drag-hover nil))
       :on-drag-over #(on-drag-over-target % drag-hover target descriptor)
       :on-drop #(on-drop-gesture % target drag-hover)}
      [card-ui/card-face card "board-card__face" card-icon-mode]

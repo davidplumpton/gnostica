@@ -72,7 +72,8 @@
                          (gesture-input/set-gesture-data! (.-dataTransfer event)
                                                           drag-input)
                          (when-not (:preserve-selection? drag-input)
-                           (rf/dispatch [events/start-gesture-intent drag-input]))))}
+                           (rf/dispatch [events/start-gesture-intent drag-input]))))
+      :on-drag-end #(gesture-input/clear-active-gesture-input!)}
      [card-ui/card-face card "hand-card__face" (:title card) card-icon-mode {:focusable? true}]
      [:h3.hand-card__title (:title card)]]))
 
@@ -109,7 +110,8 @@
       :on-drag-start (fn [event]
                        (when drag-input
                          (gesture-input/set-gesture-data! (.-dataTransfer event)
-                                                          drag-input)))}
+                                                          drag-input)))
+      :on-drag-end #(gesture-input/clear-active-gesture-input!)}
      (if top-card
        [card-ui/card-face
         top-card

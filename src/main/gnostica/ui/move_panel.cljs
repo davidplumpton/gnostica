@@ -87,6 +87,7 @@
          :aria-pressed (= selected-source id)
          :draggable (if (and enabled? stash-input) "true" "false")
          :on-click #(rf/dispatch [events/select-move-source id])
+         :on-drag-end #(gesture-input/clear-active-gesture-input!)
          :on-drag-start (fn [event]
                           (when (and enabled? stash-input)
                             (rf/dispatch [events/start-gesture-intent stash-input])
@@ -100,6 +101,7 @@
             {:aria-hidden "true"
              :data-piece-shape "small-pyramid"
              :draggable (if (and enabled? stash-input) "true" "false")
+             :on-drag-end #(gesture-input/clear-active-gesture-input!)
              :on-drag-start (fn [event]
                               (when (and enabled? stash-input)
                                 (.stopPropagation event)

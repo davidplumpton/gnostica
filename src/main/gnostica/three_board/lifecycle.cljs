@@ -46,6 +46,28 @@
       :wasteland [(:row target) (:col target)]
       nil)))
 
+(defn- drag-target-descriptor
+  [territory-targets wasteland-targets piece-targets {:keys [target]}]
+  (case (:kind target)
+    :territory (get territory-targets (:board-index target))
+    :wasteland (get wasteland-targets [(:row target) (:col target)])
+    :piece (get piece-targets (:piece-id target))
+    nil))
+
+(defn- drag-preview-with-target-status [drag-preview descriptor]
+  (if (:target drag-preview)
+    (if descriptor
+      (assoc drag-preview
+             :target-status (:status descriptor)
+             :target-enabled? (:enabled? descriptor)
+             :target-reason (or (:reason descriptor)
+                                (get-in descriptor [:error :message])))
+      (dissoc drag-preview
+              :target-status
+              :target-enabled?
+              :target-reason))
+    drag-preview))
+
 (defn- placement-target-key [kind {:keys [placement]}]
   (let [target-space (:target-space placement)]
     (when (= kind (:kind target-space))
@@ -158,13 +180,20 @@
             territory-targets (territory-targets-by-index legal-targets)
             wasteland-targets (wasteland-targets-by-coordinate legal-targets)
             piece-targets (piece-targets-by-id legal-targets)
+            drag-preview* (drag-preview-with-target-status
+                           drag-preview
+                           (drag-target-descriptor territory-targets
+                                                   wasteland-targets
+                                                   piece-targets
+                                                   drag-preview))
             board-space-drag-active? (board-space-drag-preview? drag-preview)
-            drag-territory-key (drag-target-key :territory drag-preview)
-            drag-wasteland-key (drag-target-key :wasteland drag-preview)
+            drag-territory-key (drag-target-key :territory drag-preview*)
+            drag-wasteland-key (drag-target-key :wasteland drag-preview*)
             preview-territory-key (placement-target-key :territory move-preview)
             preview-wasteland-key (placement-target-key :wasteland move-preview)
             preview-status (:status move-preview)
             drag-target-count (atom 0)]
+        (assoc-state-when-changed! this :drag-preview drag-preview*)
         (doseq [[index mesh] selection-meshes]
           (when (style-and-track-drag-target!
                  mesh

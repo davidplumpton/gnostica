@@ -596,7 +596,16 @@
 	     const dragStart = new DragEvent('dragstart', eventInit);
 	     const dragStartDispatched = source.dispatchEvent(dragStart);
 	     requestAnimationFrame(() => requestAnimationFrame(() => {
-	       const dragOver = new DragEvent('dragover', eventInit);
+	       const protectedTransfer = {
+	         types: Array.from(dataTransfer.types),
+	         dropEffect: 'move',
+	         effectAllowed: dataTransfer.effectAllowed,
+	         getData: () => '',
+	         setData: () => {},
+	         setDragImage: () => {}
+	       };
+	       const dragOver = new MouseEvent('dragover', eventInit);
+	       Object.defineProperty(dragOver, 'dataTransfer', {value: protectedTransfer});
 	       const dragOverDispatched = target.dispatchEvent(dragOver);
 	       requestAnimationFrame(() => requestAnimationFrame(() => {
 	         const board = document.querySelector('.board-three');
@@ -647,18 +656,26 @@
        return;
      }
      const dataTransfer = new DataTransfer();
-     const dragStart = new DragEvent('dragstart', {
-       bubbles: true,
-       cancelable: true,
-       dataTransfer
+	     const dragStart = new DragEvent('dragstart', {
+	       bubbles: true,
+	       cancelable: true,
+	       dataTransfer
 	     });
 	     const dragStartDispatched = source.dispatchEvent(dragStart);
 	     requestAnimationFrame(() => requestAnimationFrame(() => {
-	       const dragOver = new DragEvent('dragover', {
+	       const protectedTransfer = {
+	         types: Array.from(dataTransfer.types),
+	         dropEffect: 'move',
+	         effectAllowed: dataTransfer.effectAllowed,
+	         getData: () => '',
+	         setData: () => {},
+	         setDragImage: () => {}
+	       };
+	       const dragOver = new MouseEvent('dragover', {
 	         bubbles: true,
-	         cancelable: true,
-	         dataTransfer
+	         cancelable: true
 	       });
+	       Object.defineProperty(dragOver, 'dataTransfer', {value: protectedTransfer});
 	       const dragOverDispatched = target.dispatchEvent(dragOver);
 	       requestAnimationFrame(() => requestAnimationFrame(() => {
 	         const stage = document.querySelector('.board-fallback .board-stage');

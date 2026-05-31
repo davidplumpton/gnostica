@@ -8,6 +8,9 @@
 (def fallback-mime-type "text/plain")
 (def fallback-text-prefix "gnostica-gesture:")
 
+#?(:cljs
+   (defonce active-gesture-input* (atom nil)))
+
 (defn gesture-input-string [input]
   (pr-str input))
 
@@ -25,6 +28,13 @@
           nil)))))
 
 #?(:cljs
+   (defn gesture-mime-type? [data-transfer]
+     (when data-transfer
+       (boolean
+        (some #(= mime-type %)
+              (array-seq (.-types data-transfer)))))))
+
+#?(:cljs
    (defn gesture-data-transfer? [data-transfer]
      (when data-transfer
        (boolean
@@ -33,14 +43,25 @@
               (array-seq (.-types data-transfer)))))))
 
 #?(:cljs
+   (defn active-gesture-input []
+     @active-gesture-input*))
+
+#?(:cljs
+   (defn clear-active-gesture-input! []
+     (reset! active-gesture-input* nil)))
+
+#?(:cljs
    (defn gesture-input-from-data-transfer [data-transfer]
      (when data-transfer
        (or (parse-gesture-input-string (.getData data-transfer mime-type))
-           (parse-gesture-input-string (.getData data-transfer fallback-mime-type))))))
+           (parse-gesture-input-string (.getData data-transfer fallback-mime-type))
+           (when (gesture-mime-type? data-transfer)
+             (active-gesture-input))))))
 
 #?(:cljs
    (defn set-gesture-data! [data-transfer input]
      (when data-transfer
+       (reset! active-gesture-input* input)
        (let [payload (gesture-input-string input)]
          (.setData data-transfer mime-type payload)
          (.setData data-transfer fallback-mime-type
