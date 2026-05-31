@@ -557,12 +557,15 @@
        firstPieceSourceIconClipPath: firstPieceBodyStyle ? firstPieceBodyStyle.clipPath : null,
        firstPieceSourceIconColor: firstPieceBodyStyle ? firstPieceBodyStyle.backgroundColor : null,
        firstPieceSourceIconPipVisible: Boolean(firstPiecePip),
-	       pointerDragEnabled: board ? board.dataset.pointerDragEnabled === 'true' : null,
-	       dragActive: board ? board.dataset.dragActive === 'true' : null,
-	       dragGhostVisible: board ? board.dataset.dragPiecePreviewVisible === 'true' : false,
-	       dragPiecePreviewVisible: board ? board.dataset.dragPiecePreviewVisible === 'true' : false,
-	       dragPiecePreviewSize: board ? board.dataset.dragPiecePreviewSize : null,
-	       dragPiecePreviewPlayerId: board ? board.dataset.dragPiecePreviewPlayerId : null,
+       pointerDragEnabled: board ? board.dataset.pointerDragEnabled === 'true' : null,
+       dragActive: board ? board.dataset.dragActive === 'true' : null,
+       cameraDistance: board ? Number(board.dataset.cameraDistance || -1) : -1,
+       cameraTargetX: board ? Number(board.dataset.cameraTargetX || -999) : -999,
+       cameraTargetY: board ? Number(board.dataset.cameraTargetY || -999) : -999,
+       dragGhostVisible: board ? board.dataset.dragPiecePreviewVisible === 'true' : false,
+       dragPiecePreviewVisible: board ? board.dataset.dragPiecePreviewVisible === 'true' : false,
+       dragPiecePreviewSize: board ? board.dataset.dragPiecePreviewSize : null,
+       dragPiecePreviewPlayerId: board ? board.dataset.dragPiecePreviewPlayerId : null,
 	       dragTargetKind: board ? board.dataset.dragTargetKind : null,
 	       dragTargetStatus: board ? board.dataset.dragTargetStatus : null,
 	       dragTargetHighlightCount: board ? Number(board.dataset.dragTargetHighlightCount || 0) : null
@@ -952,6 +955,18 @@
     (and (pos? expected-distance)
          (pos? current-distance)
          (roughly= expected-distance current-distance 0.02))))
+
+(defn camera-target-preserved? [expected-stats stats]
+  (let [expected-x (double (or (get expected-stats "cameraTargetX") -999))
+        expected-y (double (or (get expected-stats "cameraTargetY") -999))
+        current-x (double (or (get stats "cameraTargetX") -999))
+        current-y (double (or (get stats "cameraTargetY") -999))]
+    (and (not= -999.0 expected-x)
+         (not= -999.0 expected-y)
+         (not= -999.0 current-x)
+         (not= -999.0 current-y)
+         (roughly= expected-x current-x 0.02)
+         (roughly= expected-y current-y 0.02))))
 
 (defn camera-target-x-changed? [initial-stats stats]
   (let [initial-x (double (or (get initial-stats "cameraTargetX") -999))

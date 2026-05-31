@@ -85,12 +85,24 @@
   (and (:target-key drag-hover)
        (= (:target-key drag-hover) (gesture-input/target-key target))))
 
+(defn- current-drag-hover-status [drag-hover descriptor]
+  (or (:status descriptor)
+      (:target-status drag-hover)))
+
 (defn- drag-hover-status-class [drag-hover target descriptor]
   (when (drag-hover-target? drag-hover target)
-    (case (or (:target-status drag-hover) (:status descriptor))
+    (case (current-drag-hover-status drag-hover descriptor)
       :legal " is-drag-hover-target is-drag-hover-legal"
       :disabled " is-drag-hover-target is-drag-hover-disabled"
       " is-drag-hover-target")))
+
+(defn- descriptor-for-target
+  [territory-targets wasteland-targets piece-targets {:keys [kind board-index row col piece-id]}]
+  (case kind
+    :territory (get territory-targets board-index)
+    :wasteland (get wasteland-targets [row col])
+    :piece (get piece-targets piece-id)
+    nil))
 
 (defn- on-drag-over-gesture [event]
   (when (gesture-drag-event? event)
@@ -382,8 +394,8 @@
       :data-move-target-role (some-> (:role descriptor) name)
       :data-drag-hover (when hovered? "true")
       :data-drag-hover-status (when hovered?
-                                (some-> (or (:target-status @drag-hover)
-                                            (:status descriptor))
+                                (some-> (current-drag-hover-status @drag-hover
+                                                                    descriptor)
                                         name))
       :title (target-reason descriptor)
       :role (when (seq board-pieces) "img")
@@ -424,8 +436,8 @@
       :data-move-target-role (some-> (:role descriptor) name)
       :data-drag-hover (when hovered? "true")
       :data-drag-hover-status (when hovered?
-                                (some-> (or (:target-status @drag-hover)
-                                            (:status descriptor))
+                                (some-> (current-drag-hover-status @drag-hover
+                                                                    descriptor)
                                         name))
       :draggable (if drag-input "true" "false")
       :title (target-reason descriptor)
@@ -500,7 +512,14 @@
         (let [territory-targets (territory-targets-by-index legal-targets)
               wasteland-targets (wasteland-targets-by-coordinate legal-targets)
               piece-targets (piece-targets-by-id legal-targets)
-              drag-enabled? (true? (:pointer-drag-enabled? direct-manipulation))]
+              drag-enabled? (true? (:pointer-drag-enabled? direct-manipulation))
+              drag-hover* @drag-hover
+              drag-hover-descriptor (descriptor-for-target territory-targets
+                                                           wasteland-targets
+                                                           piece-targets
+                                                           (:target drag-hover*))
+              drag-hover-status (current-drag-hover-status drag-hover*
+                                                           drag-hover-descriptor)]
           [:div.board-stage
            {:role "group"
             :aria-label "Gnostica board"
@@ -511,14 +530,12 @@
                                                    direct-manipulation))
             :data-table-surface-color three-board/table-surface-css-color
             :data-table-clear-color three-board/table-clear-css-color
-            :data-drag-hover-kind (some-> @drag-hover
+            :data-drag-hover-kind (some-> drag-hover*
                                            :target
                                            :kind
                                            name)
-            :data-drag-active (boolean @drag-hover)
-            :data-drag-hover-status (some-> @drag-hover
-                                             :target-status
-                                             name)
+            :data-drag-active (boolean drag-hover*)
+            :data-drag-hover-status (some-> drag-hover-status name)
             :style (board-stage-style space-bounds)
             :on-drag-over #(on-drag-over-board-stage % drag-hover)
             :on-drag-leave #(on-board-stage-drag-leave % drag-hover)}

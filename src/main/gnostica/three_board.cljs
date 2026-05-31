@@ -121,7 +121,7 @@
           (or (not= old-cells new-cells)
               (not= old-pieces new-pieces)
               (not= old-direct-manipulation new-direct-manipulation))
-          (lifecycle/mount! this)
+          (lifecycle/mount! this (controls/capture-view-state this))
 
           (not= old-card-icon-mode new-card-icon-mode)
           (lifecycle/mount! this (controls/capture-view-state this))

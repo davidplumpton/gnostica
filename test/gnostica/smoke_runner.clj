@@ -383,39 +383,60 @@
                          "direct-drop Three.js setup"
                          stats/direct-drop-three-stats-js
                          stats/direct-drop-three-ready?)
-      (let [drop-result (browser/evaluate! client stats/initial-placement-three-drop-js)]
-        (assert-drop-started! "Three.js initial-placement source-to-board drop" drop-result)
-        (assert-first-piece-ghost! "Three.js initial-placement source-to-board drop" drop-result)
-        (assert-three-single-drag-highlight! "Three.js initial-placement source-to-board drop" drop-result)
-        (let [pending (browser/wait-for! client
-                                         "Three.js initial-placement pending tray"
-                                         stats/pending-tray-stats-js
-                                         stats/pending-tray-needs-choice-ready?)]
-          (browser/evaluate! client stats/open-detailed-entry-js)
-          (browser/wait-for! client
-                             "Three.js initial-placement Detailed entry"
-                             stats/pending-tray-stats-js
-                             stats/pending-tray-detailed-open-ready?)
-          (let [orientation-result (browser/evaluate! client
-                                                      stats/choose-north-orientation-js)]
-            (assert-selected! "North orientation" orientation-result)
-            (let [ready (browser/wait-for! client
-                                           "Three.js initial-placement ready tray"
-                                           stats/pending-tray-stats-js
-                                           stats/pending-tray-ready?)
-                  confirm-result (browser/evaluate! client
-                                                    stats/confirm-pending-move-js)]
-              (assert-clicked! "Three.js initial-placement Confirm" confirm-result)
-              (let [confirmed (browser/wait-for! client
-                                                 "Three.js initial-placement confirmed board state"
-                                                 stats/direct-drop-three-stats-js
-                                                 stats/direct-drop-three-confirmed?)]
-                {:drop-result drop-result
-                 :pending pending
-                 :orientation-result orientation-result
-                 :ready ready
-                 :confirm-result confirm-result
-                 :confirmed confirmed})))))
+      (let [setup-stats (browser/evaluate! client stats/direct-drop-three-stats-js)]
+        (stats/focus-three-board! client)
+        (browser/dispatch-w-key! client)
+        (let [panned-stats (browser/wait-for! client
+                                              "Three.js direct-drop panned camera"
+                                              stats/direct-drop-three-stats-js
+                                              #(and (stats/direct-drop-three-ready? %)
+                                                    (stats/camera-target-y-changed? setup-stats %)))
+              rect (browser/evaluate! client stats/canvas-rect-js)]
+          (browser/dispatch-wheel! client rect -720)
+          (let [camera-stats (browser/wait-for! client
+                                                "Three.js direct-drop zoomed camera"
+                                                stats/direct-drop-three-stats-js
+                                                #(and (stats/direct-drop-three-ready? %)
+                                                      (stats/camera-distance-changed? panned-stats %)))
+                drop-result (browser/evaluate! client stats/initial-placement-three-drop-js)]
+            (assert-drop-started! "Three.js initial-placement source-to-board drop" drop-result)
+            (assert-first-piece-ghost! "Three.js initial-placement source-to-board drop" drop-result)
+            (assert-three-single-drag-highlight! "Three.js initial-placement source-to-board drop" drop-result)
+            (let [pending (browser/wait-for! client
+                                             "Three.js initial-placement pending tray"
+                                             stats/pending-tray-stats-js
+                                             stats/pending-tray-needs-choice-ready?)]
+              (browser/evaluate! client stats/open-detailed-entry-js)
+              (browser/wait-for! client
+                                 "Three.js initial-placement Detailed entry"
+                                 stats/pending-tray-stats-js
+                                 stats/pending-tray-detailed-open-ready?)
+              (let [orientation-result (browser/evaluate! client
+                                                          stats/choose-north-orientation-js)]
+                (assert-selected! "North orientation" orientation-result)
+                (let [ready (browser/wait-for! client
+                                               "Three.js initial-placement ready tray"
+                                               stats/pending-tray-stats-js
+                                               stats/pending-tray-ready?)
+                      confirm-result (browser/evaluate! client
+                                                        stats/confirm-pending-move-js)]
+                  (assert-clicked! "Three.js initial-placement Confirm" confirm-result)
+                  (let [confirmed (browser/wait-for! client
+                                                     "Three.js initial-placement confirmed board state"
+                                                     stats/direct-drop-three-stats-js
+                                                     stats/direct-drop-three-confirmed?)]
+                    (when-not (and (stats/camera-distance-preserved? camera-stats confirmed)
+                                   (stats/camera-target-preserved? camera-stats confirmed))
+                      (throw (ex-info "The Three.js direct-drop piece update reset the camera view."
+                                      {:camera-stats camera-stats
+                                       :confirmed confirmed})))
+                    {:camera-stats camera-stats
+                     :drop-result drop-result
+                     :pending pending
+                     :orientation-result orientation-result
+                     :ready ready
+                     :confirm-result confirm-result
+                     :confirmed confirmed})))))))
       (catch Exception error
         (throw (ex-info "Confirmed Three.js direct drop smoke failed."
                         {:url url
