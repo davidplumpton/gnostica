@@ -1,12 +1,56 @@
 (ns gnostica.move-selection.commands
   (:require [gnostica.game-state :as game-state]
+            [gnostica.move-selection.context :as context]
             [gnostica.move-selection.registry :as registry]))
 
+(def required-context-keys
+  #{:active-card
+    :active-power
+    :completed-major-actions
+    :composite-current-action
+    :copied-suit-powers
+    :current-player-id
+    :devil-current-action
+    :empty-move-selection
+    :fool-command-map
+    :game
+    :game-turn-key
+    :move-error
+    :move-power
+    :move-ready?
+    :move-selection
+    :move-source
+    :normalize-high-priestess-redraws
+    :selected-cup-variant
+    :selected-disc-action-count
+    :selected-disc-replacement-card-source
+    :selected-disc-variant
+    :selected-power
+    :selected-rod-variant
+    :selected-sword-replacement-card-source
+    :selected-sword-variant
+    :selected-world-copied-power
+    :source-command
+    :source-unavailable-reason
+    :star-disc-source?
+    :stored-fool-reveal-actions
+    :strength-disc-source?
+    :sword-major-current-action
+    :sword-orientation-available?
+    :sword-replacement-card-source-option-ids
+    :update-move-selection
+    :valid-discard-card-ids
+    :valid-judgement-card-ids
+    :world-move?})
+
+(defn make-context [deps]
+  (context/make "gnostica.move-selection.commands" required-context-keys deps))
+
 (defn- call [ctx key & args]
-  (apply (get ctx key) args))
+  (apply context/call ctx key args))
 
 (defn- value [ctx key]
-  (get ctx key))
+  (context/value ctx key))
 
 (defn cup-target-command [params]
   (cond

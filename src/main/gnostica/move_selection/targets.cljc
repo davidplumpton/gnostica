@@ -1,13 +1,53 @@
 (ns gnostica.move-selection.targets
   (:require [gnostica.board-layout :as layout]
             [gnostica.cards :as cards]
+            [gnostica.move-selection.context :as context]
             [gnostica.pieces :as pieces]))
 
+(def required-context-keys
+  #{:active-power
+    :board
+    :board-pieces
+    :cup-move?
+    :current-player-hand
+    :current-player-id
+    :current-player-piece?
+    :discard-pile
+    :disc-move?
+    :disc-replacement-card-source-definitions
+    :max-draw-count
+    :move-discard-card-options
+    :move-hand-card-options
+    :move-judgement-card-options
+    :move-one-point-card-options
+    :move-piece-options
+    :move-selection
+    :move-source-board-options
+    :move-target-board-options
+    :move-target-piece-options
+    :move-target-wasteland-options
+    :move-world-copy-options
+    :replacement-card-options-for-source
+    :replacement-card-source-option-ids
+    :rod-move?
+    :selected-disc-action-count
+    :selected-replacement-card-source
+    :selected-sun-disc-mode
+    :small-stash-count
+    :source-unavailable-reason
+    :sun-disc-target-cell
+    :sun-move?
+    :sword-move?
+    :target-board-cell})
+
+(defn make-context [deps]
+  (context/make "gnostica.move-selection.targets" required-context-keys deps))
+
 (defn- call [ctx key & args]
-  (apply (get ctx key) args))
+  (apply context/call ctx key args))
 
 (defn- value [ctx key]
-  (get ctx key))
+  (context/value ctx key))
 
 (defn- target-status [active? enabled?]
   (cond

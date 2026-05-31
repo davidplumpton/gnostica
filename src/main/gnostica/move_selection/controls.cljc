@@ -1,11 +1,66 @@
 (ns gnostica.move-selection.controls
-  (:require [gnostica.move-selection.registry :as registry]))
+  (:require [gnostica.move-selection.context :as context]
+            [gnostica.move-selection.registry :as registry]))
+
+(def required-context-keys
+  #{:active-composite-action-power
+    :active-power
+    :active-sword-major-action-power
+    :board
+    :death-sword-action-count-option-values
+    :devil-action-count-option-values
+    :disc-action-count-option-values
+    :fool-active-play?
+    :fool-active-reveal
+    :fool-active-reveal-card
+    :fool-completed-reveal-count
+    :fool-completed-reveals
+    :fool-move?
+    :fool-play-power-options
+    :fool-reveal-count-order
+    :hand-trade-major-action-count-definitions
+    :hand-trade-major-action-count-option-values
+    :hand-trade-major-action-count-source?
+    :high-priestess-draw-count-options
+    :high-priestess-hand-card-options
+    :high-priestess-move?
+    :high-priestess-redraw-count-order
+    :high-priestess-redraw-pass
+    :high-priestess-valid-discard-card-ids
+    :judgement-card-maximum
+    :judgement-discard-card-options
+    :judgement-move?
+    :move-power-definitions
+    :move-power-ids-for-card
+    :move-power-order
+    :move-selection
+    :move-source-definitions
+    :move-source-order
+    :rod-mode-definitions
+    :rod-mode-order
+    :selected-fool-play-power
+    :selected-fool-reveal-count
+    :selected-hand-trade-major-action-count
+    :selected-high-priestess-redraw-count
+    :selected-power
+    :selected-world-copied-power
+    :source-card
+    :source-unavailable-reason
+    :sun-disc-mode-definitions
+    :sun-disc-mode-option-ids
+    :world-copied-card
+    :world-copied-power-ids-for-card
+    :world-copy-board-indexes
+    :world-move?})
+
+(defn make-context [deps]
+  (context/make "gnostica.move-selection.controls" required-context-keys deps))
 
 (defn- call [ctx key & args]
-  (apply (get ctx key) args))
+  (apply context/call ctx key args))
 
 (defn- value [ctx key]
-  (get ctx key))
+  (context/value ctx key))
 
 (defn move-source-options [ctx db]
   (mapv (fn [source-id]
