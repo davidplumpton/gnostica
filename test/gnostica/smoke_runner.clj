@@ -121,6 +121,12 @@
     (throw (ex-info (str description " was not clicked.")
                     {:result result}))))
 
+(defn- assert-keyboard-placement-started! [description result]
+  (when-not (and (true? (get result "started"))
+                 (true? (get result "focused")))
+    (throw (ex-info (str description " did not start from the focused source button.")
+                    {:result result}))))
+
 (defn- assert-touch-input! [description result ready?]
   (when-not (ready? result)
     (throw (ex-info (str description " did not produce touch input events.")
@@ -400,6 +406,81 @@
       (finally
         (browser/close-cdp! client)))))
 
+(defn- run-confirmed-keyboard-placement!
+  [http-client chrome url {:keys [description blocked-urls setup-js setup-ready?
+                                  confirmed-js confirmed-ready?]}]
+  (println (str "Smoke checking " description "."))
+  (let [client (open-gnostica-page! http-client
+                                    chrome
+                                    (first stats/viewports)
+                                    (stats/direct-drop-smoke-url url)
+                                    blocked-urls)]
+    (try
+      (browser/wait-for! client
+                         (str description " setup")
+                         setup-js
+                         setup-ready?)
+      (let [start-result (browser/evaluate! client stats/keyboard-placement-start-js)]
+        (assert-keyboard-placement-started! description start-result)
+        (let [started (browser/wait-for! client
+                                         (str description " target start")
+                                         stats/pending-tray-stats-js
+                                         stats/keyboard-placement-target-started?)]
+          (browser/dispatch-arrow-right-key! client)
+          (let [moved (browser/wait-for! client
+                                         (str description " target movement")
+                                         stats/pending-tray-stats-js
+                                         stats/keyboard-placement-target-moved?)]
+            (browser/dispatch-enter-key! client)
+            (browser/dispatch-arrow-right-key! client)
+            (let [ready (browser/wait-for! client
+                                           (str description " orientation ready")
+                                           stats/pending-tray-stats-js
+                                           stats/keyboard-placement-ready-east?)]
+              (browser/dispatch-enter-key! client)
+              (let [confirmed (browser/wait-for! client
+                                                 (str description " confirmed board state")
+                                                 confirmed-js
+                                                 confirmed-ready?)]
+                {:start-result start-result
+                 :started started
+                 :moved moved
+                 :ready ready
+                 :confirmed confirmed})))))
+      (catch Exception error
+        (throw (ex-info (str description " smoke failed.")
+                        {:url url
+                         :browser-diagnostics (browser/browser-diagnostics client)
+                         :cause (ex-message error)
+                         :data (ex-data error)}
+                        error)))
+      (finally
+        (browser/close-cdp! client)))))
+
+(defn- run-confirmed-three-keyboard-placement! [http-client chrome url]
+  (run-confirmed-keyboard-placement!
+   http-client
+   chrome
+   url
+   {:description "Three.js keyboard-only first-piece placement"
+    :blocked-urls []
+    :setup-js stats/direct-drop-three-stats-js
+    :setup-ready? stats/direct-drop-three-ready?
+    :confirmed-js stats/direct-drop-three-stats-js
+    :confirmed-ready? stats/direct-drop-three-confirmed?}))
+
+(defn- run-confirmed-fallback-keyboard-placement! [http-client chrome url]
+  (run-confirmed-keyboard-placement!
+   http-client
+   chrome
+   url
+   {:description "CSS keyboard-only first-piece placement"
+    :blocked-urls ["*cdn.jsdelivr.net/npm/three@0.128.0*"]
+    :setup-js stats/direct-drop-fallback-stats-js
+    :setup-ready? stats/direct-drop-fallback-ready?
+    :confirmed-js stats/direct-drop-fallback-stats-js
+    :confirmed-ready? stats/direct-drop-confirmed?}))
+
 (defn- run-confirmed-three-direct-drop! [http-client chrome url]
   (println "Smoke checking confirmed Three.js direct drop.")
   (let [client (open-gnostica-page! http-client
@@ -554,8 +635,10 @@
           (println (str "Smoke target: " (:url target)))
           (doseq [viewport stats/viewports]
             (run-happy-viewport! http-client chrome (:url target) viewport))
+          (run-confirmed-three-keyboard-placement! http-client chrome (:url target))
           (run-confirmed-three-direct-drop! http-client chrome (:url target))
           (run-missing-three-fallback! http-client chrome (:url target))
+          (run-confirmed-fallback-keyboard-placement! http-client chrome (:url target))
           (run-confirmed-fallback-direct-drop! http-client chrome (:url target))
           (run-mismatched-three-fallback! http-client chrome (:url target))
           (println "3D board smoke passed.")

@@ -32,6 +32,7 @@ Piece:
 
 Stash piece:
 - Drag the current player's small stash piece to an empty territory or legal wasteland when the current player has no pieces: start `:place-initial-small`, set the target, and require `:orientation`.
+- Activate the Place first piece source with Enter or Space to start keyboard target selection: arrow keys move among legal empty territories and wastelands, Enter or Space accepts the target, arrow keys or `O` choose orientation, Enter or Space confirms when ready, and Esc cancels.
 - Disabled state is shown when the current player already has a piece, lacks a small stash piece, the turn action is consumed, the game is finished, or the target is occupied or void.
 
 Draw deck:
@@ -94,7 +95,7 @@ Consumed-turn disabled:
 - If a replacement can come from hand or discard pile, require `:replacement-card-source` before accepting a card unless the card's zone uniquely determines the source.
 - If Strength, Death, Sun, Chariot, Devil, Justice, or Hanged Man needs an action count, require the count before interpreting later gestures as final actions.
 - If World is selected, require the copied major territory first and copied power second when the copied card exposes more than one implemented power.
-- If the active stage asks for orientation and the gesture cannot infer it from a compass, ring, or keyboard direction, require the orientation control before confirmation. During an eligible piece or first-placement stash-piece drag, arrow keys may set the pending orientation before drop and `O` cycles through up, north, east, south, and west. After a first-placement drop has staged a territory or wasteland target but before confirmation, the same arrow and `O` hotkeys continue to update the staged orientation.
+- If the active stage asks for orientation and the gesture cannot infer it from a compass, ring, or keyboard direction, require the orientation control before confirmation. During an eligible piece or first-placement stash-piece drag, arrow keys may set the pending orientation before drop and `O` cycles through up, north, east, south, and west. After a first-placement drop or accepted keyboard target has staged a territory or wasteland target but before confirmation, the same arrow and `O` hotkeys continue to update the staged orientation.
 
 ## Input Modes
 
@@ -110,7 +111,7 @@ Touch and pen:
 
 Keyboard:
 - Every gesture action has a detailed-control equivalent in `gnostica.ui.move-panel`.
-- Focused objects can be activated with Enter or Space. Arrow keys or WASD remain board panning when the 3D board has focus and no drag or first-placement pending orientation is active; eligible active piece drags and pending first-placement moves temporarily use arrow keys and `O` for orientation without mutating `:game`.
+- Focused objects can be activated with Enter or Space. The Place first piece source has a keyboard-only targeting mode: arrow keys move the preview target among legal empty territories and wastelands, Enter or Space accepts the target, arrow keys or `O` set orientation, Enter or Space confirms once ready, and Esc cancels. Arrow keys or WASD remain board panning when the 3D board has focus and no drag or keyboard first-placement targeting is active; eligible active piece drags and pending first-placement moves temporarily use arrow keys and `O` for orientation without mutating `:game`.
 - The pending tray exposes Confirm, Cancel, and Detailed entry as focusable controls.
 
 Reduced motion:
@@ -161,7 +162,7 @@ Orient:
 - Command shape: `apply-orient-move` receives `{:player-id ..., :piece-id ..., :orientation ...}`.
 
 Initial placement:
-- Gesture: drag the current player's small stash piece to an empty territory or legal wasteland, then choose orientation.
+- Gesture: drag the current player's small stash piece to an empty territory or legal wasteland, then choose orientation; keyboard users can activate Place first piece, arrow to a target, accept it, orient, and confirm.
 - Staged fields: `:source :place-initial-small`, target territory or wasteland, `:orientation`.
 - Command shape: `apply-initial-placement` receives `{:player-id ..., :target {:kind :territory :board-index ...}}` or `{:target {:kind :wasteland :row ... :col ...}}` plus orientation.
 
@@ -179,7 +180,7 @@ Recommend Detailed entry when:
 Classic staged controls must remain usable even if all direct manipulation affordances are disabled.
 
 Manual accessibility checks for this fallback:
-- Disable pointer dragging or enable the Detailed entry default, then complete representative Cup, Rod, Disc, Sword, orient, initial-placement, and major-power selections using only focusable move-panel controls plus board/card clicks.
+- Disable pointer dragging or enable the Detailed entry default, then complete representative Cup, Rod, Disc, Sword, orient, initial-placement, and major-power selections using only focusable move-panel controls plus board/card clicks; also complete first-piece placement through the keyboard-only Place first piece target mode.
 - Tab through the pending tray and move panel; focus should remain visible on source, power, minion, target, replacement, distance, damage, orientation, draw-count, Confirm, and Cancel controls.
 - Start a partial gesture, choose Detailed entry, finish the missing fields from the move panel, and confirm; `:game` should remain unchanged until confirmation.
 

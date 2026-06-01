@@ -13,6 +13,10 @@
    :error nil
    :detailed? false})
 
+(def empty-keyboard-placement-targeting
+  {:active? false
+   :mode nil})
+
 (defn- gesture-error [code message data]
   {:code code
    :message message
@@ -22,7 +26,9 @@
   (:gesture-intent db empty-gesture-intent))
 
 (defn cancel-gesture-intent [db]
-  (assoc db :gesture-intent empty-gesture-intent))
+  (assoc db
+         :gesture-intent empty-gesture-intent
+         :keyboard-placement-targeting empty-keyboard-placement-targeting))
 
 (defn- selection-error [db]
   (get-in db [:move-selection :error]))

@@ -485,6 +485,11 @@
                          :code "ArrowRight"
                          :key-code 39}))
 
+(defn dispatch-enter-key! [client]
+  (dispatch-key! client {:key "Enter"
+                         :code "Enter"
+                         :key-code 13}))
+
 (defn dispatch-question-mark-key! [client]
   (dispatch-key! client {:key "?"
                          :code "Slash"

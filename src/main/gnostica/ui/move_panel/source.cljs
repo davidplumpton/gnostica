@@ -111,6 +111,11 @@
 (defn- left-button-pointer? [event]
   (zero? (.-button event)))
 
+(defn- keyboard-activate-event? [event]
+  (or (= "Enter" (.-key event))
+      (= " " (.-key event))
+      (= "Space" (.-code event))))
+
 (defn- pointer-distance [event {:keys [x y]}]
   (js/Math.hypot (- (.-clientX event) x)
                  (- (.-clientY event) y)))
@@ -230,6 +235,18 @@
                          (.stopPropagation event)
                          (reset! suppress-next-source-click? false))
                        (rf/dispatch [events/select-move-source id])))
+         :on-key-down (fn [event]
+                        (when (and enabled?
+                                   (= :place-initial-small id)
+                                   (keyboard-activate-event? event))
+                          (.preventDefault event)
+                          (.stopPropagation event)
+                          (reset! suppress-next-source-click? true)
+                          (js/setTimeout
+                           #(reset! suppress-next-source-click? false)
+                           100)
+                          (rf/dispatch
+                           [events/start-keyboard-placement-targeting])))
          :on-pointer-down #(when (and enabled? stash-input)
                              (begin-source-pointer-drag! %
                                                          stash-input

@@ -178,7 +178,7 @@
   (str "board-move-preview__piece-marker"
        " is-" (name (or orientation :up))))
 
-(defn- preview-piece [bounds status {:keys [target-space player-id orientation]}]
+(defn- preview-piece [bounds status {:keys [target-space target player-id orientation]}]
   (when target-space
     (let [color (get-in pieces/players-by-id [player-id :css-color])]
       [:div.board-move-preview__piece
@@ -187,6 +187,11 @@
         :style (board-space-style bounds target-space)
         :data-preview-role "placement"
         :data-preview-space-kind (name (:kind target-space))
+        :data-preview-board-index (some-> (or (:board-index target)
+                                              (:board-index target-space))
+                                          str)
+        :data-preview-row (some-> (:row target-space) str)
+        :data-preview-col (some-> (:col target-space) str)
         :data-preview-orientation (some-> orientation name)
         :title (str "Place small piece on " (:label target-space))}
        [:span
@@ -480,6 +485,9 @@
               territory-targets (:territories target-indexes)
               wasteland-targets (:wastelands target-indexes)
               piece-targets (:pieces target-indexes)
+              placement (:placement move-preview)
+              placement-space (:target-space placement)
+              placement-target (:target placement)
               drag-enabled? (true? (:pointer-drag-enabled? direct-manipulation))
               drag-hover* @drag-hover
               drag-hover-descriptor (legal-targets/descriptor-for-indexed-target
@@ -503,6 +511,14 @@
                                           name)
             :data-drag-active (boolean drag-hover*)
             :data-drag-hover-status (some-> drag-hover-status name)
+            :data-move-preview-target-kind (some-> placement-space :kind name)
+            :data-move-preview-target-board-index (or (:board-index placement-target)
+                                                      "")
+            :data-move-preview-target-row (or (:row placement-space) "")
+            :data-move-preview-target-col (or (:col placement-space) "")
+            :data-move-preview-placement-orientation (some-> placement
+                                                             :orientation
+                                                             name)
             :style (board-stage-style space-bounds)
             :on-drag-over #(on-drag-over-board-stage % drag-hover)
             :on-drag-leave #(on-board-stage-drag-leave % drag-hover)}

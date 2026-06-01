@@ -3,7 +3,7 @@
             [gnostica.keyboard-shortcuts :as shortcuts]))
 
 (deftest hotkey-command-catalog-is-the-shared-command-model
-  (is (= ["?" "G" "I" "O" "W/A/S/D" "Arrow keys" "Esc"]
+  (is (= ["?" "G" "I" "O" "Enter" "Arrow keys" "Esc" "W/A/S/D" "Arrow keys" "Esc"]
          (vec (shortcuts/hotkey-command-labels))))
   (is (= "Cycle dragged or pending piece orientation"
          (:command (shortcuts/command-by-id :cycle-drag-orientation))))
@@ -13,6 +13,7 @@
           :open-icon-help
           :toggle-card-icon-mode
           :cycle-drag-orientation
+          :keyboard-first-placement-targeting
           :pan-board-view
           :close-help-dialogs]
          (mapv :id shortcuts/hotkey-commands))))

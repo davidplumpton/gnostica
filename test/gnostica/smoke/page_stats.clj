@@ -341,6 +341,8 @@
      const panel = document.querySelector('.move-panel');
      const board = document.querySelector('.board-three');
      const stage = document.querySelector('.board-fallback .board-stage');
+     const previewPiece = document.querySelector('.board-move-preview__piece');
+     const previewSurface = board || stage;
      const buttons = Array.from(tray ? tray.querySelectorAll('button') : []);
      const buttonByText = (label) => buttons.find((button) => text(button) === label);
      const confirm = buttonByText('Confirm');
@@ -365,8 +367,47 @@
        panelOpen: Boolean(panel),
        panelActive: Boolean(panel && panel.classList.contains('is-active')),
        selectedOrientation: text(selectedOrientation),
+       previewTargetKind: previewSurface ? previewSurface.dataset.movePreviewTargetKind : (previewPiece ? previewPiece.dataset.previewSpaceKind : null),
+       previewTargetBoardIndex: previewSurface && previewSurface.dataset.movePreviewTargetBoardIndex !== ''
+         ? Number(previewSurface.dataset.movePreviewTargetBoardIndex)
+         : (previewPiece && previewPiece.dataset.previewBoardIndex ? Number(previewPiece.dataset.previewBoardIndex) : null),
+       previewTargetRow: previewSurface && previewSurface.dataset.movePreviewTargetRow !== ''
+         ? Number(previewSurface.dataset.movePreviewTargetRow)
+         : (previewPiece && previewPiece.dataset.previewRow ? Number(previewPiece.dataset.previewRow) : null),
+       previewTargetCol: previewSurface && previewSurface.dataset.movePreviewTargetCol !== ''
+         ? Number(previewSurface.dataset.movePreviewTargetCol)
+         : (previewPiece && previewPiece.dataset.previewCol ? Number(previewPiece.dataset.previewCol) : null),
+       previewPlacementOrientation: previewSurface ? previewSurface.dataset.movePreviewPlacementOrientation : (previewPiece ? previewPiece.dataset.previewOrientation : null),
        boardPointerDragEnabled: board ? board.dataset.pointerDragEnabled === 'true' : null,
        fallbackPointerDragEnabled: stage ? stage.dataset.pointerDragEnabled === 'true' : null
+     };
+   })()")
+
+(def keyboard-placement-start-js
+  "(() => {
+     const text = (node) => node ? node.textContent.trim() : '';
+     const sourceButtons = Array.from(document.querySelectorAll('.move-source-option'));
+     const source = sourceButtons.find((button) => text(button).includes('Place first piece'));
+     if (!source) {
+       return {
+         started: false,
+         reason: 'No Place first piece source found.',
+         sourceCount: sourceButtons.length
+       };
+     }
+     source.focus();
+     const event = new KeyboardEvent('keydown', {
+       key: 'Enter',
+       code: 'Enter',
+       bubbles: true,
+       cancelable: true
+     });
+     const dispatched = source.dispatchEvent(event);
+     return {
+       started: true,
+       dispatched,
+       focused: document.activeElement === source,
+       sourceText: text(source)
      };
    })()")
 
@@ -1178,6 +1219,24 @@
        (true? (get stats "panelOpen"))
        (true? (get stats "panelActive"))
        (= "East" (get stats "selectedOrientation"))))
+
+(defn keyboard-placement-target-started? [stats]
+  (and (pending-tray-needs-choice-ready? stats)
+       (= "territory" (get stats "previewTargetKind"))
+       (= 0 (long (or (get stats "previewTargetBoardIndex") -1)))
+       (nil? (get stats "previewPlacementOrientation"))))
+
+(defn keyboard-placement-target-moved? [stats]
+  (and (pending-tray-needs-choice-ready? stats)
+       (= "territory" (get stats "previewTargetKind"))
+       (= 1 (long (or (get stats "previewTargetBoardIndex") -1)))
+       (nil? (get stats "previewPlacementOrientation"))))
+
+(defn keyboard-placement-ready-east? [stats]
+  (and (pending-tray-ready? stats)
+       (= "territory" (get stats "previewTargetKind"))
+       (= 1 (long (or (get stats "previewTargetBoardIndex") -1)))
+       (= "east" (get stats "previewPlacementOrientation"))))
 
 (defn- first-piece-source-icon-ready? [stats]
   (and (= "small-pyramid" (get stats "firstPieceSourceIconShape"))

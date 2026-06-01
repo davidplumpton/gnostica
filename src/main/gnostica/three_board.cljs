@@ -142,6 +142,9 @@
             texture-metadata (card-textures/texture-renderer-metadata)
             drag-preview (:drag-preview state)
             drag-piece-preview-meta (:drag-piece-preview-meta state)
+            placement (:placement move-preview)
+            placement-space (:target-space placement)
+            placement-target (:target placement)
             popover-index (or (:hovered-index state)
                               (when (:board-focused? state)
                                 _selected-index))
@@ -188,6 +191,15 @@
           :data-drag-piece-preview-orientation (some-> drag-piece-preview-meta
                                                        :orientation
                                                        name)
+          :data-move-preview-target-kind (some-> placement-space :kind name)
+          :data-move-preview-target-board-index (or (:board-index placement-target)
+                                                    (:board-index placement-space)
+                                                    "")
+          :data-move-preview-target-row (or (:row placement-space) "")
+          :data-move-preview-target-col (or (:col placement-space) "")
+          :data-move-preview-placement-orientation (some-> placement
+                                                           :orientation
+                                                           name)
           :data-move-preview-active (true? (:active? move-preview))
           :data-move-preview-status (some-> move-preview :status name)
           :data-visible-piece-count (scene-graph/visible-piece-count _cells _pieces)

@@ -14,6 +14,18 @@
 (def set-pending-placement-orientation-event
   :gnostica.app/set-pending-placement-orientation)
 
+(def move-keyboard-placement-target-event
+  :gnostica.app/move-keyboard-placement-target)
+
+(def accept-keyboard-placement-target-event
+  :gnostica.app/accept-keyboard-placement-target)
+
+(def cancel-gesture-intent-event
+  :gnostica.app/cancel-gesture-intent)
+
+(def confirm-move-event
+  :gnostica.app/confirm-move)
+
 (defonce global-shortcut-listener
   (atom nil))
 
@@ -67,6 +79,80 @@
       (rf/dispatch [set-pending-placement-orientation-event result])
       true)))
 
+(defn- keyboard-placement-direction [event-info]
+  (when-not (or (:alt? event-info)
+                (:ctrl? event-info)
+                (:meta? event-info))
+    (case (some-> (:key event-info) str/lower-case)
+      "arrowup" :north
+      "arrowright" :east
+      "arrowdown" :south
+      "arrowleft" :west
+      nil)))
+
+(defn- accept-key? [event-info]
+  (and (not (or (:alt? event-info)
+                (:ctrl? event-info)
+                (:meta? event-info)))
+       (or (contains? #{"enter" " "} (some-> (:key event-info) str/lower-case))
+           (= "space" (some-> (:code event-info) str/lower-case)))))
+
+(defn- cancel-key? [event-info]
+  (and (not (or (:alt? event-info)
+                (:ctrl? event-info)
+                (:meta? event-info)))
+       (= "escape" (some-> (:key event-info) str/lower-case))))
+
+(defn- handle-keyboard-placement-key! [event]
+  (let [db @rf-db/app-db]
+    (when (app-state/keyboard-placement-targeting-active? db)
+      (let [info (event-info event)
+            mode (app-state/keyboard-placement-targeting-mode db)]
+        (cond
+          (cancel-key? info)
+          (do
+            (.preventDefault event)
+            (.stopPropagation event)
+            (rf/dispatch [cancel-gesture-intent-event])
+            true)
+
+          (and (= :target mode)
+               (keyboard-placement-direction info))
+          (do
+            (.preventDefault event)
+            (.stopPropagation event)
+            (rf/dispatch [move-keyboard-placement-target-event
+                          (keyboard-placement-direction info)])
+            true)
+
+          (and (= :target mode)
+               (accept-key? info))
+          (do
+            (.preventDefault event)
+            (.stopPropagation event)
+            (rf/dispatch [accept-keyboard-placement-target-event])
+            true)
+
+          (= :orientation mode)
+          (or (when-let [request (gesture-input/orientation-key-request info)]
+                (when-let [result (app-state/pending-placement-orientation-result
+                                   db
+                                   request)]
+                  (.preventDefault event)
+                  (.stopPropagation event)
+                  (dispatch-orientation-change!)
+                  (rf/dispatch [set-pending-placement-orientation-event result])
+                  true))
+              (when (accept-key? info)
+                (.preventDefault event)
+                (.stopPropagation event)
+                (when (app-state/move-ready? db)
+                  (rf/dispatch [confirm-move-event]))
+                true))
+
+          :else
+          nil)))))
+
 (defn uninstall! []
   (when-let [listener @global-shortcut-listener]
     (.removeEventListener js/window
@@ -79,7 +165,8 @@
   (uninstall!)
   (let [listener (fn [event]
                    (when-not (editable-target? (.-target event))
-                     (or (handle-drag-orientation-key! event)
+                     (or (handle-keyboard-placement-key! event)
+                         (handle-drag-orientation-key! event)
                          (handle-pending-placement-orientation-key! event)
                          (when-let [shortcut-event (shortcuts/global-shortcut-event
                                                     (event-info event))]

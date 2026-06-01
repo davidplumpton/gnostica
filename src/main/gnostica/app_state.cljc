@@ -214,6 +214,15 @@
 (def pending-placement-orientation-result
   gestures/pending-placement-orientation-result)
 (def set-pending-placement-orientation gestures/set-pending-placement-orientation)
+(def keyboard-placement-targeting gestures/keyboard-placement-targeting)
+(def keyboard-placement-targeting-active?
+  gestures/keyboard-placement-targeting-active?)
+(def keyboard-placement-targeting-mode gestures/keyboard-placement-targeting-mode)
+(def start-keyboard-placement-targeting
+  gestures/start-keyboard-placement-targeting)
+(def move-keyboard-placement-target gestures/move-keyboard-placement-target)
+(def accept-keyboard-placement-target
+  gestures/accept-keyboard-placement-target)
 
 (def end-turn moves/end-turn)
 

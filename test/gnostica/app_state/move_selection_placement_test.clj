@@ -117,3 +117,79 @@
            (app-state/move-params confirmed-db)))
     (is (= stale-game
            (app-state/game confirmed-db)))))
+
+(deftest keyboard-first-piece-targeting-stages-and-confirms-through-pending-flow
+  (let [db (app-state/initialize {:game-options {:shuffle-fn identity}
+                                  :demo-board-pieces []})
+        original-game (app-state/game db)
+        started-db (app-state/start-keyboard-placement-targeting db)
+        moved-db (app-state/move-keyboard-placement-target started-db :east)
+        accepted-db (app-state/accept-keyboard-placement-target moved-db)
+        orientation-result (app-state/pending-placement-orientation-result
+                            accepted-db
+                            :east)
+        oriented-db (app-state/set-pending-placement-orientation
+                     accepted-db
+                     orientation-result)
+        tray (app-state/pending-move-tray-view moved-db)
+        confirmed-db (app-state/confirm-move oriented-db)
+        created-piece (piece-by-id confirmed-db :rose-small-1)]
+    (is (= original-game (app-state/game moved-db)))
+    (is (= {:active? true
+            :mode :target}
+           (app-state/keyboard-placement-targeting moved-db)))
+    (is (true? (get-in moved-db [:gesture-intent :active?])))
+    (is (= {:target-board-index 1}
+           (app-state/move-params moved-db)))
+    (is (= :orientation (:stage (app-state/move-selection moved-db))))
+    (is (= [:orientation]
+           (:missing-fields tray)))
+    (is (false? (:can-confirm? tray)))
+    (is (= {:active? true
+            :mode :orientation}
+           (app-state/keyboard-placement-targeting accepted-db)))
+    (is (= {:handled? true
+            :accepted? true
+            :orientation :east}
+           orientation-result))
+    (is (= :confirm (:stage (app-state/move-selection oriented-db))))
+    (is (= {:source :place-initial-small
+            :player-id :rose
+            :target {:kind :territory
+                     :board-index 1}
+            :orientation :east}
+           (app-state/move-command oriented-db)))
+    (is (:ok? (get-in confirmed-db [:move-selection :last-result])))
+    (is (= {:id :rose-small-1
+            :player-id :rose
+            :space-index 1
+            :size :small
+            :orientation :east}
+           created-piece))
+    (is (= {:active? false
+            :mode nil}
+           (app-state/keyboard-placement-targeting confirmed-db)))
+    (is (game-schema/valid-game? (app-state/game confirmed-db)))))
+
+(deftest keyboard-first-piece-targeting-skips-occupied-targets-and-cancels-cleanly
+  (let [db (app-state/initialize {:game-options {:shuffle-fn identity}
+                                  :demo-board-pieces [{:id :indigo-blocker
+                                                       :player-id :indigo
+                                                       :space-index 1
+                                                       :size :small
+                                                       :orientation :up}]})
+        started-db (app-state/start-keyboard-placement-targeting db)
+        moved-db (app-state/move-keyboard-placement-target started-db :east)
+        cancelled-db (app-state/cancel-gesture-intent moved-db)]
+    (is (= {:target-board-index 0}
+           (app-state/move-params started-db)))
+    (is (= {:target-board-index 2}
+           (app-state/move-params moved-db)))
+    (is (= (app-state/game db)
+           (app-state/game moved-db)))
+    (is (= (app-state/empty-move-selection)
+           (app-state/move-selection cancelled-db)))
+    (is (= {:active? false
+            :mode nil}
+           (app-state/keyboard-placement-targeting cancelled-db)))
+    (is (false? (get-in cancelled-db [:gesture-intent :active?])))))

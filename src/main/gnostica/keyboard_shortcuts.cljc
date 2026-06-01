@@ -25,6 +25,10 @@
     :scope :direct-manipulation
     :keys ["O"]
     :command "Cycle dragged or pending piece orientation"}
+   {:id :keyboard-first-placement-targeting
+    :scope :direct-manipulation
+    :keys ["Enter" "Arrow keys" "Esc"]
+    :command "Choose first-piece placement target by keyboard"}
    {:id :pan-board-view
     :scope :board
     :keys ["W/A/S/D" "Arrow keys"]

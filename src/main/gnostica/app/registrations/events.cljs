@@ -1,6 +1,6 @@
 (ns gnostica.app.registrations.events
   (:require [gnostica.app.handlers :as handlers]
-            [gnostica.app.ids :refer [initialize install-keyboard-shortcuts uninstall-keyboard-shortcuts add-lobby-player remove-lobby-player set-lobby-player-name set-lobby-player-colour set-lobby-target-score start-lobby-game start-lobby-bidding select-lobby-bid-card reveal-lobby-bids select-lobby-redraw-card confirm-lobby-bidding cancel-lobby-bidding select-board-card select-move-source select-move-piece select-move-hand-card select-move-wasteland-target select-move-one-point-card select-move-territory-card-source select-move-replacement-card select-move-power select-move-world-copy select-move-rod-mode select-move-disc-target-kind select-move-sword-target-kind set-move-disc-action-count set-move-major-action-count set-move-sword-action-count set-move-devil-action-count set-move-fool-reveal-count reveal-move-fool-card skip-move-fool-reveal play-move-fool-reveal select-move-fool-play-power set-move-high-priestess-redraw-count toggle-move-high-priestess-discard-card set-move-high-priestess-draw-count toggle-move-judgement-card set-move-minion-orientation select-move-sun-disc-mode set-move-sun-disc-orientation select-move-target-piece set-move-orientation set-move-distance set-move-damage set-move-draw-count toggle-move-discard-card confirm-move cancel-move start-gesture-intent cancel-gesture-intent open-gesture-detailed-entry set-gesture-drag-orientation set-pending-placement-orientation set-detailed-entry-default end-turn announce-challenge toggle-card-icon-mode toggle-panel set-panel-open open-hotkey-help close-hotkey-help open-icon-help close-icon-help close-help-dialogs clear-three-texture-errors three-texture-error three-renderer-error refresh-three-runtime-status shuffle-seed three-runtime-detection three-runtime-status]]
+            [gnostica.app.ids :refer [initialize install-keyboard-shortcuts uninstall-keyboard-shortcuts add-lobby-player remove-lobby-player set-lobby-player-name set-lobby-player-colour set-lobby-target-score start-lobby-game start-lobby-bidding select-lobby-bid-card reveal-lobby-bids select-lobby-redraw-card confirm-lobby-bidding cancel-lobby-bidding select-board-card select-move-source select-move-piece select-move-hand-card select-move-wasteland-target select-move-one-point-card select-move-territory-card-source select-move-replacement-card select-move-power select-move-world-copy select-move-rod-mode select-move-disc-target-kind select-move-sword-target-kind set-move-disc-action-count set-move-major-action-count set-move-sword-action-count set-move-devil-action-count set-move-fool-reveal-count reveal-move-fool-card skip-move-fool-reveal play-move-fool-reveal select-move-fool-play-power set-move-high-priestess-redraw-count toggle-move-high-priestess-discard-card set-move-high-priestess-draw-count toggle-move-judgement-card set-move-minion-orientation select-move-sun-disc-mode set-move-sun-disc-orientation select-move-target-piece set-move-orientation set-move-distance set-move-damage set-move-draw-count toggle-move-discard-card confirm-move cancel-move start-gesture-intent cancel-gesture-intent open-gesture-detailed-entry set-gesture-drag-orientation set-pending-placement-orientation start-keyboard-placement-targeting move-keyboard-placement-target accept-keyboard-placement-target set-detailed-entry-default end-turn announce-challenge toggle-card-icon-mode toggle-panel set-panel-open open-hotkey-help close-hotkey-help open-icon-help close-icon-help close-help-dialogs clear-three-texture-errors three-texture-error three-renderer-error refresh-three-runtime-status shuffle-seed three-runtime-detection three-runtime-status]]
             [gnostica.app.keyboard :as keyboard]
             [gnostica.app-state :as app-state]
             [gnostica.three-board.runtime :as three-runtime]
@@ -318,6 +318,21 @@
  set-pending-placement-orientation
  (fn [db [_ result]]
    (app-state/set-pending-placement-orientation db result)))
+
+(rf/reg-event-db
+ start-keyboard-placement-targeting
+ (fn [db _]
+   (app-state/start-keyboard-placement-targeting db)))
+
+(rf/reg-event-db
+ move-keyboard-placement-target
+ (fn [db [_ direction]]
+   (app-state/move-keyboard-placement-target db direction)))
+
+(rf/reg-event-db
+ accept-keyboard-placement-target
+ (fn [db _]
+   (app-state/accept-keyboard-placement-target db)))
 
 (rf/reg-event-db
  set-detailed-entry-default

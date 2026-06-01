@@ -58,6 +58,12 @@
 (def set-gesture-drag-orientation :gnostica.app/set-gesture-drag-orientation)
 (def set-pending-placement-orientation
   :gnostica.app/set-pending-placement-orientation)
+(def start-keyboard-placement-targeting
+  :gnostica.app/start-keyboard-placement-targeting)
+(def move-keyboard-placement-target
+  :gnostica.app/move-keyboard-placement-target)
+(def accept-keyboard-placement-target
+  :gnostica.app/accept-keyboard-placement-target)
 (def set-detailed-entry-default :gnostica.app/set-detailed-entry-default)
 (def end-turn :gnostica.app/end-turn)
 (def announce-challenge :gnostica.app/announce-challenge)
@@ -211,6 +217,9 @@
    open-gesture-detailed-entry
    set-gesture-drag-orientation
    set-pending-placement-orientation
+   start-keyboard-placement-targeting
+   move-keyboard-placement-target
+   accept-keyboard-placement-target
    set-detailed-entry-default
    end-turn
    announce-challenge
