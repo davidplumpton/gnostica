@@ -22,7 +22,7 @@
 (rf/reg-sub
  lobby
  (fn [db _]
-   (app-state/lobby db)))
+   (:lobby db)))
 
 (rf/reg-sub
  board

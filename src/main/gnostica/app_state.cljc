@@ -38,7 +38,8 @@
 (def game db/game)
 (def setup-error db/setup-error)
 
-(def lobby lobby/lobby)
+#?(:clj
+   (def lobby lobby/lobby))
 (def lobby-active? lobby/lobby-active?)
 (def lobby-players lobby/lobby-players)
 (def lobby-validation-error lobby/lobby-validation-error)
