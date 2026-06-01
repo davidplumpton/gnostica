@@ -2,6 +2,8 @@
 *.db
 *.db-shm
 *.db-wal
+# A tracked regular file named embeddeddolt blocks legacy Go bd from
+# auto-discovering an embedded-Dolt workspace in this br-only repo.
 embeddeddolt/
 
 # Lock files

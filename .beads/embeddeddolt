@@ -1,0 +1,5 @@
+This regular file is intentional.
+
+Gnostica uses br/beads_rust for issue tracking. Do not replace this file
+with a directory: legacy Go bd treats .beads/embeddeddolt as an embedded
+Dolt workspace and can overwrite or remove the active br JSONL export.

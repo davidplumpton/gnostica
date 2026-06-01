@@ -93,7 +93,9 @@ The smoke check also verifies that the main card zones remain visible in the Thr
 
 **Note:** `br` is non-invasive and never executes git commands. After `br sync --flush-only`, manually commit `.beads/` changes with Jujutsu.
 
-This repository is intentionally `br`-only. Do not use the legacy Go `bd` CLI here: ignored local embedded-Dolt caches under `.beads/embeddeddolt/` are unsupported, and active issue state lives in the br SQLite/JSONL files under `.beads/`.
+This repository is intentionally `br`-only. Do not use the legacy Go `bd` CLI here: active issue state lives in the br SQLite/JSONL files under `.beads/`. A tracked regular file at `.beads/embeddeddolt` intentionally blocks legacy `bd` from auto-discovering an embedded-Dolt workspace and overwriting `.beads/issues.jsonl`; if a checkout still has a directory there, move or delete that stale cache before running tracker commands.
+
+If `.beads/issues.jsonl` is accidentally removed by legacy tooling, recover it from the br SQLite database with `br sync --flush-only --force`, then verify with `br doctor` and `br sync --status`.
 
 This project uses `br` from beads_rust for issue tracking:
 

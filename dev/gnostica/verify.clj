@@ -1,5 +1,6 @@
 (ns gnostica.verify
   (:require [clj-kondo.core :as clj-kondo]
+            [clojure.java.io :as io]
             [cljfmt.config :as cljfmt-config]
             [cljfmt.report :as cljfmt-report]
             [cljfmt.tool :as cljfmt-tool])
@@ -13,6 +14,12 @@
 
 (def format-file-pattern
   #"\.(clj[csx]?|edn)$")
+
+(def legacy-bd-sentinel-path
+  ".beads/embeddeddolt")
+
+(def br-jsonl-path
+  ".beads/issues.jsonl")
 
 (defn- status-code [{:keys [failed?]}]
   (if failed? 1 0))
@@ -60,10 +67,49 @@
     {:failed? (pos? failure-count)
      :counts counts}))
 
+(defn- tracker-guard-failures []
+  (let [sentinel (io/file legacy-bd-sentinel-path)
+        jsonl (io/file br-jsonl-path)]
+    (cond-> []
+      (not (.exists sentinel))
+      (conj (str legacy-bd-sentinel-path
+                 " is missing; expected a regular file that blocks legacy bd"))
+
+      (.isDirectory sentinel)
+      (conj (str legacy-bd-sentinel-path
+                 " is a directory; move or delete the stale legacy bd cache"))
+
+      (and (.exists sentinel)
+           (not (.isDirectory sentinel))
+           (not (.isFile sentinel)))
+      (conj (str legacy-bd-sentinel-path
+                 " is not a regular file"))
+
+      (not (.exists jsonl))
+      (conj (str br-jsonl-path
+                 " is missing; recover it with br sync --flush-only --force")))))
+
+(defn- run-tracker-guard-check []
+  (println "Checking br tracker guard...")
+  (let [failures (tracker-guard-failures)]
+    (if (seq failures)
+      (do
+        (binding [*out* *err*]
+          (doseq [failure failures]
+            (println failure)))
+        {:failed? true
+         :failure-count (count failures)})
+      (do
+        (println "br tracker guard is intact")
+        {:failed? false
+         :failure-count 0}))))
+
 (defn -main [& _args]
-  (let [lint-result (run-clj-kondo)
+  (let [guard-result (run-tracker-guard-check)
+        lint-result (run-clj-kondo)
         format-result (run-cljfmt-check)
-        exit-code (max (status-code lint-result)
+        exit-code (max (status-code guard-result)
+                       (status-code lint-result)
                        (status-code format-result))]
     (when (zero? exit-code)
       (println "Lint and formatting checks passed"))
