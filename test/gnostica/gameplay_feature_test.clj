@@ -66,6 +66,88 @@
     (is (false? (:ok? (first results))))
     (is (= :empty-scenario (get-in (first results) [:failure :code])))))
 
+(deftest malformed-feature-heading-produces-a-failing-result
+  (let [feature-file (temp-feature-file
+                      (str "Feature: Parser validation\n"
+                           "\n"
+                           "Scenario Missing colon\n"))
+        results (feature-runner/run-feature-file (str feature-file) passing-steps)
+        failure (result-with-code results :unexpected-feature-content)
+        formatted (feature-runner/format-result failure)]
+    (is (= 1 (count results)))
+    (is failure)
+    (is (= 3 (get-in failure [:failure :data :line])))
+    (is (= "Scenario Missing colon" (get-in failure [:failure :data :text])))
+    (is (str/includes? formatted (str (str feature-file) ":3")))))
+
+(deftest malformed-feature-step-text-produces-a-failing-result
+  (let [feature-file (temp-feature-file
+                      (str "Feature: Parser validation\n"
+                           "\n"
+                           "Scenario: Typoed step\n"
+                           "  Givne a passing step\n"
+                           "  Then a passing step\n"))
+        results (feature-runner/run-feature-file (str feature-file) passing-steps)
+        failure (result-with-code results :unexpected-feature-content)
+        formatted (feature-runner/format-result failure)]
+    (is (= 2 (count results)))
+    (is failure)
+    (is (some :ok? results))
+    (is (= "Typoed step" (get-in failure [:scenario :name])))
+    (is (= 4 (get-in failure [:failure :data :line])))
+    (is (= "Givne a passing step" (get-in failure [:failure :data :text])))
+    (is (str/includes? formatted "Scenario: Typoed step"))
+    (is (str/includes? formatted (str (str feature-file) ":4")))))
+
+(deftest step-before-background-or-scenario-produces-a-failing-result
+  (let [feature-file (temp-feature-file
+                      (str "Feature: Parser validation\n"
+                           "\n"
+                           "Given a passing step\n"
+                           "\n"
+                           "Scenario: Valid scenario\n"
+                           "  Given a passing step\n"))
+        results (feature-runner/run-feature-file (str feature-file) passing-steps)
+        failure (result-with-code results :step-outside-section)]
+    (is (= 2 (count results)))
+    (is failure)
+    (is (some :ok? results))
+    (is (= 3 (get-in failure [:failure :data :line])))
+    (is (= "Given a passing step" (get-in failure [:failure :data :text])))
+    (is (= "Given" (get-in failure [:failure :data :keyword])))))
+
+(deftest table-outside-examples-produces-a-failing-result
+  (let [feature-file (temp-feature-file
+                      (str "Feature: Parser validation\n"
+                           "\n"
+                           "Scenario: Misplaced table\n"
+                           "  Given a passing step\n"
+                           "  | value |\n"))
+        results (feature-runner/run-feature-file (str feature-file) passing-steps)
+        failure (result-with-code results :unexpected-feature-content)]
+    (is (= 2 (count results)))
+    (is failure)
+    (is (some :ok? results))
+    (is (= "Misplaced table" (get-in failure [:scenario :name])))
+    (is (= 5 (get-in failure [:failure :data :line])))
+    (is (= :table-row (get-in failure [:failure :data :kind])))))
+
+(deftest comments-and-blank-lines-remain-ignored
+  (let [feature-file (temp-feature-file
+                      (str "Feature: Parser validation\n"
+                           "\n"
+                           "# This comment is ignored.\n"
+                           "\n"
+                           "Scenario: Valid comments\n"
+                           "  # This scenario comment is ignored.\n"
+                           "\n"
+                           "  Given a passing step\n"
+                           "\n"))
+        results (feature-runner/run-feature-file (str feature-file) passing-steps)]
+    (is (= 1 (count results)))
+    (is (every? :ok? results))
+    (is (= "Valid comments" (get-in (first results) [:scenario :name])))))
+
 (deftest scenario-outline-without-examples-produces-a-failing-result
   (let [feature-file (temp-feature-file
                       (str "Feature: Outline validation\n"

@@ -24,6 +24,16 @@
     (when (str/starts-with? (str/trim line) marker)
       (str/trim (subs (str/trim line) (count marker))))))
 
+(def ^:private heading-prefixes ["Scenario Outline" "Feature" "Background" "Scenario" "Examples"])
+
+(defn- malformed-heading-line? [line]
+  (boolean
+   (some (fn [prefix]
+           (and (or (= line prefix)
+                    (str/starts-with? line (str prefix " ")))
+                (not (parse-heading prefix line))))
+         heading-prefixes)))
+
 (defn- step-line [line-number line]
   (let [trimmed (str/trim line)
         [keyword & text-parts] (str/split trimmed #"\s+" 2)]
@@ -60,6 +70,20 @@
          :example-header {:line line-number
                           :cells header}))
 
+(defn- parse-error-data [line text section scenario data]
+  (cond-> (merge {:line line
+                  :text text}
+                 data)
+    section (assoc :section section)
+    scenario (assoc :scenario (:name scenario)
+                    :scenario-line (:line scenario))))
+
+(defn- add-parse-error [feature code message line text section scenario data]
+  (update feature :parse-errors conj
+          {:code code
+           :message message
+           :data (parse-error-data line text section scenario data)}))
+
 (defn parse-feature-file [path]
   (let [lines (map-indexed (fn [index line]
                              {:line (inc index)
@@ -69,8 +93,10 @@
            remaining (rest lines)
            feature {:path path
                     :name nil
+                    :description []
                     :background []
-                    :scenarios []}
+                    :scenarios []
+                    :parse-errors []}
            scenario nil
            section nil
            example-header nil]
@@ -83,20 +109,55 @@
             (recur (first remaining) (rest remaining) feature scenario section example-header)
 
             (parse-heading "Feature" trimmed)
-            (recur (first remaining)
-                   (rest remaining)
-                   (assoc feature :name (parse-heading "Feature" trimmed))
-                   scenario
-                   section
-                   example-header)
+            (if (and (nil? (:name feature))
+                     (nil? scenario)
+                     (nil? section)
+                     (empty? (:scenarios feature)))
+              (recur (first remaining)
+                     (rest remaining)
+                     (assoc feature :name (parse-heading "Feature" trimmed))
+                     scenario
+                     section
+                     example-header)
+              (recur (first remaining)
+                     (rest remaining)
+                     (add-parse-error
+                      feature
+                      :unexpected-feature-content
+                      "Feature headings are only valid before Background or Scenario sections."
+                      line
+                      trimmed
+                      section
+                      scenario
+                      {:kind :feature-heading})
+                     scenario
+                     section
+                     example-header))
 
             (parse-heading "Background" trimmed)
-            (recur (first remaining)
-                   (rest remaining)
-                   (add-scenario feature scenario)
-                   nil
-                   :background
-                   nil)
+            (if (and (nil? scenario)
+                     (empty? (:scenarios feature))
+                     (not= section :background))
+              (recur (first remaining)
+                     (rest remaining)
+                     (add-scenario feature scenario)
+                     nil
+                     :background
+                     nil)
+              (recur (first remaining)
+                     (rest remaining)
+                     (add-parse-error
+                      feature
+                      :unexpected-feature-content
+                      "Background headings are only valid before Scenario sections."
+                      line
+                      trimmed
+                      section
+                      scenario
+                      {:kind :background-heading})
+                     scenario
+                     section
+                     example-header))
 
             (parse-heading "Scenario Outline" trimmed)
             (recur (first remaining)
@@ -123,13 +184,28 @@
                    nil)
 
             (parse-heading "Examples" trimmed)
-            (recur (first remaining)
-                   (rest remaining)
-                   feature
-                   (cond-> scenario
-                     scenario (assoc :examples-line line))
-                   :examples
-                   nil)
+            (if (and (= section :scenario)
+                     (:outline? scenario))
+              (recur (first remaining)
+                     (rest remaining)
+                     feature
+                     (assoc scenario :examples-line line)
+                     :examples
+                     nil)
+              (recur (first remaining)
+                     (rest remaining)
+                     (add-parse-error
+                      feature
+                      :unexpected-feature-content
+                      "Examples sections are only valid inside Scenario Outline sections."
+                      line
+                      trimmed
+                      section
+                      scenario
+                      {:kind :examples-heading})
+                     scenario
+                     section
+                     example-header))
 
             (and (= section :examples) (table-row trimmed))
             (let [row (table-row trimmed)]
@@ -147,17 +223,92 @@
                        section
                        row)))
 
+            (table-row trimmed)
+            (recur (first remaining)
+                   (rest remaining)
+                   (add-parse-error
+                    feature
+                    :unexpected-feature-content
+                    "Table rows are only valid inside Scenario Outline Examples sections."
+                    line
+                    trimmed
+                    section
+                    scenario
+                    {:kind :table-row})
+                   scenario
+                   section
+                   example-header)
+
             (step-line line trimmed)
-            (let [[feature scenario] (add-step feature scenario section (step-line line trimmed))]
-              (recur (first remaining)
-                     (rest remaining)
-                     feature
-                     scenario
-                     section
-                     example-header))
+            (let [step (step-line line trimmed)]
+              (if (contains? #{:background :scenario} section)
+                (let [[feature scenario] (add-step feature scenario section step)]
+                  (recur (first remaining)
+                         (rest remaining)
+                         feature
+                         scenario
+                         section
+                         example-header))
+                (recur (first remaining)
+                       (rest remaining)
+                       (add-parse-error
+                        feature
+                        :step-outside-section
+                        "Feature steps are only valid inside Background or Scenario sections."
+                        line
+                        trimmed
+                        section
+                        scenario
+                        {:kind :step
+                         :keyword (:keyword step)
+                         :step-text (:text step)})
+                       scenario
+                       section
+                       example-header)))
+
+            (malformed-heading-line? trimmed)
+            (recur (first remaining)
+                   (rest remaining)
+                   (add-parse-error
+                    feature
+                    :unexpected-feature-content
+                    "Feature headings must use a recognized heading followed by a colon."
+                    line
+                    trimmed
+                    section
+                    scenario
+                    {:kind :heading})
+                   scenario
+                   section
+                   example-header)
+
+            (and (:name feature)
+                 (nil? scenario)
+                 (nil? section)
+                 (empty? (:scenarios feature)))
+            (recur (first remaining)
+                   (rest remaining)
+                   (update feature :description conj {:line line
+                                                      :text trimmed})
+                   scenario
+                   section
+                   example-header)
 
             :else
-            (recur (first remaining) (rest remaining) feature scenario section example-header)))))))
+            (recur (first remaining)
+                   (rest remaining)
+                   (add-parse-error
+                    feature
+                    :unexpected-feature-content
+                    "Unexpected feature file content."
+                    line
+                    trimmed
+                    section
+                    scenario
+                    {:kind :line})
+                   scenario
+                   section
+                   example-header)))))))
 
 (defn- replace-placeholders [text values]
   (reduce-kv (fn [result key value]
@@ -314,6 +465,15 @@
              :message message
              :data data}})
 
+(defn- parse-validation-failure [feature {:keys [code message data]}]
+  (let [failure-data (merge {:path (:path feature)
+                             :feature (:name feature)}
+                            data)
+        scenario (when-let [line (:scenario-line failure-data)]
+                   {:line line
+                    :name (:scenario failure-data)})]
+    (feature-failure feature scenario code message failure-data)))
+
 (defn- no-scenarios-failure [feature]
   (feature-failure feature
                    nil
@@ -379,12 +539,15 @@
 
 (defn run-feature-file [path step-definitions]
   (let [feature (parse-feature-file path)
+        parse-failures (mapv #(parse-validation-failure feature %)
+                             (:parse-errors feature))
         validation-failures (vec (mapcat #(outline-validation-failures feature %)
                                          (:scenarios feature)))
+        structural-failures (vec (concat parse-failures validation-failures))
         scenarios (vec (feature-scenarios feature))]
     (cond
-      (seq validation-failures)
-      (vec (concat validation-failures
+      (seq structural-failures)
+      (vec (concat structural-failures
                    (mapv #(run-scenario feature step-definitions %) scenarios)))
 
       (seq scenarios)
@@ -393,9 +556,10 @@
       :else
       [(no-scenarios-failure feature)])))
 
-(defn- result-line [scenario step]
-  (or (:line step)
-      (:line scenario)
+(defn- result-line [result]
+  (or (get-in result [:step :line])
+      (get-in result [:failure :data :line])
+      (get-in result [:scenario :line])
       1))
 
 (defn- result-scenario-name [scenario]
@@ -411,7 +575,7 @@
     (str "Feature scenario passed: " (get-in result [:scenario :name]))
     (let [{:keys [feature scenario step failure]} result]
       (str "Feature scenario failed\n"
-           "File: " (:path feature) ":" (result-line scenario step) "\n"
+           "File: " (:path feature) ":" (result-line result) "\n"
            "Feature: " (:name feature) "\n"
            "Scenario: " (result-scenario-name scenario) "\n"
            "Step: " (result-step-label step) "\n"
