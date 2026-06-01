@@ -152,6 +152,61 @@
     (is (false? (game-state/valid-command? :fool invalid-fool-target)))
     (is (false? (game-state/valid-command? :fool invalid-fool-missing-minion)))))
 
+(deftest command-contracts-reject-unknown-fields
+  (let [draw-command {:player-id :rose
+                      :draw-count 1}
+        cup-command {:player-id :rose
+                     :source (assoc hand-source :card-id "cups2")
+                     :target {:kind :territory
+                              :board-index 4}
+                     :orientation :east}
+        composite-command {:player-id :rose
+                           :source (assoc major-hand-source
+                                          :card-id "empress")
+                           :actions [{:power :cup
+                                      :piece-id :rose-minion
+                                      :target {:kind :territory
+                                               :board-index 4}
+                                      :orientation :east}]}
+        world-command {:player-id :rose
+                       :source (assoc hand-source :card-id "world")
+                       :copied-board-index 4
+                       :copied-power :cup
+                       :target {:kind :territory
+                                :board-index 5}
+                       :orientation :east}
+        fool-command {:player-id :rose
+                      :source major-hand-source
+                      :reveals [{:power :cup
+                                 :piece-id :rose-minion
+                                 :play-command {:target {:kind :territory
+                                                         :board-index 4}
+                                                :orientation :south}}]}
+        cases [["top-level draw typo"
+                :draw
+                (assoc draw-command :bogus 42)]
+               ["top-level Cup typo"
+                :cup
+                (assoc cup-command :bogus 42)]
+               ["ordered major action typo"
+                :empress
+                (assoc-in composite-command [:actions 0 :bogus] true)]
+               ["World delegated target typo"
+                :world
+                (assoc-in world-command [:target :bogus] true)]
+               ["Fool delegated play-command typo"
+                :fool
+                (assoc-in fool-command [:reveals 0 :play-command :bogus] true)]]]
+    (doseq [[label command-kind command] cases]
+      (testing label
+        (let [explanation (game-state/explain-command command-kind command)
+              result (game-state/validate-command command-kind command)]
+          (is (false? (game-state/valid-command? command-kind command)))
+          (is (some? (:errors explanation)))
+          (is (= :invalid-command-contract
+                 (get-in result [:error :code])))
+          (is (game-state/valid-result? result)))))))
+
 (deftest suit-command-contracts-require-acting-minion-source
   (let [hand-source-without-minion (dissoc hand-source :piece-id)
         territory-source-without-minion (dissoc territory-source :piece-id)

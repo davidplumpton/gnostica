@@ -7,6 +7,9 @@
 (defn- enum-schema [values]
   (into [:enum] values))
 
+(defn- closed-map [& entries]
+  (into [:map {:closed true}] entries))
+
 (defn- nonblank-string? [value]
   (and (string? value)
        (not (str/blank? value))))
@@ -52,68 +55,72 @@
   (enum-schema suit-power-values))
 
 (def TerritorySource
-  [:map
+  (closed-map
    [:kind [:enum :territory]]
    [:board-index BoardIndex]
-   [:piece-id {:optional true} PieceId]])
+   [:piece-id {:optional true} PieceId]))
 
 (def HandCardSource
-  [:map
+  (closed-map
    [:kind [:enum :hand-card]]
    [:card-id CardId]
-   [:piece-id {:optional true} PieceId]])
+   [:piece-id {:optional true} PieceId]))
 
 (def MoveSource
   [:or TerritorySource HandCardSource])
 
-(def SourceCommand
-  [:map
-   [:player-id PlayerId]
+(def ^:private source-command-entries
+  [[:player-id PlayerId]
    [:source MoveSource]])
 
+(def SourceCommand
+  (apply closed-map source-command-entries))
+
 (def ActingTerritorySource
-  [:map
+  (closed-map
    [:kind [:enum :territory]]
    [:board-index BoardIndex]
-   [:piece-id PieceId]])
+   [:piece-id PieceId]))
 
 (def ActingHandCardSource
-  [:map
+  (closed-map
    [:kind [:enum :hand-card]]
    [:card-id CardId]
-   [:piece-id PieceId]])
+   [:piece-id PieceId]))
 
 (def ActingMoveSource
   [:or ActingTerritorySource ActingHandCardSource])
 
-(def ActingSourceCommand
-  [:map
-   [:player-id PlayerId]
+(def ^:private acting-source-command-entries
+  [[:player-id PlayerId]
    [:source ActingMoveSource]])
 
+(def ActingSourceCommand
+  (apply closed-map acting-source-command-entries))
+
 (def TerritoryTarget
-  [:map
+  (closed-map
    [:kind [:enum :territory]]
-   [:board-index BoardIndex]])
+   [:board-index BoardIndex]))
 
 (def PieceTarget
-  [:map
+  (closed-map
    [:kind [:enum :piece]]
-   [:piece-id PieceId]])
+   [:piece-id PieceId]))
 
 (def WastelandTarget
-  [:map
+  (closed-map
    [:kind [:enum :wasteland]]
    [:row :int]
-   [:col :int]])
+   [:col :int]))
 
 (def CreatedPieceTarget
-  [:map
-   [:kind [:enum :created-piece]]])
+  (closed-map
+   [:kind [:enum :created-piece]]))
 
 (def CreatedTerritoryTarget
-  [:map
-   [:kind [:enum :created-territory]]])
+  (closed-map
+   [:kind [:enum :created-territory]]))
 
 (def TerritoryDestination
   TerritoryTarget)
@@ -124,95 +131,115 @@
 (def CupTarget
   [:or TerritoryTarget PieceTarget WastelandTarget])
 
-(def CupAction
-  [:map
-   [:target CupTarget]
+(def ^:private cup-action-entries
+  [[:target CupTarget]
    [:orientation {:optional true} Orientation]
    [:cup-variant {:optional true} :keyword]
    [:territory-card-source {:optional true} [:enum :hand :draw-pile-top]]
    [:one-point-card-id {:optional true} CardId]
    [:shuffle-fn {:optional true} ShuffleFn]])
 
+(def CupAction
+  (apply closed-map cup-action-entries))
+
+(def MajorCupAction
+  (apply closed-map (conj cup-action-entries
+                          [:piece-id {:optional true} PieceId])))
+
 (def CupCommand
-  [:and ActingSourceCommand CupAction])
+  (apply closed-map (concat acting-source-command-entries
+                            cup-action-entries)))
 
 (def RodTarget
   [:or PieceTarget TerritoryTarget])
 
-(def RodAction
-  [:map
-   [:mode [:enum :move-minion :push-piece :push-territory]]
+(def ^:private rod-action-entries
+  [[:mode [:enum :move-minion :push-piece :push-territory]]
    [:distance PositiveInt]
    [:target {:optional true} RodTarget]
    [:direction {:optional true} [:enum :north :east :south :west]]
    [:orientation {:optional true} Orientation]
    [:rod-variant {:optional true} :keyword]])
 
+(def RodAction
+  (apply closed-map rod-action-entries))
+
+(def MajorRodAction
+  (apply closed-map (conj rod-action-entries
+                          [:piece-id {:optional true} PieceId])))
+
 (def RodCommand
-  [:and ActingSourceCommand RodAction])
+  (apply closed-map (concat acting-source-command-entries
+                            rod-action-entries)))
 
 (def DiscTarget
   [:or PieceTarget TerritoryTarget CreatedPieceTarget CreatedTerritoryTarget])
 
-(def DiscAction
-  [:map
-   [:target DiscTarget]
+(def ^:private disc-action-entries
+  [[:target DiscTarget]
    [:orientation {:optional true} Orientation]
    [:replacement-card-source {:optional true} [:enum :hand :discard-pile]]
    [:replacement-card-id {:optional true} CardId]])
 
+(def DiscAction
+  (apply closed-map disc-action-entries))
+
 (def SingleDiscCommand
-  [:and
-   ActingSourceCommand
-   DiscAction
-   [:map
-    [:disc-variant {:optional true} :keyword]
-    [:minion-orientation {:optional true} Orientation]]])
+  (apply closed-map (concat acting-source-command-entries
+                            disc-action-entries
+                            [[:disc-variant {:optional true} :keyword]
+                             [:minion-orientation {:optional true} Orientation]])))
 
 (def StrengthDiscCommand
-  [:and
-   ActingSourceCommand
-   [:map
-    [:disc-variant {:optional true} :keyword]
-    [:disc-actions [:vector {:min 1 :max 2} DiscAction]]]])
+  (apply closed-map (concat acting-source-command-entries
+                            [[:disc-variant {:optional true} :keyword]
+                             [:disc-actions [:vector {:min 1 :max 2} DiscAction]]])))
 
 (def DiscCommand
   [:or SingleDiscCommand StrengthDiscCommand])
 
-(def SunCupAction
-  [:map
-   [:target CupTarget]
+(def ^:private sun-cup-action-entries
+  [[:target CupTarget]
    [:orientation {:optional true} Orientation]
    [:territory-card-source {:optional true} [:enum :hand :draw-pile-top]]
    [:one-point-card-id {:optional true} CardId]])
 
+(def SunCupAction
+  (apply closed-map sun-cup-action-entries))
+
 (def SunDiscTarget
   [:or PieceTarget TerritoryTarget CreatedPieceTarget CreatedTerritoryTarget])
 
-(def SunDiscAction
-  [:map
-   [:target SunDiscTarget]
+(def ^:private sun-disc-action-entries
+  [[:target SunDiscTarget]
    [:orientation {:optional true} Orientation]
    [:replacement-card-source {:optional true} [:enum :hand :discard-pile]]
    [:replacement-card-id {:optional true} CardId]])
 
+(def SunDiscAction
+  (apply closed-map sun-disc-action-entries))
+
 (def SunCommand
-  [:and
-   ActingSourceCommand
-   [:map
-    [:cup SunCupAction]
-    [:disc {:optional true} SunDiscAction]]])
+  (apply closed-map (concat acting-source-command-entries
+                            [[:cup SunCupAction]
+                             [:disc {:optional true} SunDiscAction]])))
 
 (def SwordTarget
   [:or PieceTarget TerritoryTarget])
 
-(def SwordAction
-  [:map
-   [:target SwordTarget]
+(def ^:private sword-action-entries
+  [[:target SwordTarget]
    [:damage PositiveInt]
    [:orientation {:optional true} Orientation]
    [:replacement-card-source {:optional true} [:enum :hand :discard-pile]]
    [:replacement-card-id {:optional true} CardId]])
+
+(def SwordAction
+  (apply closed-map sword-action-entries))
+
+(def MajorSwordAction
+  (apply closed-map (conj sword-action-entries
+                          [:piece-id {:optional true} PieceId])))
 
 (def ^:private sword-action-keys
   #{:target :damage :orientation :replacement-card-source :replacement-card-id})
@@ -221,8 +248,8 @@
   (boolean (some #(contains? command %) ks)))
 
 (defn- justice-trade-target? [command]
-  (or (m/validate [:map [:hand-trade-target PieceTarget]] command)
-      (m/validate [:map [:hand-trade-target-piece-id PieceId]] command)))
+  (or (contains? command :hand-trade-target)
+      (contains? command :hand-trade-target-piece-id)))
 
 (defn- justice-command? [command]
   (and (justice-trade-target? command)
@@ -234,144 +261,128 @@
       (contains? command :sword)))
 
 (def SingleSwordCommand
-  [:and
-   ActingSourceCommand
-   SwordAction
-   [:map
-    [:sword-variant {:optional true} :keyword]
-    [:minion-orientation {:optional true} Orientation]]])
+  (apply closed-map (concat acting-source-command-entries
+                            sword-action-entries
+                            [[:sword-variant {:optional true} :keyword]
+                             [:minion-orientation {:optional true} Orientation]])))
 
 (def DeathSwordCommand
-  [:and
-   ActingSourceCommand
-   [:map
-    [:sword-variant {:optional true} :keyword]
-    [:sword-actions [:vector {:min 1 :max 2} SwordAction]]]])
+  (apply closed-map (concat acting-source-command-entries
+                            [[:sword-variant {:optional true} :keyword]
+                             [:sword-actions [:vector {:min 1 :max 2} MajorSwordAction]]])))
 
 (def HandTradeAction
-  [:map
-   [:target PieceTarget]])
+  (closed-map
+   [:target PieceTarget]))
+
+(def ^:private justice-sword-command-entries
+  (concat acting-source-command-entries
+          [[:hand-trade-target {:optional true} PieceTarget]
+           [:hand-trade-target-piece-id {:optional true} PieceId]
+           [:sword-variant {:optional true} :keyword]]
+          sword-action-entries))
 
 (def JusticeSwordCommand
   [:and
-   ActingSourceCommand
+   (apply closed-map justice-sword-command-entries)
    [:fn {:error/message "must include a Justice hand-trade target and any Sword fields must form a Sword action"}
     justice-command?]])
 
 (def MoonCommand
   [:and
-   ActingSourceCommand
-   [:map
-    [:rod {:optional true} RodAction]
-    [:sword {:optional true} SwordAction]]
+   (apply closed-map (concat acting-source-command-entries
+                             [[:rod {:optional true} MajorRodAction]
+                              [:sword {:optional true} MajorSwordAction]]))
    [:fn {:error/message "must include :rod or :sword"} moon-command-action?]])
 
 (def SwordCommand
   [:or SingleSwordCommand DeathSwordCommand JusticeSwordCommand MoonCommand])
 
 (def RedrawPass
-  [:map
+  (closed-map
    [:discard-card-ids {:optional true} [:vector CardId]]
-   [:draw-count NonNegativeInt]])
+   [:draw-count NonNegativeInt]))
 
 (def HighPriestessCommand
-  [:and
-   SourceCommand
-   [:map
-    [:redraws {:optional true} [:vector {:max 2} RedrawPass]]
-    [:shuffle-fn {:optional true} ShuffleFn]]])
+  (apply closed-map (concat source-command-entries
+                            [[:redraws {:optional true} [:vector {:max 2} RedrawPass]]
+                             [:shuffle-fn {:optional true} ShuffleFn]])))
 
 (def JudgementCommand
-  [:and
-   SourceCommand
-   [:map
-    [:piece-id PieceId]
-    [:card-ids [:vector CardId]]]])
+  (apply closed-map (concat source-command-entries
+                            [[:piece-id PieceId]
+                             [:card-ids [:vector CardId]]])))
 
 (declare valid-fool-reveal? valid-world-command?)
 
 (def FoolReveal
   [:and
-   [:map
+   (closed-map
     [:power {:optional true} :keyword]
     [:piece-id {:optional true} PieceId]
     [:command {:optional true} :map]
-    [:play-command {:optional true} :map]]
+    [:play-command {:optional true} :map])
    [:fn {:error/message "Fool play commands must match the selected child command shape"}
     (fn [reveal] (valid-fool-reveal? reveal))]])
 
 (def FoolCommand
-  [:and
-   SourceCommand
-   [:map
-    [:reveals {:optional true} [:vector {:max 2} FoolReveal]]
-    [:shuffle-fn {:optional true} ShuffleFn]]])
+  (apply closed-map (concat source-command-entries
+                            [[:reveals {:optional true} [:vector {:max 2} FoolReveal]]
+                             [:shuffle-fn {:optional true} ShuffleFn]])))
 
 (def MajorAction
-  [:map
+  (closed-map
    [:power :keyword]
    [:piece-id {:optional true} PieceId]
    [:target {:optional true} [:or PieceTarget TerritoryTarget WastelandTarget]]
    [:destination {:optional true} [:or TerritoryDestination WastelandDestination]]
    [:orientation {:optional true} Orientation]
    [:distance {:optional true} PositiveInt]
-   [:damage {:optional true} PositiveInt]])
+   [:damage {:optional true} PositiveInt]
+   [:mode {:optional true} [:enum :move-minion :push-piece :push-territory]]
+   [:direction {:optional true} [:enum :north :east :south :west]]
+   [:one-point-card-id {:optional true} CardId]
+   [:territory-card-source {:optional true} [:enum :hand :draw-pile-top]]
+   [:replacement-card-source {:optional true} [:enum :hand :discard-pile]]
+   [:replacement-card-id {:optional true} CardId]))
 
 (def CompositeMajorCommand
-  [:and
-   SourceCommand
-   [:map
-    [:actions {:optional true} [:vector MajorAction]]
-    [:cup {:optional true} CupAction]
-    [:cup-actions {:optional true} [:vector CupAction]]
-    [:rod {:optional true} RodAction]
-    [:rod-actions {:optional true} [:vector RodAction]]
-    [:minion-orientation {:optional true} Orientation]
-    [:hand-trade-target {:optional true} PieceTarget]
-    [:hand-trade-target-piece-id {:optional true} PieceId]]])
+  (apply closed-map (concat source-command-entries
+                            [[:actions {:optional true} [:vector MajorAction]]
+                             [:cup {:optional true} MajorCupAction]
+                             [:cup-actions {:optional true} [:vector MajorCupAction]]
+                             [:rod {:optional true} MajorRodAction]
+                             [:rod-actions {:optional true} [:vector MajorRodAction]]
+                             [:minion-orientation {:optional true} Orientation]
+                             [:hand-trade-target {:optional true} PieceTarget]
+                             [:hand-trade-target-piece-id {:optional true} PieceId]])))
 
 (def HierophantCommand
-  [:and
-   SourceCommand
-   [:or
-    [:map
-     [:target PieceTarget]
-     [:orientation Orientation]]
-    [:map
-     [:actions [:vector {:min 1} MajorAction]]]]])
+  [:or
+   (apply closed-map (concat source-command-entries
+                             [[:target PieceTarget]
+                              [:orientation Orientation]]))
+   (apply closed-map (concat source-command-entries
+                             [[:actions [:vector {:min 1} MajorAction]]]))])
 
 (def HermitCommand
-  [:and
-   SourceCommand
-   [:or
-    [:map
-     [:target [:or PieceTarget TerritoryTarget]]
-     [:destination [:or TerritoryDestination WastelandDestination]]
-     [:orientation {:optional true} Orientation]]
-    [:map
-     [:actions [:vector {:min 1} MajorAction]]]]])
+  [:or
+   (apply closed-map (concat source-command-entries
+                             [[:target [:or PieceTarget TerritoryTarget]]
+                              [:destination [:or TerritoryDestination WastelandDestination]]
+                              [:orientation {:optional true} Orientation]]))
+   (apply closed-map (concat source-command-entries
+                             [[:actions [:vector {:min 1} MajorAction]]]))])
 
 (def DevilCommand
-  [:and
-   SourceCommand
-   [:or
-    [:map
-     [:target PieceTarget]
-     [:orientation Orientation]]
-    [:map
-     [:orientations [:vector {:min 1 :max 3} MajorAction]]]
-    [:map
-     [:actions [:vector {:min 1 :max 3} MajorAction]]]]])
-
-(def WorldCommand
-  [:and
-   SourceCommand
-   [:map
-    [:copied-board-index BoardIndex]
-    [:copied-power {:optional true} SuitPower]
-    [:power {:optional true} SuitPower]]
-   [:fn {:error/message "World delegated command fields must match a copied child command shape"}
-    (fn [command] (valid-world-command? command))]])
+  [:or
+   (apply closed-map (concat source-command-entries
+                             [[:target PieceTarget]
+                              [:orientation Orientation]]))
+   (apply closed-map (concat source-command-entries
+                             [[:orientations [:vector {:min 1 :max 3} MajorAction]]]))
+   (apply closed-map (concat source-command-entries
+                             [[:actions [:vector {:min 1 :max 3} MajorAction]]]))])
 
 (def ^:private schema-player-id ::schema-player)
 (def ^:private schema-card-id "schema-card")
@@ -396,6 +407,7 @@
     :one-point-card-id
     :orientation
     :orientations
+    :piece-id
     :redraws
     :replacement-card-id
     :replacement-card-source
@@ -410,6 +422,54 @@
     :target
     :territory-card-source})
 
+(def ^:private world-command-entries
+  [[:copied-board-index BoardIndex]
+   [:copied-power {:optional true} SuitPower]
+   [:power {:optional true} SuitPower]
+   [:actions {:optional true} [:vector MajorAction]]
+   [:card-ids {:optional true} [:vector CardId]]
+   [:cup {:optional true} [:or SunCupAction MajorCupAction]]
+   [:cup-actions {:optional true} [:vector MajorCupAction]]
+   [:cup-variant {:optional true} :keyword]
+   [:damage {:optional true} PositiveInt]
+   [:destination {:optional true} [:or TerritoryDestination WastelandDestination]]
+   [:direction {:optional true} [:enum :north :east :south :west]]
+   [:disc {:optional true} SunDiscAction]
+   [:disc-actions {:optional true} [:vector {:min 1 :max 2} DiscAction]]
+   [:disc-variant {:optional true} :keyword]
+   [:distance {:optional true} PositiveInt]
+   [:hand-trade-target {:optional true} PieceTarget]
+   [:hand-trade-target-piece-id {:optional true} PieceId]
+   [:minion-orientation {:optional true} Orientation]
+   [:mode {:optional true} [:enum :move-minion :push-piece :push-territory]]
+   [:one-point-card-id {:optional true} CardId]
+   [:orientation {:optional true} Orientation]
+   [:orientations {:optional true} [:vector {:min 1 :max 3} MajorAction]]
+   [:piece-id {:optional true} PieceId]
+   [:redraws {:optional true} [:vector {:max 2} RedrawPass]]
+   [:replacement-card-id {:optional true} CardId]
+   [:replacement-card-source {:optional true} [:enum :hand :discard-pile]]
+   [:reveals {:optional true} [:vector {:max 2} FoolReveal]]
+   [:rod {:optional true} MajorRodAction]
+   [:rod-actions {:optional true} [:vector MajorRodAction]]
+   [:rod-variant {:optional true} :keyword]
+   [:shuffle-fn {:optional true} ShuffleFn]
+   [:sword {:optional true} MajorSwordAction]
+   [:sword-actions {:optional true} [:vector {:min 1 :max 2} MajorSwordAction]]
+   [:sword-variant {:optional true} :keyword]
+   [:target {:optional true} [:or PieceTarget
+                              TerritoryTarget
+                              WastelandTarget
+                              CreatedPieceTarget
+                              CreatedTerritoryTarget]]
+   [:territory-card-source {:optional true} [:enum :hand :draw-pile-top]]])
+
+(def WorldCommand
+  [:and
+   (apply closed-map (concat source-command-entries world-command-entries))
+   [:fn {:error/message "World delegated command fields must match a copied child command shape"}
+    (fn [command] (valid-world-command? command))]])
+
 (def ^:private composite-major-payload-keys
   #{:actions
     :cup
@@ -419,6 +479,12 @@
     :minion-orientation
     :rod
     :rod-actions})
+
+(def ^:private delegated-selector-keys
+  #{:copied-board-index :copied-power :power})
+
+(defn- delegated-command-payload [command]
+  (apply dissoc command delegated-selector-keys))
 
 (defn- selected-suit-power [command]
   (or (:copied-power command)
@@ -430,12 +496,13 @@
       (= (:copied-power command) (:power command))))
 
 (defn- valid-suit-command? [power command]
-  (case power
-    :cup (m/validate CupCommand command)
-    :rod (m/validate RodCommand command)
-    :disc (m/validate DiscCommand command)
-    :sword (m/validate SwordCommand command)
-    false))
+  (let [payload (delegated-command-payload command)]
+    (case power
+      :cup (m/validate CupCommand payload)
+      :rod (m/validate RodCommand payload)
+      :disc (m/validate DiscCommand payload)
+      :sword (m/validate SwordCommand payload)
+      false)))
 
 (defn- valid-optional-keyed-command? [schema required-key command]
   (and (contains? command required-key)
@@ -446,16 +513,17 @@
        (m/validate CompositeMajorCommand command)))
 
 (defn- valid-delegated-command? [command]
-  (or (some #(valid-suit-command? % command) suit-power-values)
-      (m/validate SunCommand command)
-      (m/validate SwordCommand command)
-      (valid-optional-keyed-command? FoolCommand :reveals command)
-      (valid-optional-keyed-command? HighPriestessCommand :redraws command)
-      (m/validate JudgementCommand command)
-      (valid-composite-major-command? command)
-      (m/validate HierophantCommand command)
-      (m/validate HermitCommand command)
-      (m/validate DevilCommand command)))
+  (let [payload (delegated-command-payload command)]
+    (or (some #(valid-suit-command? % command) suit-power-values)
+        (m/validate SunCommand payload)
+        (m/validate SwordCommand payload)
+        (valid-optional-keyed-command? FoolCommand :reveals payload)
+        (valid-optional-keyed-command? HighPriestessCommand :redraws payload)
+        (m/validate JudgementCommand payload)
+        (valid-composite-major-command? payload)
+        (m/validate HierophantCommand payload)
+        (m/validate HermitCommand payload)
+        (m/validate DevilCommand payload))))
 
 (defn- valid-world-command? [command]
   (let [power (selected-suit-power command)]
@@ -491,44 +559,52 @@
                    acting-source?
                    (assoc :piece-id (fool-play-piece-id reveal command)))))
 
+(def FoolPlaySource
+  (closed-map
+   [:piece-id {:optional true} PieceId]))
+
+(defn- valid-fool-play-source? [command]
+  (or (not (contains? command :source))
+      (m/validate FoolPlaySource (:source command))))
+
 (defn- valid-fool-suit-play-command? [reveal command power]
   (valid-suit-command?
    power
    (fool-play-command-with-source reveal command true)))
 
 (defn- valid-fool-delegated-play-command? [reveal command]
-  (or (not (contains-any? command delegated-payload-keys))
-      (valid-delegated-command?
-       (fool-play-command-with-source reveal command false))))
+  (valid-delegated-command?
+   (fool-play-command-with-source reveal command false)))
 
 (defn- valid-fool-play-command? [reveal command]
-  (let [power (fool-play-power reveal command)]
-    (if (contains? suit-power-set power)
-      (valid-fool-suit-play-command? reveal command power)
-      (valid-fool-delegated-play-command? reveal command))))
+  (and (valid-fool-play-source? command)
+       (let [power (fool-play-power reveal command)]
+         (if (contains? suit-power-set power)
+           (valid-fool-suit-play-command? reveal command power)
+           (valid-fool-delegated-play-command? reveal command)))))
 
 (defn- valid-fool-reveal? [reveal]
   (every? #(valid-fool-play-command? reveal %)
           (fool-play-command-shapes reveal)))
 
 (def DrawCommand
-  [:map
+  (closed-map
    [:player-id PlayerId]
    [:discard-card-ids {:optional true} [:vector CardId]]
    [:draw-count NonNegativeInt]
-   [:shuffle-fn {:optional true} ShuffleFn]])
+   [:shuffle-fn {:optional true} ShuffleFn]))
 
 (def OrientCommand
-  [:map
+  (closed-map
    [:player-id PlayerId]
    [:piece-id PieceId]
-   [:orientation Orientation]])
+   [:orientation Orientation]))
 
 (def InitialPlacementCommand
-  [:map
+  (closed-map
    [:player-id PlayerId]
    [:target [:or TerritoryTarget WastelandTarget]]
-   [:orientation Orientation]])
+   [:orientation Orientation]))
 
 (def ErrorShape
   [:map
