@@ -1,5 +1,5 @@
 /**
- * @fileoverview Closure Compiler externs for Facebook ReactDOM.js DOM 0.14.0
+ * @fileoverview Closure Compiler externs for bundled Facebook ReactDOM 17.0.1
  * @see http://reactjs.org
  * @externs
  */
@@ -76,7 +76,7 @@ ReactDOM.unstable_batchedUpdates = function(callback, opt_a, opt_b, opt_c, opt_d
  */
 ReactDOM.unstable_renderSubtreeIntoContainer = function(parentComponent, nextElement, container, opt_callback) {};
 
-// Version 16
+// ReactDOM 17.0.1 portal and hydration exports.
 
 ReactDOM.hydrate = function() {};
 ReactDOM.createPortal = function() {};

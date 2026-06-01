@@ -1,5 +1,5 @@
 /**
- * @fileoverview Closure Compiler externs for Facebook React.js 16.9.0
+ * @fileoverview Closure Compiler externs for bundled Facebook React 17.0.1
  * @see http://reactjs.org
  * @externs
  */
@@ -1888,7 +1888,7 @@ var topWheel;
 
 React.Fragment = function() {};
 
-/* 16.3.0 new API */
+/* React 17.0.1: context and ref APIs retained from React 16.3. */
 
 React.createContext = function() {};
 
@@ -1923,7 +1923,7 @@ isTextInputElement.supportedInputTypes = {
   week: true
 };
 
-// 16.6 new api
+// React 17.0.1: lazy, memo, and Suspense APIs retained from React 16.6.
 
 React.Suspense = function() {};
 React.Suspense.prototype.maxDuration;
@@ -1932,7 +1932,7 @@ React.lazy = function() {};
 React.unstable_ConcurrentMode = function() {};
 React.unstable_Profiler = function() {};
 
-// 16.8 Hooks
+// React 17.0.1 Hooks
 
 React.useState = function() {};
 React.useEffect = function() {};
@@ -1945,10 +1945,9 @@ React.useImperativeHandle = function() {};
 React.useLayoutEffect = function() {};
 React.useDebugValue = function() {};
 
-// 16.8, for some reason renaming unstable Scheduler function calls don't work
-// with Closure node module processing.
+// React 17.0.1 Scheduler compatibility externs for Closure node module processing.
 // unstable_now caused problems with Reagent tests.
-// These aren't neede for foreign-libs use, just :npm-deps!
+// These aren't needed for foreign-libs use, just :npm-deps!
 
 var Scheduler = {
   unstable_ImmediatePriority: function() {},
@@ -1969,12 +1968,12 @@ var Scheduler = {
   unstable_now: function() {}
 };
 
-// 16.9
+// React 17.0.1 Profiler extern.
 
 React.Profiler = function() {};
 
 // Support hooks with node module processing.
-// They are used with hasOwnProperty in https://github.com/facebook/react/blob/v16.12.0/packages/shared/ReactSharedInternals.js
+// They are used with hasOwnProperty in https://github.com/facebook/react/blob/v17.0.1/packages/shared/ReactSharedInternals.js
 var ReactSharedInternals = {};
 ReactSharedInternals.ReactCurrentDispatcher = {};
 ReactSharedInternals.ReactCurrentBatchConfig = {};
