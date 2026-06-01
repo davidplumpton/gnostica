@@ -28,15 +28,264 @@
 (defn gesture-input-fallback-string [input]
   (str fallback-text-prefix (gesture-input-string input)))
 
+(def source-kinds
+  #{:territory :hand-card :draw-pile :discard-pile :piece :stash-piece})
+
+(def target-kinds
+  #{:territory :piece :wasteland})
+
+(def valid-orientations
+  #{:up :north :east :south :west})
+
+(def valid-piece-sizes
+  #{:small :medium :large})
+
+(def gesture-field-keys
+  #{:source-board-index
+    :hand-card-id
+    :piece-id
+    :power
+    :copied-board-index
+    :copied-power
+    :rod-mode
+    :disc-target-kind
+    :sword-target-kind
+    :disc-action-count
+    :major-action-count
+    :sword-action-count
+    :devil-action-count
+    :fool-reveal-count
+    :high-priestess-redraw-count
+    :minion-orientation
+    :sun-disc-mode
+    :target-piece-id
+    :sun-disc-target-piece-id
+    :target-board-index
+    :sun-disc-target-board-index
+    :territory-card-source
+    :one-point-card-id
+    :damage
+    :distance
+    :replacement-card-source
+    :replacement-card-id
+    :sun-disc-replacement-card-id
+    :hermit-destination-board-index
+    :target-wasteland
+    :hermit-destination-wasteland
+    :orientation
+    :draw-count
+    :discard-card-ids})
+
+(def gesture-top-level-keys
+  #{:source :source-id :preserve-selection? :fields :target})
+
+(defn- id? [value]
+  (or (keyword? value)
+      (string? value)))
+
+(defn- card-id? [value]
+  (and (string? value)
+       (not (str/blank? value))))
+
+(defn- board-index? [value]
+  (and (int? value)
+       (not (neg? value))))
+
+(defn- coordinate? [value]
+  (int? value))
+
+(defn- closed-map? [value allowed-keys]
+  (and (map? value)
+       (every? allowed-keys (keys value))))
+
+(declare valid-target?)
+
+(defn- valid-source? [source]
+  (and (closed-map? source #{:kind :board-index :card-id :piece-id
+                             :player-id :size :orientation})
+       (contains? source-kinds (:kind source))
+       (case (:kind source)
+         :territory
+         (and (board-index? (:board-index source))
+              (not (contains? source :card-id))
+              (not (contains? source :piece-id))
+              (not (contains? source :player-id))
+              (not (contains? source :size))
+              (not (contains? source :orientation)))
+
+         :hand-card
+         (and (card-id? (:card-id source))
+              (not (contains? source :board-index))
+              (not (contains? source :piece-id))
+              (not (contains? source :player-id))
+              (not (contains? source :size))
+              (not (contains? source :orientation)))
+
+         :draw-pile
+         (= #{:kind} (set (keys source)))
+
+         :discard-pile
+         (= #{:kind} (set (keys source)))
+
+         :piece
+         (and (id? (:piece-id source))
+              (not (contains? source :board-index))
+              (not (contains? source :card-id))
+              (not (contains? source :player-id))
+              (not (contains? source :size))
+              (not (contains? source :orientation)))
+
+         :stash-piece
+         (and (id? (:player-id source))
+              (contains? valid-piece-sizes (:size source))
+              (or (not (contains? source :orientation))
+                  (contains? valid-orientations (:orientation source)))
+              (not (contains? source :board-index))
+              (not (contains? source :card-id))
+              (not (contains? source :piece-id))))))
+
+(defn- valid-wasteland-field? [value]
+  (and (map? value)
+       (= :wasteland (:kind value))
+       (coordinate? (:row value))
+       (coordinate? (:col value))))
+
+(defn- valid-gesture-field? [field value]
+  (case field
+    (:source-board-index :copied-board-index :target-board-index
+     :sun-disc-target-board-index :hermit-destination-board-index)
+    (board-index? value)
+
+    (:hand-card-id :one-point-card-id :replacement-card-id
+     :sun-disc-replacement-card-id)
+    (card-id? value)
+
+    (:piece-id :target-piece-id :sun-disc-target-piece-id)
+    (id? value)
+
+    (:power :copied-power :rod-mode :disc-target-kind :sword-target-kind
+     :territory-card-source :replacement-card-source :sun-disc-mode)
+    (keyword? value)
+
+    (:disc-action-count :major-action-count :sword-action-count
+     :devil-action-count :fool-reveal-count :high-priestess-redraw-count
+     :damage :distance :draw-count)
+    (and (int? value)
+         (not (neg? value)))
+
+    (:minion-orientation :orientation)
+    (contains? valid-orientations value)
+
+    (:target-wasteland :hermit-destination-wasteland)
+    (valid-wasteland-field? value)
+
+    :discard-card-ids
+    (and (sequential? value)
+         (every? card-id? value))
+
+    false))
+
+(defn- valid-fields? [fields]
+  (and (closed-map? fields gesture-field-keys)
+       (every? (fn [[field value]]
+                 (valid-gesture-field? field value))
+               fields)))
+
+(defn- valid-target? [target]
+  (and (closed-map? target #{:kind :board-index :piece-id :row :col})
+       (contains? target-kinds (:kind target))
+       (case (:kind target)
+         :territory
+         (and (board-index? (:board-index target))
+              (not (contains? target :piece-id))
+              (not (contains? target :row))
+              (not (contains? target :col)))
+
+         :piece
+         (and (id? (:piece-id target))
+              (not (contains? target :board-index))
+              (not (contains? target :row))
+              (not (contains? target :col)))
+
+         :wasteland
+         (and (coordinate? (:row target))
+              (coordinate? (:col target))
+              (not (contains? target :board-index))
+              (not (contains? target :piece-id))))))
+
+(defn gesture-input? [input]
+  (and (closed-map? input gesture-top-level-keys)
+       (or (not (contains? input :preserve-selection?))
+           (boolean? (:preserve-selection? input)))
+       (or (not (contains? input :source-id))
+           (keyword? (:source-id input)))
+       (or (not (contains? input :source))
+           (valid-source? (:source input)))
+       (or (not (contains? input :fields))
+           (valid-fields? (:fields input)))
+       (or (not (contains? input :target))
+           (valid-target? (:target input)))
+       (or (contains? input :source)
+           (contains? input :fields))))
+
+(defn- valid-gesture-input [input]
+  (when (gesture-input? input)
+    input))
+
+(defn fallback-gesture-payload? [payload]
+  (and (string? payload)
+       (str/starts-with? payload fallback-text-prefix)))
+
+(defn- read-gesture-input [payload]
+  (when (and (string? payload)
+             (seq payload))
+    (try
+      (valid-gesture-input (reader/read-string payload))
+      (catch #?(:clj Exception :cljs :default) _
+        nil))))
+
 (defn parse-gesture-input-string [payload]
-  (when (seq payload)
-    (let [payload (if (str/starts-with? payload fallback-text-prefix)
-                    (subs payload (count fallback-text-prefix))
-                    payload)]
-      (try
-        (reader/read-string payload)
-        (catch #?(:clj Exception :cljs :default) _
-          nil)))))
+  (read-gesture-input payload))
+
+(defn parse-gesture-input-fallback-string [payload]
+  (when (fallback-gesture-payload? payload)
+    (read-gesture-input (subs payload (count fallback-text-prefix)))))
+
+(defn gesture-data-transfer-types? [types fallback-payload]
+  (boolean
+   (or (some #(= mime-type %) types)
+       (and (some #(= fallback-mime-type %) types)
+            (fallback-gesture-payload? fallback-payload)))))
+
+(defn- comparable-drag-input [input]
+  (let [input (cond-> input
+                (contains? input :source)
+                (update :source dissoc :orientation)
+
+                (contains? input :fields)
+                (update :fields #(not-empty (dissoc % :orientation))))]
+    (cond-> input
+      (nil? (:fields input))
+      (dissoc :fields))))
+
+(defn- compatible-active-input [active-input payload-input payload]
+  (when-let [active-input (valid-gesture-input active-input)]
+    (when (or (and payload-input
+                   (= (comparable-drag-input active-input)
+                      (comparable-drag-input payload-input)))
+              (str/blank? (or payload "")))
+      active-input)))
+
+(defn gesture-input-from-drag-data
+  [{:keys [types custom-payload fallback-payload active-input]}]
+  (when (gesture-data-transfer-types? types fallback-payload)
+    (let [custom-type? (some #(= mime-type %) types)
+          custom-input (parse-gesture-input-string custom-payload)
+          fallback-input (parse-gesture-input-fallback-string fallback-payload)]
+      (or (when custom-type?
+            (compatible-active-input active-input custom-input custom-payload))
+          custom-input
+          fallback-input))))
 
 #?(:cljs
    (defn gesture-mime-type? [data-transfer]
@@ -48,10 +297,11 @@
 #?(:cljs
    (defn gesture-data-transfer? [data-transfer]
      (when data-transfer
-       (boolean
-        (some #(or (= mime-type %)
-                   (= fallback-mime-type %))
-              (array-seq (.-types data-transfer)))))))
+       (let [types (array-seq (.-types data-transfer))]
+         (gesture-data-transfer-types?
+          types
+          (when (some #(= fallback-mime-type %) types)
+            (.getData data-transfer fallback-mime-type)))))))
 
 #?(:cljs
    (defn active-gesture-input []
@@ -68,12 +318,14 @@
 #?(:cljs
    (defn gesture-input-from-data-transfer [data-transfer]
      (when data-transfer
-       (or (when (gesture-mime-type? data-transfer)
-             (active-gesture-input))
-           (parse-gesture-input-string (.getData data-transfer mime-type))
-           (parse-gesture-input-string (.getData data-transfer fallback-mime-type))
-           (when (gesture-mime-type? data-transfer)
-             (active-gesture-input))))))
+       (let [types (array-seq (.-types data-transfer))]
+         (gesture-input-from-drag-data
+          {:types types
+           :custom-payload (when (some #(= mime-type %) types)
+                             (.getData data-transfer mime-type))
+           :fallback-payload (when (some #(= fallback-mime-type %) types)
+                               (.getData data-transfer fallback-mime-type))
+           :active-input (active-gesture-input)})))))
 
 #?(:cljs
    (defn set-gesture-data! [data-transfer input]

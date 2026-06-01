@@ -1,5 +1,5 @@
 (ns gnostica.gesture-input-test
-  (:require [clojure.test :refer [deftest is]]
+  (:require [clojure.test :refer [deftest is testing]]
             [gnostica.gesture-input :as gesture-input]))
 
 (deftest shared-gesture-inputs-use-stable-object-identifiers
@@ -67,6 +67,90 @@
                card
                {:role :judgement-card
                 :enabled? true})))))
+
+(deftest drag-payload-parsing-accepts-only-gnostica-gesture-shapes
+  (let [source-input (gesture-input/hand-card-source-input {:id "coins2"})
+        field-input {:preserve-selection? true
+                     :fields {:target-piece-id :rose-scout
+                              :orientation :south}}
+        target-input (assoc source-input
+                            :target (gesture-input/wasteland-target 2 -1))]
+    (is (true? (gesture-input/gesture-input? source-input)))
+    (is (true? (gesture-input/gesture-input? field-input)))
+    (is (true? (gesture-input/gesture-input? target-input)))
+    (is (= source-input
+           (gesture-input/parse-gesture-input-string
+            (gesture-input/gesture-input-string source-input))))
+    (is (= source-input
+           (gesture-input/parse-gesture-input-fallback-string
+            (gesture-input/gesture-input-fallback-string source-input))))
+    (testing "normal external text/plain drags are ignored"
+      (is (nil? (gesture-input/parse-gesture-input-fallback-string
+                 (gesture-input/gesture-input-string source-input))))
+      (is (nil? (gesture-input/parse-gesture-input-fallback-string
+                 "{:source {:kind :hand-card :card-id \"coins2\"}}"))))
+    (testing "malformed or unrelated prefixed EDN is not returned"
+      (is (nil? (gesture-input/parse-gesture-input-string "not edn")))
+      (is (nil? (gesture-input/parse-gesture-input-string "[]")))
+      (is (nil? (gesture-input/parse-gesture-input-string
+                 "{:source {:kind :hand-card}}")))
+      (is (nil? (gesture-input/parse-gesture-input-fallback-string
+                 "gnostica-gesture:{:unrelated true}")))
+      (is (nil? (gesture-input/parse-gesture-input-fallback-string
+                 "gnostica-gesture:{:source {:kind :hand-card :card-id \"coins2\"} :unknown true}"))))))
+
+(deftest drag-data-transfer-policy-requires-custom-mime-or-prefixed-fallback
+  (let [input (gesture-input/stash-piece-source-input {:id :rose})
+        custom-payload (gesture-input/gesture-input-string input)
+        fallback-payload (gesture-input/gesture-input-fallback-string input)
+        active-input (gesture-input/with-drag-orientation input :east)]
+    (is (true? (gesture-input/gesture-data-transfer-types?
+                [gesture-input/mime-type]
+                nil)))
+    (is (true? (gesture-input/gesture-data-transfer-types?
+                [gesture-input/fallback-mime-type]
+                fallback-payload)))
+    (is (false? (gesture-input/gesture-data-transfer-types?
+                 [gesture-input/fallback-mime-type]
+                 custom-payload)))
+    (is (false? (gesture-input/gesture-data-transfer-types?
+                 ["text/html"]
+                 fallback-payload)))
+    (is (= input
+           (gesture-input/gesture-input-from-drag-data
+            {:types [gesture-input/mime-type]
+             :custom-payload custom-payload})))
+    (is (= input
+           (gesture-input/gesture-input-from-drag-data
+            {:types [gesture-input/fallback-mime-type]
+             :fallback-payload fallback-payload})))
+    (is (nil? (gesture-input/gesture-input-from-drag-data
+               {:types [gesture-input/fallback-mime-type]
+                :fallback-payload custom-payload})))
+    (is (nil? (gesture-input/gesture-input-from-drag-data
+               {:types [gesture-input/fallback-mime-type]
+                :fallback-payload "gnostica-gesture:[]"})))
+    (is (= input
+           (gesture-input/gesture-input-from-drag-data
+            {:types [gesture-input/fallback-mime-type]
+             :fallback-payload fallback-payload
+             :active-input (gesture-input/hand-card-source-input {:id "cups2"})})))
+    (testing "active orientation is reused only for the same serialized drag"
+      (is (= active-input
+             (gesture-input/gesture-input-from-drag-data
+              {:types [gesture-input/mime-type]
+               :custom-payload custom-payload
+               :active-input active-input})))
+      (is (= active-input
+             (gesture-input/gesture-input-from-drag-data
+              {:types [gesture-input/mime-type]
+               :custom-payload ""
+               :active-input active-input})))
+      (is (= input
+             (gesture-input/gesture-input-from-drag-data
+              {:types [gesture-input/mime-type]
+               :custom-payload custom-payload
+               :active-input (gesture-input/hand-card-source-input {:id "cups2"})}))))))
 
 (deftest board-space-drags-highlight-only-hovered-board-target
   (let [stash-source {:kind :stash-piece
