@@ -14,6 +14,9 @@
 (defonce global-shortcut-listener
   (atom nil))
 
+;; Capture lets drag-orientation keys run before focused board controls stop propagation.
+(def global-shortcut-listener-capture? true)
+
 (defn- editable-target? [target]
   (let [tag-name (some-> target .-tagName str/lower-case)]
     (or (and target (.-isContentEditable target))
@@ -39,12 +42,20 @@
         (when-let [orientation (:orientation result)]
           (gesture-input/set-active-gesture-input!
            (gesture-input/with-drag-orientation input orientation)))
+        (.dispatchEvent js/window
+                        (js/CustomEvent.
+                         gesture-input/orientation-change-event
+                         #js {:bubbles false
+                              :cancelable false}))
         (rf/dispatch [set-gesture-drag-orientation-event result])
         true))))
 
 (defn uninstall! []
   (when-let [listener @global-shortcut-listener]
-    (.removeEventListener js/window "keydown" listener)
+    (.removeEventListener js/window
+                          "keydown"
+                          listener
+                          global-shortcut-listener-capture?)
     (reset! global-shortcut-listener nil)))
 
 (defn install! []
@@ -57,7 +68,10 @@
                            (.preventDefault event)
                            (rf/dispatch [shortcut-event])))))]
     (reset! global-shortcut-listener listener)
-    (.addEventListener js/window "keydown" listener)))
+    (.addEventListener js/window
+                       "keydown"
+                       listener
+                       global-shortcut-listener-capture?)))
 
 (rf/reg-fx
  install-global-shortcuts-fx

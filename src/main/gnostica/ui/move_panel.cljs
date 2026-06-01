@@ -69,6 +69,102 @@
           (.removeChild parent canvas))
        0))))
 
+(def source-pointer-drag-threshold 8)
+
+(defonce suppress-next-source-click?
+  (atom false))
+
+(defn- left-button-pointer? [event]
+  (zero? (.-button event)))
+
+(defn- pointer-distance [event {:keys [x y]}]
+  (js/Math.hypot (- (.-clientX event) x)
+                 (- (.-clientY event) y)))
+
+(defn- three-canvas-at [x y]
+  (when-let [element (.elementFromPoint js/document x y)]
+    (when (.-closest element)
+      (.closest element ".board-three__canvas"))))
+
+(defn- dispatch-pointer-gesture-event! [event-name input event]
+  (when-let [canvas (three-canvas-at (.-clientX event) (.-clientY event))]
+    (.dispatchEvent canvas
+                    (js/CustomEvent.
+                     event-name
+                     #js {:bubbles true
+                          :cancelable true
+                          :detail #js {:input input
+                                       :clientX (.-clientX event)
+                                       :clientY (.-clientY event)}}))
+    true))
+
+(defn- cancel-pointer-gesture-preview! []
+  (.dispatchEvent js/window
+                  (js/CustomEvent.
+                   gesture-input/pointer-drag-cancel-event
+                   #js {:bubbles false
+                        :cancelable false})))
+
+(defn- begin-source-pointer-drag! [event input]
+  (when (and input
+             (left-button-pointer? event)
+             (.querySelector js/document ".board-three__canvas"))
+    (.preventDefault event)
+    (.stopPropagation event)
+    (reset! suppress-next-source-click? true)
+    (js/setTimeout #(reset! suppress-next-source-click? false) 750)
+    (gesture-input/set-active-gesture-input! input)
+    (rf/dispatch-sync [events/start-gesture-intent input])
+    (let [start {:x (.-clientX event)
+                 :y (.-clientY event)}
+          dragging? (atom false)
+          move-listener* (atom nil)
+          up-listener* (atom nil)
+          cancel-listener* (atom nil)
+          cleanup! (fn []
+                     (when-let [listener @move-listener*]
+                       (.removeEventListener js/window "pointermove" listener true))
+                     (when-let [listener @up-listener*]
+                       (.removeEventListener js/window "pointerup" listener true))
+                     (when-let [listener @cancel-listener*]
+                       (.removeEventListener js/window "pointercancel" listener true)))]
+      (reset! move-listener*
+              (fn [move-event]
+                (when (or @dragging?
+                          (< source-pointer-drag-threshold
+                             (pointer-distance move-event start)))
+                  (.preventDefault move-event)
+                  (reset! dragging? true)
+                  (let [input (or (gesture-input/active-gesture-input)
+                                  input)]
+                    (when-not (dispatch-pointer-gesture-event!
+                               gesture-input/pointer-drag-move-event
+                               input
+                               move-event)
+                      (cancel-pointer-gesture-preview!))))))
+      (reset! up-listener*
+              (fn [up-event]
+                (.preventDefault up-event)
+                (let [input (or (gesture-input/active-gesture-input)
+                                input)]
+                  (when @dragging?
+                    (dispatch-pointer-gesture-event!
+                     gesture-input/pointer-drag-drop-event
+                     input
+                     up-event)))
+                (cleanup!)
+                (gesture-input/clear-active-gesture-input!)
+                (cancel-pointer-gesture-preview!)))
+      (reset! cancel-listener*
+              (fn [_]
+                (cleanup!)
+                (gesture-input/clear-active-gesture-input!)
+                (cancel-pointer-gesture-preview!)))
+      (.addEventListener js/window "pointermove" @move-listener* true)
+      (.addEventListener js/window "pointerup" @up-listener* true)
+      (.addEventListener js/window "pointercancel" @cancel-listener* true)
+      true)))
+
 (defn- move-source-picker [options selected-source current-player direct-manipulation]
   [:div.move-source-list
    (for [{:keys [id label summary enabled? reason]} options]
@@ -87,7 +183,15 @@
          :disabled (not enabled?)
          :aria-pressed (= selected-source id)
          :draggable (if (and enabled? stash-input) "true" "false")
-         :on-click #(rf/dispatch [events/select-move-source id])
+         :on-click (fn [event]
+                     (if @suppress-next-source-click?
+                       (do
+                         (.preventDefault event)
+                         (.stopPropagation event)
+                         (reset! suppress-next-source-click? false))
+                       (rf/dispatch [events/select-move-source id])))
+         :on-pointer-down #(when (and enabled? stash-input)
+                             (begin-source-pointer-drag! % stash-input))
          :on-drag-end #(gesture-input/clear-active-gesture-input!)
          :on-drag-start (fn [event]
                           (when (and enabled? stash-input)

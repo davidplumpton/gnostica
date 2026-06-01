@@ -19,14 +19,22 @@
           (.-userData)
           (aget gesture-object-user-data-key)))
 
+(defn- event-client-x [event]
+  (or (some-> event .-detail .-clientX)
+      (.-clientX event)))
+
+(defn- event-client-y [event]
+  (or (some-> event .-detail .-clientY)
+      (.-clientY event)))
+
 (defn- pointer-event->board-pointer! [pointer target event]
   (let [rect (.getBoundingClientRect target)
         width (.-width rect)
         height (.-height rect)]
     (when (and (pos? width) (pos? height))
       (.set pointer
-            (- (* 2 (/ (- (.-clientX event) (.-left rect)) width)) 1)
-            (- 1 (* 2 (/ (- (.-clientY event) (.-top rect)) height))))
+            (- (* 2 (/ (- (event-client-x event) (.-left rect)) width)) 1)
+            (- 1 (* 2 (/ (- (event-client-y event) (.-top rect)) height))))
       true)))
 
 (defn- picked-mesh-at!
@@ -100,8 +108,9 @@
       fallback))
 
 (defn- drag-source-object [source-object]
-  (if-let [orientation (some-> (gesture-input/active-gesture-input)
-                               gesture-input/drag-orientation)]
+  (if-let [orientation (or (some-> (gesture-input/active-gesture-input)
+                                   gesture-input/drag-orientation)
+                           (:orientation source-object))]
     (assoc source-object :orientation orientation)
     source-object))
 
@@ -119,16 +128,16 @@
 
 (defn- event-position [canvas event]
   (let [rect (.getBoundingClientRect canvas)]
-    {:x (- (.-clientX event) (.-left rect))
-     :y (- (.-clientY event) (.-top rect))}))
+    {:x (- (event-client-x event) (.-left rect))
+     :y (- (event-client-y event) (.-top rect))}))
 
 (defn- preview-at [legal-targets source-object target-object canvas event]
   (assoc (preview-for legal-targets source-object target-object)
          :pointer (event-position canvas event)))
 
 (defn- pointer-distance [event {:keys [x y]}]
-  (js/Math.hypot (- (.-clientX event) x)
-                 (- (.-clientY event) y)))
+  (js/Math.hypot (- (event-client-x event) x)
+                 (- (event-client-y event) y)))
 
 (defn- set-controls-enabled! [controls enabled?]
   (when controls
@@ -156,8 +165,12 @@
                             (resources/invoke-callback callbacks :on-card-select picked-index)))
         dispatch-gesture! (fn [input]
                             (resources/invoke-callback callbacks :on-gesture-intent input))
+        last-drag-preview (atom nil)
+        set-drag-preview! (fn [drag-preview]
+                            (reset! last-drag-preview drag-preview)
+                            (assoc-state! :drag-preview drag-preview))
         clear-drag! (fn []
-                      (assoc-state! :drag-preview nil)
+                      (set-drag-preview! nil)
                       (set-controls-enabled! controls true))
         hover-card-at! #(when-not @pointer-down
                           (assoc-state! :hovered-index (board-index-at! %)))
@@ -202,12 +215,12 @@
                                           (dispatch-gesture! input))
                                         (when dragging-now?
                                           (swap! pointer-down assoc :dragging? true)
-                                          (assoc-state! :drag-preview
-                                                        (preview-at (current-legal-targets)
-                                                                    (drag-source-object source-object)
-                                                                    target-object
-                                                                    canvas
-                                                                    event))))))
+                                          (set-drag-preview!
+                                           (preview-at (current-legal-targets)
+                                                       (drag-source-object source-object)
+                                                       target-object
+                                                       canvas
+                                                       event))))))
                                   (hover-card-at! event)))
         pointer-up-listener (fn [event]
                               (when-let [{:keys [id input source-object dragging?
@@ -268,12 +281,13 @@
                                           (set! (.-dropEffect data-transfer) "move"))
                                         (when-let [input (gesture-input/gesture-input-from-data-transfer
                                                          (.-dataTransfer event))]
-                                          (assoc-state! :drag-preview
-                                                        (preview-at (current-legal-targets)
-                                                                    (:source input)
-                                                                    (target-object-at! event)
-                                                                    canvas
-                                                                    event)))))
+                                          (let [input (active-drag-input input)]
+                                            (set-drag-preview!
+                                             (preview-at (current-legal-targets)
+                                                         (drag-source-object (:source input))
+                                                         (target-object-at! event)
+                                                         canvas
+                                                         event))))))
         external-drop-listener (fn [event]
                                  (when-let [input (and drag-enabled?
                                                        (gesture-input/gesture-data-transfer?
@@ -282,14 +296,49 @@
                                                         (.-dataTransfer event)))]
                                    (.preventDefault event)
                                    (.stopPropagation event)
-                                   (let [target (target-for-object (target-object-at! event))]
+                                   (let [input (active-drag-input input)
+                                         target (target-for-object (target-object-at! event))]
                                      (dispatch-gesture! (cond-> input
                                                           target
                                                           (assoc :target target))))
-                                   (gesture-input/clear-active-gesture-input!)
-                                   (clear-drag!)))
+                                  (gesture-input/clear-active-gesture-input!)
+                                  (clear-drag!)))
         external-drag-leave-listener (fn [_]
-                                      (clear-drag!))]
+                                      (clear-drag!))
+        external-pointer-input (fn [event]
+                                 (some-> event .-detail .-input))
+        external-pointer-move-listener (fn [event]
+                                         (when-let [input (and drag-enabled?
+                                                              (external-pointer-input event))]
+                                           (.preventDefault event)
+                                           (.stopPropagation event)
+                                           (let [input (active-drag-input input)]
+                                             (set-drag-preview!
+                                              (preview-at (current-legal-targets)
+                                                          (drag-source-object (:source input))
+                                                          (target-object-at! event)
+                                                          canvas
+                                                          event)))))
+        external-pointer-drop-listener (fn [event]
+                                         (when-let [input (and drag-enabled?
+                                                              (external-pointer-input event))]
+                                           (.preventDefault event)
+                                           (.stopPropagation event)
+                                           (let [input (active-drag-input input)
+                                                 target (target-for-object (target-object-at! event))]
+                                             (dispatch-gesture! (cond-> input
+                                                                  target
+                                                                  (assoc :target target))))
+                                           (gesture-input/clear-active-gesture-input!)
+                                           (clear-drag!)))
+        external-pointer-cancel-listener (fn [_]
+                                           (clear-drag!))
+        orientation-change-listener (fn [_]
+                                      (when-let [drag-preview @last-drag-preview]
+                                        (set-drag-preview!
+                                         (update drag-preview
+                                                 :source
+                                                 drag-source-object))))]
     (.addEventListener canvas "pointerdown" pointer-down-listener true)
     (.addEventListener canvas "pointerup" pointer-up-listener true)
     (.addEventListener canvas "pointercancel" pointer-cancel-listener true)
@@ -298,6 +347,22 @@
     (.addEventListener canvas "dragover" external-drag-over-listener true)
     (.addEventListener canvas "drop" external-drop-listener true)
     (.addEventListener canvas "dragleave" external-drag-leave-listener true)
+    (.addEventListener canvas
+                       gesture-input/pointer-drag-move-event
+                       external-pointer-move-listener
+                       true)
+    (.addEventListener canvas
+                       gesture-input/pointer-drag-drop-event
+                       external-pointer-drop-listener
+                       true)
+    (.addEventListener js/window
+                       gesture-input/pointer-drag-cancel-event
+                       external-pointer-cancel-listener
+                       true)
+    (.addEventListener js/window
+                       gesture-input/orientation-change-event
+                       orientation-change-listener
+                       true)
     {:pointer-down-listener pointer-down-listener
      :pointer-up-listener pointer-up-listener
      :pointer-cancel-listener pointer-cancel-listener
@@ -306,6 +371,10 @@
      :external-drag-over-listener external-drag-over-listener
      :external-drop-listener external-drop-listener
      :external-drag-leave-listener external-drag-leave-listener
+     :external-pointer-move-listener external-pointer-move-listener
+     :external-pointer-drop-listener external-pointer-drop-listener
+     :external-pointer-cancel-listener external-pointer-cancel-listener
+     :orientation-change-listener orientation-change-listener
      :pointer-listener-capture? true}))
 
 (def install-card-pointer-listeners! install-board-pointer-listeners!)

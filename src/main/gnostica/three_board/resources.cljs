@@ -1,4 +1,5 @@
-(ns gnostica.three-board.resources)
+(ns gnostica.three-board.resources
+  (:require [gnostica.gesture-input :as gesture-input]))
 
 (def renderer-antialias-requested? true)
 
@@ -36,6 +37,10 @@
            external-drag-over-listener
            external-drop-listener
            external-drag-leave-listener
+           external-pointer-move-listener
+           external-pointer-drop-listener
+           external-pointer-cancel-listener
+           orientation-change-listener
            pointer-listener-capture?
            active?
            geometries
@@ -74,6 +79,26 @@
         (.removeEventListener canvas "drop" external-drop-listener pointer-listener-capture?))
       (when external-drag-leave-listener
         (.removeEventListener canvas "dragleave" external-drag-leave-listener pointer-listener-capture?))
+      (when external-pointer-move-listener
+        (.removeEventListener canvas
+                              gesture-input/pointer-drag-move-event
+                              external-pointer-move-listener
+                              pointer-listener-capture?))
+      (when external-pointer-drop-listener
+        (.removeEventListener canvas
+                              gesture-input/pointer-drag-drop-event
+                              external-pointer-drop-listener
+                              pointer-listener-capture?))
+      (when external-pointer-cancel-listener
+        (.removeEventListener js/window
+                              gesture-input/pointer-drag-cancel-event
+                              external-pointer-cancel-listener
+                              pointer-listener-capture?))
+      (when orientation-change-listener
+        (.removeEventListener js/window
+                              gesture-input/orientation-change-event
+                              orientation-change-listener
+                              pointer-listener-capture?))
       (when parent
         (.removeChild parent canvas)))
     (.dispose renderer)))

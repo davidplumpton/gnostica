@@ -7,6 +7,10 @@
 (def mime-type "application/gnostica-gesture")
 (def fallback-mime-type "text/plain")
 (def fallback-text-prefix "gnostica-gesture:")
+(def pointer-drag-move-event "gnostica-gesture-pointer-move")
+(def pointer-drag-drop-event "gnostica-gesture-pointer-drop")
+(def pointer-drag-cancel-event "gnostica-gesture-pointer-cancel")
+(def orientation-change-event "gnostica-gesture-orientation-change")
 
 #?(:cljs
    (defonce active-gesture-input* (atom nil)))

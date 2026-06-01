@@ -335,6 +335,38 @@
   (dispatch-click! client {"x" centerX
                            "y" centerY}))
 
+(defn dispatch-mouse-move!
+  ([client point]
+   (dispatch-mouse-move! client point false))
+  ([client {:strs [x y]} pressed?]
+   (cdp-command! client
+                 "Input.dispatchMouseEvent"
+                 (cond-> {"type" "mouseMoved"
+                          "x" (double x)
+                          "y" (double y)}
+                   pressed?
+                   (assoc "button" "left"
+                          "buttons" 1)))))
+
+(defn dispatch-mouse-press! [client {:strs [x y]}]
+  (cdp-command! client
+                "Input.dispatchMouseEvent"
+                {"type" "mousePressed"
+                 "x" (double x)
+                 "y" (double y)
+                 "button" "left"
+                 "buttons" 1
+                 "clickCount" 1}))
+
+(defn dispatch-mouse-release! [client {:strs [x y]}]
+  (cdp-command! client
+                "Input.dispatchMouseEvent"
+                {"type" "mouseReleased"
+                 "x" (double x)
+                 "y" (double y)
+                 "button" "left"
+                 "clickCount" 1}))
+
 (defn dispatch-drag! [client start-point end-point]
   (let [start-x (double (get start-point "x"))
         start-y (double (get start-point "y"))

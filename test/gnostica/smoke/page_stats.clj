@@ -566,11 +566,48 @@
        dragPiecePreviewVisible: board ? board.dataset.dragPiecePreviewVisible === 'true' : false,
        dragPiecePreviewSize: board ? board.dataset.dragPiecePreviewSize : null,
        dragPiecePreviewPlayerId: board ? board.dataset.dragPiecePreviewPlayerId : null,
+       dragPiecePreviewOrientation: board ? board.dataset.dragPiecePreviewOrientation : null,
 	       dragTargetKind: board ? board.dataset.dragTargetKind : null,
 	       dragTargetStatus: board ? board.dataset.dragTargetStatus : null,
 	       dragTargetHighlightCount: board ? Number(board.dataset.dragTargetHighlightCount || 0) : null
 	     };
 	   })()")
+
+(def initial-placement-three-drag-points-js
+  "(() => {
+     const text = (node) => node ? node.textContent.trim() : '';
+     const sourceButtons = Array.from(document.querySelectorAll('.move-source-option'));
+     const source = sourceButtons.find((button) => text(button).includes('Place first piece'));
+     const target = document.querySelector('.board-three__canvas');
+     if (!source || !target) {
+       return {
+         ok: false,
+         reason: source ? 'No Three.js canvas target found.' : 'No Place first piece source found.',
+         sourceCount: sourceButtons.length,
+         canvasCount: document.querySelectorAll('.board-three__canvas').length
+       };
+     }
+     const sourceRect = source.getBoundingClientRect();
+     const targetRect = target.getBoundingClientRect();
+     const sourcePoint = {
+       x: sourceRect.left + sourceRect.width / 2,
+       y: sourceRect.top + sourceRect.height / 2
+     };
+     const targetPoint = {
+       x: targetRect.left + targetRect.width / 2,
+       y: targetRect.top + targetRect.height / 2
+     };
+     return {
+       ok: true,
+       source: sourcePoint,
+       target: targetPoint,
+       mid: {
+         x: (sourcePoint.x + targetPoint.x) / 2,
+         y: (sourcePoint.y + targetPoint.y) / 2
+       },
+       sourceText: text(source)
+     };
+   })()")
 
 (def initial-placement-three-drop-js
   "(() => new Promise((resolve) => {
@@ -599,6 +636,16 @@
 	     const dragStart = new DragEvent('dragstart', eventInit);
 	     const dragStartDispatched = source.dispatchEvent(dragStart);
 	     requestAnimationFrame(() => requestAnimationFrame(() => {
+	       const board = document.querySelector('.board-three');
+	       if (board) board.focus();
+	       const orientationKey = new KeyboardEvent('keydown', {
+	         key: 'ArrowRight',
+	         code: 'ArrowRight',
+	         bubbles: true,
+	         cancelable: true
+	       });
+	       const orientationKeyDispatched = board ? board.dispatchEvent(orientationKey) : false;
+	       requestAnimationFrame(() => requestAnimationFrame(() => {
 	       const protectedTransfer = {
 	         types: Array.from(dataTransfer.types),
 	         dropEffect: 'move',
@@ -619,13 +666,15 @@
 	           dragTargetHighlightCountBeforeDrop: board ? Number(board.dataset.dragTargetHighlightCount || 0) : null,
 	           dragPiecePreviewVisibleBeforeDrop: board ? board.dataset.dragPiecePreviewVisible === 'true' : null,
 	           dragPiecePreviewSizeBeforeDrop: board ? board.dataset.dragPiecePreviewSize : null,
-	           dragPiecePreviewPlayerIdBeforeDrop: board ? board.dataset.dragPiecePreviewPlayerId : null
+	           dragPiecePreviewPlayerIdBeforeDrop: board ? board.dataset.dragPiecePreviewPlayerId : null,
+	           dragPiecePreviewOrientationBeforeDrop: board ? board.dataset.dragPiecePreviewOrientation : null
 	         };
 	         const drop = new DragEvent('drop', eventInit);
 	         const dropDispatched = target.dispatchEvent(drop);
 	         resolve(Object.assign({
 	           dropped: true,
 	           dragStartDispatched,
+	           orientationKeyDispatched,
 	           dragOverDispatched,
 	           dropDispatched,
 	           sourceText: text(source),
@@ -635,10 +684,12 @@
 	           ghostVisible: beforeDrop.dragPiecePreviewVisibleBeforeDrop,
 	           ghostPlayerId: beforeDrop.dragPiecePreviewPlayerIdBeforeDrop,
 	           ghostPieceSize: beforeDrop.dragPiecePreviewSizeBeforeDrop,
+	           ghostOrientation: beforeDrop.dragPiecePreviewOrientationBeforeDrop,
 	           ghostClassName: null,
 	           ghostLeft: null,
 	           ghostTop: null
 	         }, beforeDrop));
+	       }));
 	       }));
 	     }));
 	   }))()")
