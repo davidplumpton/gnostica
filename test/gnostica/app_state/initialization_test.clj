@@ -158,6 +158,7 @@
     (is (true? (:can-add? lobby-view)))
     (is (true? (:lobby? header-view)))
     (is (nil? (:current-player header-view)))
+    (is (false? (:show-turn-actions? header-view)))
     (is (true? (:lobby? app-view)))))
 (deftest bypass-lobby-initializes-game-for-fixtures
   (let [db (app-state/initialize {:start-in-lobby? true

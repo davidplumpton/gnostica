@@ -39,6 +39,7 @@
         challenged-header (app-state/header-view challenged-db)]
     (is (true? (:can-end-turn? header-view)))
     (is (true? (:can-announce-challenge? header-view)))
+    (is (true? (:show-turn-actions? header-view)))
     (is (= 9 (get-in header-view [:game-status :target-score])))
     (is (= 3 (get-in header-view [:game-status :players 0 :score])))
     (is (:ok? (:turn-result challenged-db)))
@@ -46,6 +47,14 @@
     (is (= :rose (get-in challenged-header [:game-status :active-challenge-player-id])))
     (is (false? (:can-announce-challenge? challenged-header)))
     (is (game-schema/valid-game? (app-state/game challenged-db)))))
+(deftest header-view-keeps-turn-actions-visible-while-initial-placement-blocked
+  (let [db (app-state/initialize {:player-specs test-player-specs
+                                  :game-options {:shuffle-fn identity}})
+        header-view (app-state/header-view db)]
+    (is (= :rose (get-in header-view [:current-player :id])))
+    (is (true? (:show-turn-actions? header-view)))
+    (is (false? (:can-end-turn? header-view)))
+    (is (false? (:can-announce-challenge? header-view)))))
 (deftest header-view-challenge-availability-follows-facade
   (let [db (app-state/initialize {:player-specs test-player-specs
                                   :game-options {:shuffle-fn identity}
@@ -81,6 +90,7 @@
     (is (empty? (get-in card-view [:zones :hand])))
     (is (nil? (:cell territory-view)))
     (is (nil? (:current-player move-view)))
+    (is (false? (:show-turn-actions? (app-state/header-view db))))
     (is (every? (comp false? :enabled?) (:source-options move-view)))))
 (deftest selecting-board-card-updates-selected-territory
   (let [db (app-state/initialize {:game-options {:shuffle-fn identity}

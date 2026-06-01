@@ -62,8 +62,8 @@
        ^{:key (:id player)}
        [score-pill player])]))
 
-(defn- turn-actions [can-end-turn? can-announce-challenge?]
-  (when can-end-turn?
+(defn- turn-actions [show-turn-actions? can-end-turn? can-announce-challenge?]
+  (when show-turn-actions?
     [:div.turn-actions
      [:button.turn-action
       {:type "button"
@@ -74,6 +74,8 @@
       "Challenge"]
      [:button.turn-action.is-primary
       {:type "button"
+       :disabled (not can-end-turn?)
+       :aria-disabled (not can-end-turn?)
        :data-short-label "End"
        :on-click #(rf/dispatch [events/end-turn])}
       "End turn"]]))
@@ -98,7 +100,7 @@
 
 (defn app-header []
   (let [{:keys [current-player card-icon-mode open-panels lobby? game-status
-                can-end-turn? can-announce-challenge?]}
+                show-turn-actions? can-end-turn? can-announce-challenge?]}
         @(rf/subscribe [events/header-view])]
     [:header.app-header
      [:div.brand
@@ -112,7 +114,7 @@
          [panel-toggle open-panels :cards]])
       (when-not lobby?
         [score-summary game-status])
-      [turn-actions can-end-turn? can-announce-challenge?]
+      [turn-actions show-turn-actions? can-end-turn? can-announce-challenge?]
       [hotkey-help-toggle]
       [icon-help-toggle]
       [card-icon-mode-toggle card-icon-mode]

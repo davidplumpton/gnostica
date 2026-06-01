@@ -400,13 +400,18 @@
 (defn header-view-model
   [{:keys [current-player card-icon-mode open-panels lobby?
            game-status can-end-turn? can-announce-challenge?]}]
-  {:current-player current-player
-   :card-icon-mode card-icon-mode
-   :open-panels (db/normalize-open-panels open-panels)
-   :lobby? (true? lobby?)
-   :game-status game-status
-   :can-end-turn? (boolean can-end-turn?)
-   :can-announce-challenge? (boolean can-announce-challenge?)})
+  (let [lobby-active? (true? lobby?)]
+    {:current-player current-player
+     :card-icon-mode card-icon-mode
+     :open-panels (db/normalize-open-panels open-panels)
+     :lobby? lobby-active?
+     :game-status game-status
+     :show-turn-actions? (boolean (and current-player
+                                       game-status
+                                       (not lobby-active?)
+                                       (not (:finished? game-status))))
+     :can-end-turn? (boolean can-end-turn?)
+     :can-announce-challenge? (boolean can-announce-challenge?)}))
 
 (defn header-view [app-db]
   (header-view-model
