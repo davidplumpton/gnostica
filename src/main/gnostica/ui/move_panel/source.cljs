@@ -70,6 +70,44 @@
 (defonce suppress-next-source-click?
   (atom false))
 
+(defn- classed-span [class-name]
+  (let [element (.createElement js/document "span")]
+    (set! (.-className element) class-name)
+    element))
+
+(defn- create-source-drag-ghost! [color]
+  (let [ghost (.createElement js/document "div")
+        body (classed-span "move-source-drag-ghost__body")
+        pips (classed-span "move-source-drag-ghost__pips")
+        pip (classed-span "move-source-drag-ghost__pip")]
+    (set! (.-className ghost) "move-source-drag-ghost")
+    (.setAttribute ghost "aria-hidden" "true")
+    (.setAttribute ghost "data-piece-shape" "small-pyramid")
+    (.setProperty (.-style ghost) "--piece-color" (or color "#ffffff"))
+    (.appendChild pips pip)
+    (.appendChild ghost body)
+    (.appendChild ghost pips)
+    (.appendChild (.-body js/document) ghost)
+    ghost))
+
+(defn- remove-source-drag-ghost! [ghost*]
+  (when-let [ghost @ghost*]
+    (when-let [parent (.-parentNode ghost)]
+      (.removeChild parent ghost))
+    (reset! ghost* nil)))
+
+(defn- update-source-drag-ghost! [ghost* input event color]
+  (let [ghost (or @ghost*
+                  (let [created (create-source-drag-ghost! color)]
+                    (reset! ghost* created)
+                    created))
+        orientation (or (gesture-input/drag-orientation input) :up)]
+    (.setAttribute ghost "data-visible" "true")
+    (.setAttribute ghost "data-orientation" (name orientation))
+    (.setProperty (.-style ghost) "--piece-color" (or color "#ffffff"))
+    (set! (.. ghost -style -left) (str (.-clientX event) "px"))
+    (set! (.. ghost -style -top) (str (.-clientY event) "px"))))
+
 (defn- left-button-pointer? [event]
   (zero? (.-button event)))
 
@@ -101,7 +139,7 @@
                    #js {:bubbles false
                         :cancelable false})))
 
-(defn- begin-source-pointer-drag! [event input]
+(defn- begin-source-pointer-drag! [event input player-color]
   (when (and input
              (left-button-pointer? event)
              (.querySelector js/document ".board-three__canvas"))
@@ -114,6 +152,7 @@
     (let [start {:x (.-clientX event)
                  :y (.-clientY event)}
           dragging? (atom false)
+          ghost* (atom nil)
           move-listener* (atom nil)
           up-listener* (atom nil)
           cancel-listener* (atom nil)
@@ -123,7 +162,8 @@
                      (when-let [listener @up-listener*]
                        (.removeEventListener js/window "pointerup" listener true))
                      (when-let [listener @cancel-listener*]
-                       (.removeEventListener js/window "pointercancel" listener true)))]
+                       (.removeEventListener js/window "pointercancel" listener true))
+                     (remove-source-drag-ghost! ghost*))]
       (reset! move-listener*
               (fn [move-event]
                 (when (or @dragging?
@@ -133,6 +173,10 @@
                   (reset! dragging? true)
                   (let [input (or (gesture-input/active-gesture-input)
                                   input)]
+                    (update-source-drag-ghost! ghost*
+                                               input
+                                               move-event
+                                               player-color)
                     (when-not (dispatch-pointer-gesture-event!
                                gesture-input/pointer-drag-move-event
                                input
@@ -187,7 +231,9 @@
                          (reset! suppress-next-source-click? false))
                        (rf/dispatch [events/select-move-source id])))
          :on-pointer-down #(when (and enabled? stash-input)
-                             (begin-source-pointer-drag! % stash-input))
+                             (begin-source-pointer-drag! %
+                                                         stash-input
+                                                         player-color))
          :on-drag-end #(gesture-input/clear-active-gesture-input!)
          :on-drag-start (fn [event]
                           (when (and enabled? stash-input)

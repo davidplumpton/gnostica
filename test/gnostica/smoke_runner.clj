@@ -1,5 +1,6 @@
 (ns gnostica.smoke-runner
-  (:require [gnostica.server :as app-server]
+  (:require [clojure.string :as str]
+            [gnostica.server :as app-server]
             [gnostica.smoke.browser :as browser]
             [gnostica.smoke.page-stats :as stats]
             [ring.adapter.jetty :as jetty]))
@@ -49,7 +50,11 @@
    "ghostVisible" (get stats "dragPiecePreviewVisible")
    "ghostPlayerId" (get stats "dragPiecePreviewPlayerId")
    "ghostPieceSize" (get stats "dragPiecePreviewSize")
-   "ghostOrientation" (get stats "dragPiecePreviewOrientation")})
+   "ghostOrientation" (get stats "dragPiecePreviewOrientation")
+   "sourceGhostVisible" (get stats "sourceDragGhostVisible")
+   "sourceGhostShape" (get stats "sourceDragGhostShape")
+   "sourceGhostOrientation" (get stats "sourceDragGhostOrientation")
+   "sourceGhostClipPath" (get stats "sourceDragGhostClipPath")})
 
 (defn- assert-first-piece-ghost! [description result]
   (when-not (true? (get result "ghostVisible"))
@@ -60,6 +65,18 @@
                     {:result result})))
   (when-not (= "east" (get result "ghostOrientation"))
     (throw (ex-info (str description " drag ghost did not reflect ArrowRight orientation.")
+                    {:result result})))
+  (when-not (true? (get result "sourceGhostVisible"))
+    (throw (ex-info (str description " did not show a cursor-following source ghost.")
+                    {:result result})))
+  (when-not (= "small-pyramid" (get result "sourceGhostShape"))
+    (throw (ex-info (str description " source ghost was not the small pyramid.")
+                    {:result result})))
+  (when-not (= "east" (get result "sourceGhostOrientation"))
+    (throw (ex-info (str description " source ghost did not track ArrowRight orientation.")
+                    {:result result})))
+  (when-not (str/includes? (or (get result "sourceGhostClipPath") "") "polygon")
+    (throw (ex-info (str description " source ghost was not visually shaped like a pyramid.")
                     {:result result}))))
 
 (defn- assert-css-single-drag-highlight! [description result]

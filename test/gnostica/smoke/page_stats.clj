@@ -544,6 +544,9 @@
      const firstPieceBody = firstPieceIcon ? firstPieceIcon.querySelector('.move-source-option__piece-body') : null;
      const firstPiecePip = firstPieceIcon ? firstPieceIcon.querySelector('.move-source-option__piece-pip') : null;
      const firstPieceBodyStyle = firstPieceBody ? getComputedStyle(firstPieceBody) : null;
+     const sourceDragGhost = document.querySelector('.move-source-drag-ghost');
+     const sourceDragGhostBody = sourceDragGhost ? sourceDragGhost.querySelector('.move-source-drag-ghost__body') : null;
+     const sourceDragGhostBodyStyle = sourceDragGhostBody ? getComputedStyle(sourceDragGhostBody) : null;
      return {
        fallback: Boolean(document.querySelector('.board-fallback')),
        canvas: Boolean(canvas),
@@ -559,6 +562,10 @@
        firstPieceSourceIconColor: firstPieceBodyStyle ? firstPieceBodyStyle.backgroundColor : null,
        firstPieceSourceIconPipVisible: Boolean(firstPiecePip),
        pointerDragEnabled: board ? board.dataset.pointerDragEnabled === 'true' : null,
+       sourceDragGhostVisible: Boolean(sourceDragGhost),
+       sourceDragGhostShape: sourceDragGhost ? sourceDragGhost.dataset.pieceShape : null,
+       sourceDragGhostOrientation: sourceDragGhost ? sourceDragGhost.dataset.orientation : null,
+       sourceDragGhostClipPath: sourceDragGhostBodyStyle ? sourceDragGhostBodyStyle.clipPath : null,
        dragActive: board ? board.dataset.dragActive === 'true' : null,
        cameraDistance: board ? Number(board.dataset.cameraDistance || -1) : -1,
        cameraTargetX: board ? Number(board.dataset.cameraTargetX || -999) : -999,
@@ -1223,6 +1230,7 @@
        (= 1 (long (or (get stats "pieceCount") -1)))
        (false? (get stats "pendingActive"))
        (false? (get stats "dragGhostVisible"))
+       (false? (get stats "sourceDragGhostVisible"))
        (true? (get stats "firstPieceSourceDisabled"))))
 
 (defn touch-input-ready? [stats]

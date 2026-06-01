@@ -2290,6 +2290,44 @@ img {
   transform: rotate(-45deg);
 }
 
+.move-source-drag-ghost {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 10000;
+  width: 2.75rem;
+  height: 2.75rem;
+  pointer-events: none;
+  transform: translate(-50%, -72%);
+  filter: drop-shadow(0 0.16rem 0.22rem rgba(0, 0, 0, 0.5));
+}
+
+.move-source-drag-ghost__body {
+  position: absolute;
+  inset: 0;
+  border: 1px solid rgba(255, 250, 240, 0.86);
+  background: var(--piece-color);
+  clip-path: polygon(50% 0, 100% 100%, 0 100%);
+}
+
+.move-source-drag-ghost__pips {
+  position: absolute;
+  right: 0.42rem;
+  bottom: 0.34rem;
+  left: 0.42rem;
+  display: flex;
+  justify-content: center;
+}
+
+.move-source-drag-ghost__pip {
+  width: 0.34rem;
+  height: 0.44rem;
+  border-radius: 50% 50% 50% 0;
+  background: rgba(255, 250, 240, 0.95);
+  box-shadow: 0 0 0 1px rgba(38, 49, 47, 0.52);
+  transform: rotate(-45deg);
+}
+
 .move-source-option__summary {
   color: var(--dim);
   font-size: 0.76rem;
