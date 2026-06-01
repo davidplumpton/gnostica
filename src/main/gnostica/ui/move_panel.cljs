@@ -2,6 +2,7 @@
   (:require [gnostica.app.events :as events]
             [gnostica.board-layout :as layout]
             [gnostica.gesture-input :as gesture-input]
+            [gnostica.legal-targets :as legal-targets]
             [gnostica.move-selection.registry :as move-registry]
             [gnostica.pieces :as pieces]
             [gnostica.ui.card :as card-ui]
@@ -244,23 +245,8 @@
        ", column "
        (inc col)))
 
-(defn- target-status-class [{:keys [active? status]}]
-  (when active?
-    (case status
-      :legal " is-legal-target"
-      :disabled " is-disabled-target"
-      "")))
-
-(defn- target-reason [descriptor]
-  (or (:reason descriptor)
-      (get-in descriptor [:error :message])))
-
-(defn- active-descriptors [descriptors]
-  (when (some :active? descriptors)
-    descriptors))
-
 (defn- territory-choice-descriptors [cells descriptors]
-  (if-let [descriptors (seq (active-descriptors descriptors))]
+  (if (legal-targets/any-active? descriptors)
     descriptors
     (mapv (fn [cell]
             {:cell cell
@@ -270,7 +256,7 @@
           cells)))
 
 (defn- wasteland-choice-descriptors [wastelands descriptors]
-  (if-let [descriptors (seq (active-descriptors descriptors))]
+  (if (legal-targets/any-active? descriptors)
     descriptors
     (mapv (fn [space]
             {:space space
@@ -300,9 +286,9 @@
        [:button.move-chip
         {:type "button"
          :class (str (when selected? "is-selected")
-                     (target-status-class descriptor))
+                     (legal-targets/status-class descriptor))
          :disabled (false? enabled?)
-         :title (target-reason descriptor)
+         :title (legal-targets/reason descriptor)
          :aria-pressed selected?
          :on-click #(rf/dispatch [events/select-board-card (:index cell)])}
         (board-cell-label cell)])]]))
@@ -328,9 +314,9 @@
          [:button.move-chip
           {:type "button"
            :class (str (when selected? "is-selected")
-                       (target-status-class descriptor))
+                       (legal-targets/status-class descriptor))
            :disabled (false? enabled?)
-           :title (target-reason descriptor)
+           :title (legal-targets/reason descriptor)
            :aria-pressed selected?
            :on-click #(rf/dispatch [events/select-move-world-copy (:index cell)])}
           (board-cell-label cell)])]
@@ -365,9 +351,9 @@
        [:button.move-chip
         {:type "button"
          :class (str (when selected? "is-selected")
-                     (target-status-class descriptor))
+                     (legal-targets/status-class descriptor))
          :disabled (false? enabled?)
-         :title (target-reason descriptor)
+         :title (legal-targets/reason descriptor)
          :aria-pressed selected?
          :on-click #(rf/dispatch [events/select-board-card (:index cell)])}
         (str "Territory: " (board-cell-label cell))])
@@ -379,9 +365,9 @@
        [:button.move-chip
         {:type "button"
          :class (str (when selected? "is-selected")
-                     (target-status-class descriptor))
+                     (legal-targets/status-class descriptor))
          :disabled (false? enabled?)
-         :title (target-reason descriptor)
+         :title (legal-targets/reason descriptor)
          :aria-pressed selected?
          :on-click #(rf/dispatch [events/select-move-wasteland-target (:row space) (:col space)])}
         (ui/wasteland-label space)])]]))

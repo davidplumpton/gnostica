@@ -1,29 +1,10 @@
 (ns gnostica.ui.card-zones
   (:require [gnostica.app.events :as events]
             [gnostica.gesture-input :as gesture-input]
+            [gnostica.legal-targets :as legal-targets]
             [gnostica.ui.card :as card-ui]
             [gnostica.ui.common :as ui]
             [re-frame.core :as rf]))
-
-(defn- target-status-class [{:keys [active? status]}]
-  (when active?
-    (case status
-      :legal " is-legal-target"
-      :disabled " is-disabled-target"
-      "")))
-
-(defn- target-reason [descriptor]
-  (or (:reason descriptor)
-      (get-in descriptor [:error :message])))
-
-(defn- descriptors-by-card-id [descriptors]
-  (into {}
-        (map (fn [descriptor]
-               [(:card-id descriptor) descriptor]))
-        (filter :active? descriptors)))
-
-(defn- descriptor-for-card [descriptors card]
-  (get (descriptors-by-card-id descriptors) (:id card)))
 
 (defn- card-action-event [card descriptor]
   (case (:role descriptor)
@@ -58,11 +39,11 @@
     ^{:key (:id card)}
     [:article.hand-card
      {:class (str (when (card-ui/card-icon-summary card) "has-gnostica-icons")
-                  (target-status-class descriptor))
+                  (legal-targets/status-class descriptor))
       :role "button"
       :tabIndex 0
-      :title (target-reason descriptor)
-      :aria-pressed (true? (:selected? descriptor))
+      :title (legal-targets/reason descriptor)
+      :aria-pressed (legal-targets/selected? descriptor)
       :draggable (if drag-input "true" "false")
       :on-click #(rf/dispatch (card-action-event card descriptor))
       :on-key-down #(dispatch-on-activation-key %
@@ -79,9 +60,9 @@
 
 (defn- draw-deck-zone [draw-count descriptor]
   [:button.card-pile-zone
-   {:class (target-status-class descriptor)
+   {:class (legal-targets/status-class descriptor)
     :type "button"
-    :title (target-reason descriptor)
+    :title (legal-targets/reason descriptor)
     :aria-label (str "Draw deck, " (ui/card-count-label draw-count) " remaining")
     :on-click #(rf/dispatch [events/start-gesture-intent
                              (gesture-input/draw-pile-source-input)])}
@@ -97,9 +78,9 @@
   (let [drag-input (when (and top-card drag-enabled?)
                      (discard-card-drag-input top-card descriptor))]
     [:button.card-pile-zone
-     {:class (target-status-class descriptor)
+     {:class (legal-targets/status-class descriptor)
       :type "button"
-      :title (target-reason descriptor)
+      :title (legal-targets/reason descriptor)
       :aria-label (str "Discard pile, " (ui/card-count-label discard-count))
       :disabled (nil? (and top-card
                            (discard-card-action-event top-card descriptor)))
@@ -157,7 +138,7 @@
      [:div.hand-card-grid
       (for [card hand]
         ^{:key (:id card)}
-        [hand-card card card-icon-mode (descriptor-for-card hand-targets card)
+        [hand-card card card-icon-mode (legal-targets/descriptor-for-card hand-targets card)
          drag-enabled?])]
      [:div.card-pile-grid
       [draw-deck-zone draw-count (:draw-pile legal-targets)]
@@ -165,5 +146,5 @@
        discard-count
        discard-top-card
        card-icon-mode
-       (descriptor-for-card discard-targets discard-top-card)
+       (legal-targets/descriptor-for-card discard-targets discard-top-card)
        drag-enabled?]]]))

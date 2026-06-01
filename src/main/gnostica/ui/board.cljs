@@ -2,6 +2,7 @@
   (:require [gnostica.app.events :as events]
             [gnostica.board-layout :as layout]
             [gnostica.gesture-input :as gesture-input]
+            [gnostica.legal-targets :as legal-targets]
             [gnostica.pieces :as pieces]
             [gnostica.three-board :as three-board]
             [gnostica.ui.card :as card-ui]
@@ -25,24 +26,14 @@
   {"width" (board-stage-length min-col max-col)
    "height" (board-stage-length min-row max-row)})
 
-(defn- target-status-class
-  ([descriptor]
-   (target-status-class nil nil descriptor))
-  ([drag-hover target {:keys [active? status] :as _descriptor}]
-   (when (and active?
-              (gesture-input/show-target-highlight? drag-hover target))
-     (case status
-       :legal " is-legal-target"
-       :disabled " is-disabled-target"
-       ""))))
+(defn- target-highlight-class [drag-hover target descriptor]
+  (legal-targets/status-class
+   (gesture-input/show-target-highlight? drag-hover target)
+   descriptor))
 
-(defn- drop-target-class [{:keys [active?]}]
-  (when active?
+(defn- drop-target-class [descriptor]
+  (when (legal-targets/active? descriptor)
     " is-drop-target"))
-
-(defn- target-reason [descriptor]
-  (or (:reason descriptor)
-      (get-in descriptor [:error :message])))
 
 (defn- gesture-input-from-event [event]
   (gesture-input/gesture-input-from-data-transfer (.-dataTransfer event)))
@@ -62,8 +53,8 @@
   (when target
     (cond-> {:target target
              :target-key (gesture-input/target-key target)
-             :target-status (:status descriptor)
-             :target-enabled? (:enabled? descriptor)}
+             :target-status (legal-targets/status descriptor)
+             :target-enabled? (legal-targets/enabled? descriptor)}
       (:source input)
       (assoc :source (:source input)))))
 
@@ -86,7 +77,7 @@
        (= (:target-key drag-hover) (gesture-input/target-key target))))
 
 (defn- current-drag-hover-status [drag-hover descriptor]
-  (or (:status descriptor)
+  (or (legal-targets/status descriptor)
       (:target-status drag-hover)))
 
 (defn- drag-hover-status-class [drag-hover target descriptor]
@@ -95,14 +86,6 @@
       :legal " is-drag-hover-target is-drag-hover-legal"
       :disabled " is-drag-hover-target is-drag-hover-disabled"
       " is-drag-hover-target")))
-
-(defn- descriptor-for-target
-  [territory-targets wasteland-targets piece-targets {:keys [kind board-index row col piece-id]}]
-  (case kind
-    :territory (get territory-targets board-index)
-    :wasteland (get wasteland-targets [row col])
-    :piece (get piece-targets piece-id)
-    nil))
 
 (defn- on-drag-over-gesture [event]
   (when (gesture-drag-event? event)
@@ -142,22 +125,6 @@
     (reset! drag-hover nil)
     (gesture-input/clear-active-gesture-input!)
     (rf/dispatch [events/start-gesture-intent (assoc input :target target)])))
-
-(defn- territory-targets-by-index [legal-targets]
-  (into {}
-        (map (juxt :board-index identity))
-        (:territories legal-targets)))
-
-(defn- wasteland-targets-by-coordinate [legal-targets]
-  (into {}
-        (map (fn [{:keys [row col] :as descriptor}]
-               [[row col] descriptor]))
-        (:wastelands legal-targets)))
-
-(defn- piece-targets-by-id [legal-targets]
-  (into {}
-        (map (juxt :piece-id identity))
-        (:pieces legal-targets)))
 
 (defn- board-space-style [{:keys [min-row min-col]} {:keys [row col orientation]}]
   (let [relative-row (- row min-row)
@@ -317,15 +284,15 @@
                   " is-" (name (:size piece))
                   " is-" (name (:orientation piece))
                   (when draggable? " is-draggable")
-                  (target-status-class @drag-hover
-                                       {:kind :piece
-                                        :piece-id (:id piece)}
-                                       descriptor)
-                  (when (:selected? descriptor) " is-selected-target"))
+                  (target-highlight-class @drag-hover
+                                          {:kind :piece
+                                           :piece-id (:id piece)}
+                                          descriptor)
+                  (when (legal-targets/selected? descriptor) " is-selected-target"))
       :style (board-piece-style player slot piece-count space-orientation)
-      :title (target-reason descriptor)
+      :title (legal-targets/reason descriptor)
       :data-piece-id (name (:id piece))
-      :data-move-target-status (some-> (:status descriptor) name)
+      :data-move-target-status (legal-targets/status-name descriptor)
       :data-move-target-role (some-> (:role descriptor) name)
       :draggable (if draggable? "true" "false")
       :on-click (fn [event]
@@ -385,19 +352,19 @@
      {:class (str "is-" (name orientation)
                   (when (seq board-pieces) " has-pieces")
                   (drop-target-class descriptor)
-                  (target-status-class @drag-hover target descriptor)
+                  (target-highlight-class @drag-hover target descriptor)
                   (drag-hover-status-class @drag-hover target descriptor)
-                  (when (:selected? descriptor) " is-selected-target"))
+                  (when (legal-targets/selected? descriptor) " is-selected-target"))
       :style (board-space-style bounds space)
       :data-piece-count (count board-pieces)
-      :data-move-target-status (some-> (:status descriptor) name)
+      :data-move-target-status (legal-targets/status-name descriptor)
       :data-move-target-role (some-> (:role descriptor) name)
       :data-drag-hover (when hovered? "true")
       :data-drag-hover-status (when hovered?
                                 (some-> (current-drag-hover-status @drag-hover
                                                                    descriptor)
                                         name))
-      :title (target-reason descriptor)
+      :title (legal-targets/reason descriptor)
       :role (when (seq board-pieces) "img")
       :aria-label (when (seq board-pieces)
                     (str (ui/wasteland-label space)
@@ -428,11 +395,11 @@
                   " is-col-" col
                   (when selected? " is-selected")
                   (drop-target-class descriptor)
-                  (target-status-class @drag-hover target descriptor)
+                  (target-highlight-class @drag-hover target descriptor)
                   (drag-hover-status-class @drag-hover target descriptor)
-                  (when (:selected? descriptor) " is-selected-target"))
+                  (when (legal-targets/selected? descriptor) " is-selected-target"))
       :style (board-space-style bounds cell)
-      :data-move-target-status (some-> (:status descriptor) name)
+      :data-move-target-status (legal-targets/status-name descriptor)
       :data-move-target-role (some-> (:role descriptor) name)
       :data-drag-hover (when hovered? "true")
       :data-drag-hover-status (when hovered?
@@ -440,7 +407,7 @@
                                                                    descriptor)
                                         name))
       :draggable (if drag-input "true" "false")
-      :title (target-reason descriptor)
+      :title (legal-targets/reason descriptor)
       :aria-label (str title
                        ", "
                        (ui/orientation-label orientation)
@@ -509,15 +476,15 @@
        [:div.board-fallback
         [:p.board-3d-status.is-error
          three-renderer-message]
-        (let [territory-targets (territory-targets-by-index legal-targets)
-              wasteland-targets (wasteland-targets-by-coordinate legal-targets)
-              piece-targets (piece-targets-by-id legal-targets)
+        (let [target-indexes (legal-targets/target-indexes legal-targets)
+              territory-targets (:territories target-indexes)
+              wasteland-targets (:wastelands target-indexes)
+              piece-targets (:pieces target-indexes)
               drag-enabled? (true? (:pointer-drag-enabled? direct-manipulation))
               drag-hover* @drag-hover
-              drag-hover-descriptor (descriptor-for-target territory-targets
-                                                           wasteland-targets
-                                                           piece-targets
-                                                           (:target drag-hover*))
+              drag-hover-descriptor (legal-targets/descriptor-for-indexed-target
+                                     target-indexes
+                                     (:target drag-hover*))
               drag-hover-status (current-drag-hover-status drag-hover*
                                                            drag-hover-descriptor)]
           [:div.board-stage

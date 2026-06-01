@@ -2,6 +2,7 @@
   (:require [gnostica.board-layout :as layout]
             [gnostica.icon-view :as icon-view]
             [gnostica.icons :as icons]
+            [gnostica.legal-targets :as legal-targets]
             [gnostica.three-board.controls :as controls]
             [gnostica.three-board.lifecycle :as lifecycle]
             [gnostica.three-board.pointer :as pointer]
@@ -23,10 +24,7 @@
     "board object"))
 
 (defn- drag-preview-class [{:keys [target-status]}]
-  (case target-status
-    :legal " is-legal-target"
-    :disabled " is-disabled-target"
-    ""))
+  (legal-targets/status->class target-status))
 
 (defn- drag-preview-summary [{:keys [source target target-status target-reason]}]
   (let [source-label (object-label source)]

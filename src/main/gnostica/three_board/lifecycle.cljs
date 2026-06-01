@@ -1,5 +1,6 @@
 (ns gnostica.three-board.lifecycle
   (:require [gnostica.gesture-input :as gesture-input]
+            [gnostica.legal-targets :as legal-targets]
             [gnostica.three-board.controls :as controls]
             [gnostica.three-board.pointer :as pointer]
             [gnostica.three-board.resources :as resources]
@@ -19,22 +20,6 @@
                _texture-errors legal-targets] (r/argv this)]
           (set-selection! this selected-index legal-targets))))))
 
-(defn- territory-targets-by-index [legal-targets]
-  (into {}
-        (map (juxt :board-index identity))
-        (:territories legal-targets)))
-
-(defn- wasteland-targets-by-coordinate [legal-targets]
-  (into {}
-        (map (fn [{:keys [row col] :as descriptor}]
-               [[row col] descriptor]))
-        (:wastelands legal-targets)))
-
-(defn- piece-targets-by-id [legal-targets]
-  (into {}
-        (map (juxt :piece-id identity))
-        (:pieces legal-targets)))
-
 (defn- board-space-drag-preview? [{:keys [source]}]
   (gesture-input/board-space-drag-source? source))
 
@@ -45,28 +30,6 @@
       :territory (:board-index target)
       :wasteland [(:row target) (:col target)]
       nil)))
-
-(defn- drag-target-descriptor
-  [territory-targets wasteland-targets piece-targets {:keys [target]}]
-  (case (:kind target)
-    :territory (get territory-targets (:board-index target))
-    :wasteland (get wasteland-targets [(:row target) (:col target)])
-    :piece (get piece-targets (:piece-id target))
-    nil))
-
-(defn- drag-preview-with-target-status [drag-preview descriptor]
-  (if (:target drag-preview)
-    (if descriptor
-      (assoc drag-preview
-             :target-status (:status descriptor)
-             :target-enabled? (:enabled? descriptor)
-             :target-reason (or (:reason descriptor)
-                                (get-in descriptor [:error :message])))
-      (dissoc drag-preview
-              :target-status
-              :target-enabled?
-              :target-reason))
-    drag-preview))
 
 (defn- placement-target-key [kind {:keys [placement]}]
   (let [target-space (:target-space placement)]
@@ -95,7 +58,7 @@
    (cond
      (and (some? drag-key)
           (= key drag-key))
-     (assoc (highlighted-target-style (:status descriptor))
+     (assoc (highlighted-target-style (legal-targets/status descriptor))
             :drag-target? true)
 
      (and (some? preview-key)
@@ -113,14 +76,14 @@
       :color 0x9ff7e7
       :opacity 0.82}
 
-     (and (:active? descriptor)
-          (:enabled? descriptor))
+     (and (legal-targets/active? descriptor)
+          (legal-targets/enabled? descriptor))
      {:visible? true
       :color 0xffe08a
       :opacity 0.68}
 
-     (and (:active? descriptor)
-          (not (:enabled? descriptor)))
+     (and (legal-targets/active? descriptor)
+          (not (legal-targets/enabled? descriptor)))
      {:visible? true
       :color 0xff8a7a
       :opacity 0.28}
@@ -177,15 +140,16 @@
          (reset! legal-targets-ref legal-targets))
        (let [[_ _cells _board-pieces _selected-index _card-icon-mode
               _texture-errors _legal-targets move-preview] (r/argv this)
-             territory-targets (territory-targets-by-index legal-targets)
-             wasteland-targets (wasteland-targets-by-coordinate legal-targets)
-             piece-targets (piece-targets-by-id legal-targets)
-             drag-preview* (drag-preview-with-target-status
-                            drag-preview
-                            (drag-target-descriptor territory-targets
-                                                    wasteland-targets
-                                                    piece-targets
-                                                    drag-preview))
+             target-indexes (legal-targets/target-indexes legal-targets)
+             territory-targets (:territories target-indexes)
+             wasteland-targets (:wastelands target-indexes)
+             piece-targets (:pieces target-indexes)
+             drag-preview* (legal-targets/with-target-status
+                             drag-preview
+                             (when (:target drag-preview)
+                               (legal-targets/descriptor-for-indexed-target
+                                target-indexes
+                                (:target drag-preview))))
              board-space-drag-active? (board-space-drag-preview? drag-preview)
              drag-territory-key (drag-target-key :territory drag-preview*)
              drag-wasteland-key (drag-target-key :wasteland drag-preview*)

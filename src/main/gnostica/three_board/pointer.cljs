@@ -1,5 +1,6 @@
 (ns gnostica.three-board.pointer
   (:require [gnostica.gesture-input :as gesture-input]
+            [gnostica.legal-targets :as legal-targets]
             [gnostica.three-board.resources :as resources]))
 
 (def click-threshold 8)
@@ -59,29 +60,8 @@
   (some-> (picked-mesh-at! raycaster pointer camera object-meshes canvas event)
           gesture-object))
 
-(defn- descriptors-by [key descriptors]
-  (into {}
-        (map (juxt key identity))
-        descriptors))
-
 (defn- descriptor-for-object [legal-targets object]
-  (case (:kind object)
-    :territory
-    (get (descriptors-by :board-index (:territories legal-targets))
-         (:board-index object))
-
-    :piece
-    (get (descriptors-by :piece-id (:pieces legal-targets))
-         (:piece-id object))
-
-    :wasteland
-    (get (into {}
-               (map (fn [{:keys [row col] :as descriptor}]
-                      [[row col] descriptor]))
-               (:wastelands legal-targets))
-         [(:row object) (:col object)])
-
-    nil))
+  (legal-targets/descriptor-for-target legal-targets object))
 
 (defn- source-input-for-object [legal-targets object]
   (case (:kind object)
@@ -117,14 +97,11 @@
 (defn- preview-for [legal-targets source-object target-object]
   (let [descriptor (when target-object
                      (descriptor-for-object legal-targets target-object))]
-    (cond-> {:active? true
-             :source source-object
-             :target target-object}
-      descriptor
-      (assoc :target-status (:status descriptor)
-             :target-enabled? (:enabled? descriptor)
-             :target-reason (or (:reason descriptor)
-                                (get-in descriptor [:error :message]))))))
+    (legal-targets/with-target-status
+      {:active? true
+       :source source-object
+       :target target-object}
+      descriptor)))
 
 (defn- event-position [canvas event]
   (let [rect (.getBoundingClientRect canvas)]
