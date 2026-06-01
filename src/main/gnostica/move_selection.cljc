@@ -6,7 +6,10 @@
             [gnostica.move-selection.commands :as commands]
             [gnostica.move-selection.confirmation :as confirmation]
             [gnostica.move-selection.controls :as controls]
+            [gnostica.move-selection.options :as options]
+            [gnostica.move-selection.preview :as preview]
             [gnostica.move-selection.registry :as registry]
+            [gnostica.move-selection.ribbon :as ribbon]
             [gnostica.move-selection.targets :as targets]
             [gnostica.pieces :as pieces]))
 
@@ -18,148 +21,32 @@
 (def composite-major-powers registry/composite-major-powers)
 (def sword-major-powers registry/sword-major-powers)
 
-(def rod-mode-order
-  [:move-minion
-   :push-piece
-   :push-territory])
-
-(def rod-modes
-  (set rod-mode-order))
-
-(def rod-mode-definitions
-  {:move-minion {:id :move-minion
-                 :label "Move minion"}
-   :push-piece {:id :push-piece
-                :label "Push piece"}
-   :push-territory {:id :push-territory
-                    :label "Push territory"}})
-
-(def disc-target-kind-order
-  [:piece
-   :territory])
-
-(def disc-target-kinds
-  (set disc-target-kind-order))
-
-(def disc-target-kind-definitions
-  {:piece {:id :piece
-           :label "Grow piece"}
-   :territory {:id :territory
-               :label "Grow territory"}})
-
-(def sun-disc-mode-order
-  [:skip
-   :created-piece
-   :created-territory
-   :piece
-   :territory])
-
-(def sun-disc-modes
-  (set sun-disc-mode-order))
-
-(def sun-disc-mode-definitions
-  {:skip {:id :skip
-          :label "Cup only"}
-   :created-piece {:id :created-piece
-                   :label "Grow created piece"}
-   :created-territory {:id :created-territory
-                       :label "Grow created territory"}
-   :piece {:id :piece
-           :label "Grow existing piece"}
-   :territory {:id :territory
-               :label "Grow existing territory"}})
-
-(def sword-target-kind-order
-  [:piece
-   :territory])
-
-(def sword-target-kinds
-  (set sword-target-kind-order))
-
-(def sword-target-kind-definitions
-  {:piece {:id :piece
-           :label "Attack piece"}
-   :territory {:id :territory
-               :label "Attack territory"}})
-
-(def fool-reveal-count-order
-  [0 1 2])
-
-(def high-priestess-redraw-count-order
-  [0 1 2])
-
-(def strength-disc-action-count-order
-  [1 2])
-
-(def death-sword-action-count-order
-  [1 2])
-
-(def hand-trade-major-action-count-order
-  [1 2])
-
+(def rod-mode-order options/rod-mode-order)
+(def rod-modes options/rod-modes)
+(def rod-mode-definitions options/rod-mode-definitions)
+(def disc-target-kind-order options/disc-target-kind-order)
+(def disc-target-kinds options/disc-target-kinds)
+(def disc-target-kind-definitions options/disc-target-kind-definitions)
+(def sun-disc-mode-order options/sun-disc-mode-order)
+(def sun-disc-modes options/sun-disc-modes)
+(def sun-disc-mode-definitions options/sun-disc-mode-definitions)
+(def sword-target-kind-order options/sword-target-kind-order)
+(def sword-target-kinds options/sword-target-kinds)
+(def sword-target-kind-definitions options/sword-target-kind-definitions)
+(def fool-reveal-count-order options/fool-reveal-count-order)
+(def high-priestess-redraw-count-order options/high-priestess-redraw-count-order)
+(def strength-disc-action-count-order options/strength-disc-action-count-order)
+(def death-sword-action-count-order options/death-sword-action-count-order)
+(def hand-trade-major-action-count-order options/hand-trade-major-action-count-order)
 (def hand-trade-major-action-count-definitions
-  {1 {:id 1
-      :label "Trade only"}
-   2 {:id 2
-      :label "Use both"}})
-
-(def devil-action-count-order
-  [1 2 3])
-
-(def territory-card-source-order
-  [:hand :draw-pile-top])
-
-(def territory-card-source-definitions
-  {:hand {:id :hand
-          :label "Hand one-point card"}
-   :draw-pile-top {:id :draw-pile-top
-                   :label "Top draw-pile card"}})
-
-(def disc-replacement-card-source-order
-  [:hand :discard-pile])
-
+  options/hand-trade-major-action-count-definitions)
+(def devil-action-count-order options/devil-action-count-order)
+(def territory-card-source-order options/territory-card-source-order)
+(def territory-card-source-definitions options/territory-card-source-definitions)
+(def disc-replacement-card-source-order options/disc-replacement-card-source-order)
 (def disc-replacement-card-source-definitions
-  {:hand {:id :hand
-          :label "Hand card"}
-   :discard-pile {:id :discard-pile
-                  :label "Discard pile card"}})
-
-(def requirement-prompts
-  {:source-board-index "Choose a source territory with one of your pieces."
-   :hand-card-id "Choose a card from the current player's hand."
-   :power "Choose the card power."
-   :piece-id "Choose a minion."
-   :rod-mode "Choose a Rod move."
-   :disc-action-count "Choose how many Disc actions to apply."
-   :sword-action-count "Choose how many Sword actions to apply."
-   :devil-action-count "Choose how many Devil orientations to apply."
-   :minion-orientation "Choose the minion orientation."
-   :sun-disc-mode "Choose whether Sun applies Disc."
-   :disc-target-kind "Choose piece or territory growth."
-   :sword-target-kind "Choose piece or territory attack."
-   :fool-reveal-count "Choose how many cards Fool reveals."
-   :fool-reveal-card "Reveal the next Fool card."
-   :fool-reveal-choice "Choose whether to skip or play the revealed card."
-   :fool-play-power "Choose the revealed card power."
-   :high-priestess-redraw-count "Choose how many redraw passes High Priestess applies."
-   :high-priestess-redraws "Choose cards and draw counts for each redraw pass."
-   :judgement-card-selection "Choose discard-pile cards for Judgement."
-   :copied-board-index "Choose a major territory for World to copy."
-   :copied-power "Choose the copied power."
-   :target-piece-id "Choose a target piece."
-   :target-board-index "Choose a target territory."
-   :target-space "Choose a target territory, enemy piece, or wasteland."
-   :hermit-target-space "Choose a targeted piece or territory."
-   :hermit-destination-space "Choose a destination territory or wasteland."
-   :initial-target-space "Choose an empty territory or wasteland."
-   :territory-card-source "Choose where the new territory card comes from."
-   :one-point-card-id "Choose a one-point card from the current player's hand."
-   :replacement-card-source "Choose where the replacement card comes from."
-   :replacement-card-id "Choose a replacement card."
-   :orientation "Choose an orientation."
-   :distance "Choose a distance."
-   :damage "Choose damage."
-   :draw-count "Choose cards to discard, then how many cards to draw."})
+  options/disc-replacement-card-source-definitions)
+(def requirement-prompts options/requirement-prompts)
 
 (defn empty-move-selection []
   {:stage :source
@@ -2924,492 +2811,47 @@
                  stage
                  "Complete the move selection."))))
 
-(def ^:private action-ribbon-powers
-  #{:empress :emperor :lovers :chariot :hanged-man :temperance
-    :justice :death :tower :moon
-    :sun :fool :high-priestess :judgement :devil :world})
 
-(def ^:private action-step-labels
-  {:orient-minion "Orient minion"
-   :orient-target "Orient target"
-   :cup "Cup"
-   :rod "Rod"
-   :trade-hand "Trade hands"
-   :sword "Sword"
-   :sun-cup "Cup"
-   :sun-disc "Disc"
-   :fool-reveal "Reveal"
-   :high-priestess-redraw "Redraw"
-   :judgement-draw "Draw discards"
-   :world-copy "World copy"
-   :world-power "Copied power"})
-
-(defn- power-label [power]
-  (registry/power-label power))
-
-(defn- player-label [player-id]
-  (get-in pieces/players-by-id [player-id :name] (name player-id)))
-
-(defn- piece-label [db piece-id]
-  (if-let [piece (piece-by-id db piece-id)]
-    (str (player-label (:player-id piece))
-         " "
-         (pieces/size-label (:size piece)))
-    (str piece-id)))
-
-(defn- territory-label [db board-index]
-  (if-let [cell (board-cell-by-index db board-index)]
-    (str (:title (:card cell)) " [" board-index "]")
-    (str "Territory [" board-index "]")))
-
-(defn- wasteland-label [{:keys [row col]}]
-  (str "Wasteland row " (inc row) ", column " (inc col)))
-
-(defn- target-label [db target]
-  (case (:kind target)
-    :territory (territory-label db (:board-index target))
-    :piece (piece-label db (:piece-id target))
-    :wasteland (wasteland-label target)
-    "Target"))
-
-(defn- action-detail [db action]
-  (case (:power action)
-    :orient-minion
-    (str (piece-label db (:piece-id action))
-         " to "
-         (pieces/orientation-label (:orientation action)))
-
-    :orient-target
-    (str (target-label db (:target action))
-         " to "
-         (pieces/orientation-label (:orientation action)))
-
-    :cup
-    (cond-> (target-label db (:target action))
-      (:orientation action)
-      (str " facing " (pieces/orientation-label (:orientation action))))
-
-    :rod
-    (let [mode-label (get-in rod-mode-definitions [(:mode action) :label] "Rod")
-          distance (:distance action)
-          target (:target action)]
-      (str mode-label
-           (when distance
-             (str " " distance))
-           (when target
-             (str " to " (target-label db target)))
-           (when (:orientation action)
-             (str ", " (pieces/orientation-label (:orientation action))))))
-
-    :trade-hand
-    (str "With " (target-label db (:target action)))
-
-    :sword
-    (str (target-label db (:target action))
-         (when-let [damage (:damage action)]
-           (str ", " damage " damage"))
-         (when (:orientation action)
-           (str ", " (pieces/orientation-label (:orientation action)))))
-
-    "Ready"))
-
-(defn- indexed-action-plan [items]
-  (first
-   (reduce (fn [[result index] item]
-             (if (:skipped? item)
-               [(conj result item) index]
-               [(conj result (assoc item :action-index index)) (inc index)]))
-           [[] 0]
-           items)))
-
-(defn- composite-action-plan [db source-id params]
-  (indexed-action-plan
-   (case (active-power db source-id params)
-     :empress [{:power :orient-minion}
-               {:power :cup}]
-     :emperor [{:power :orient-minion}
-               {:power :rod}]
-     :lovers [{:power :rod}
-              {:power :cup}]
-     :chariot [{:power :rod}
-               {:power :rod}]
-     :hanged-man (if (= 1 (selected-hand-trade-major-action-count
-                           db
-                           source-id
-                           params))
-                   [{:power :rod
-                     :skipped? true
-                     :detail "Trade only"}
-                    {:power :trade-hand}]
-                   [{:power :rod}
-                    {:power :trade-hand}])
-     :temperance [{:power :cup}
-                  {:power :cup}]
-     [])))
-
-(defn- sword-major-action-plan [db source-id params]
-  (indexed-action-plan
-   (case (active-power db source-id params)
-     :justice (if (= 1 (selected-hand-trade-major-action-count
-                        db
-                        source-id
-                        params))
-                [{:power :trade-hand}
-                 {:power :sword
-                  :skipped? true
-                  :detail "Trade only"}]
-                [{:power :trade-hand}
-                 {:power :sword}])
-     :death (vec (repeat (selected-death-sword-action-count params)
-                         {:power :sword}))
-     :tower [{:power :orient-minion}
-             {:power :sword}]
-     :moon [{:power :rod}
-            {:power :sword}]
-     [])))
-
-(defn- devil-action-plan [params]
-  (indexed-action-plan
-   (vec (repeat (or (:devil-action-count params)
-                   (selected-devil-action-count params))
-                {:power :orient-target}))))
-
-(defn- current-major-action [db source-id params]
-  (cond
-    (composite-major-move? db source-id params)
-    (composite-current-action db source-id params)
-
-    (sword-major-move? db source-id params)
-    (sword-major-current-action db source-id params)
-
-    (devil-move? db source-id params)
-    (devil-current-action db source-id params)))
-
-(defn- current-major-action-complete? [db source-id params]
-  (cond
-    (composite-major-move? db source-id params)
-    (composite-current-action-complete? db source-id params)
-
-    (sword-major-move? db source-id params)
-    (sword-major-current-action-complete? db source-id params)
-
-    (devil-move? db source-id params)
-    (devil-current-action-complete? db source-id params)
-
-    :else
-    false))
-
-(defn- action-step-key [action]
-  [(:power action)
-   (:mode action)
-   (:target action)
-   (:piece-id action)])
-
-(defn- compact-compound-steps [steps]
-  (loop [remaining steps
-         result []]
-    (if-let [step (first remaining)]
-      (let [same-run (take-while #(and (#{:done :ready} (:status %))
-                                       (= (action-step-key (:action step))
-                                          (action-step-key (:action %))))
-                                 remaining)
-            run-count (count same-run)]
-        (if (< 1 run-count)
-          (recur (drop run-count remaining)
-                 (conj result
-                       (-> step
-                           (assoc :id (str (:id step) "-compound")
-                                  :label (str (:label step) " x" run-count)
-                                  :compound? true
-                                  :detail "Same target shortcut"))))
-          (recur (rest remaining)
-                 (conj result step))))
-      (vec result))))
-
-(defn- sequence-action-steps [db source-id params plan]
-  (let [completed-actions (completed-major-actions params)
-        completed-count (count completed-actions)
-        current-complete? (current-major-action-complete? db source-id params)
-        current-action (when current-complete?
-                         (current-major-action db source-id params))]
-    (compact-compound-steps
-     (mapv (fn [{:keys [power skipped? action-index detail] :as item} position]
-             (let [label (or (:label item)
-                             (get action-step-labels power (power-label power)))
-                   action (when (int? action-index)
-                            (cond
-                              (< action-index completed-count)
-                              (nth completed-actions action-index)
-
-                              (and (= action-index completed-count)
-                                   current-complete?)
-                              current-action))]
-               (cond
-                 skipped?
-                 (assoc item
-                        :id (str "skipped-" position "-" (name power))
-                        :label label
-                        :status :skipped
-                        :detail detail)
-
-                 (< action-index completed-count)
-                 (assoc item
-                        :id (str "done-" action-index "-" (name power))
-                        :label label
-                        :status :done
-                        :action action
-                        :detail (action-detail db action))
-
-                 (= action-index completed-count)
-                 (assoc item
-                        :id (str "active-" action-index "-" (name power))
-                        :label label
-                        :status (if current-complete? :ready :active)
-                        :action action
-                        :detail (if current-complete?
-                                  (action-detail db action)
-                                  (move-prompt db)))
-
-                 :else
-                 (assoc item
-                        :id (str "pending-" action-index "-" (name power))
-                        :label label
-                        :status :pending
-                        :detail "Pending"))))
-           plan
-           (range)))))
-
-(defn- sun-cup-ribbon-complete? [db source-id params]
-  (and (sun-cup-target-ready? db source-id params)
-       (or (not (sun-cup-needs-one-point-card? db source-id params))
-           (requirement-complete? db source-id params :one-point-card-id))))
-
-(defn- sun-disc-ribbon-complete? [db source-id params]
-  (case (selected-sun-disc-mode db source-id params)
-    :skip true
-    :created-piece true
-    :created-territory (requirement-complete? db source-id params
-                                              :sun-disc-replacement-card-id)
-    :piece (requirement-complete? db source-id params
-                                  :sun-disc-target-piece-id)
-    :territory (and (requirement-complete? db source-id params
-                                           :sun-disc-target-board-index)
-                    (requirement-complete? db source-id params
-                                           :sun-disc-replacement-card-id))
-    false))
-
-(defn- sun-action-steps [db source-id params]
-  (let [cup-complete? (sun-cup-ribbon-complete? db source-id params)
-        disc-mode (selected-sun-disc-mode db source-id params)
-        disc-complete? (sun-disc-ribbon-complete? db source-id params)]
-    [{:id "sun-cup"
-      :power :sun-cup
-      :label "Cup"
-      :status (cond
-                cup-complete? :done
-                :else :active)
-      :detail (if cup-complete?
-                "Cup target selected"
-                (move-prompt db))}
-     {:id "sun-disc"
-      :power :sun-disc
-      :label "Disc"
-      :status (cond
-                (not cup-complete?) :pending
-                (= :skip disc-mode) :skipped
-                disc-complete? :ready
-                :else :active)
-      :detail (cond
-                (not cup-complete?) "Pending Cup"
-                (= :skip disc-mode) "Cup only"
-                disc-mode (get-in sun-disc-mode-definitions [disc-mode :label])
-                :else "Optional Disc step")}]))
-
-(defn- fool-reveal-detail [reveal]
-  (let [card (some-> (:card-id reveal) cards/card-by-id)
-        title (:title card)]
-    (case (:choice reveal)
-      :skip (str (or title "Revealed card") " skipped")
-      :play (str (or title "Revealed card")
-                 " played"
-                 (when-let [power (:power (:action reveal))]
-                   (str " as " (power-label power))))
-      (or title "Choose skip or play"))))
-
-(defn- fool-action-steps [params]
-  (let [selected (selected-fool-reveal-count params)
-        completed (fool-completed-reveals params)
-        active-reveal (fool-active-reveal params)]
-    (mapv (fn [n]
-            (let [completed-reveal (nth completed (dec n) nil)
-                  active? (= n (:index active-reveal))]
-              {:id (str "fool-reveal-" n)
-               :power :fool-reveal
-               :label (str "Reveal " n)
-               :status (cond
-                         (nil? selected) (if (= 1 n) :active :pending)
-                         (< selected n) :skipped
-                         completed-reveal :done
-                         active? :active
-                         (= n (inc (count completed))) :active
-                         :else :pending)
-               :detail (cond
-                         (nil? selected) "Choose reveal count"
-                         (< selected n) "Skipped"
-                         completed-reveal (fool-reveal-detail completed-reveal)
-                         active? (fool-reveal-detail active-reveal)
-                         (= n (inc (count completed))) "Ready to reveal"
-                         :else "Pending")}))
-          [1 2])))
-
-(defn- high-priestess-redraw-pass-complete? [db source-id params pass-index]
-  (when-let [redraw-state (high-priestess-redraw-state-before-pass
-                           db
-                           source-id
-                           params
-                           pass-index)]
-    (let [pass (high-priestess-redraw-pass params pass-index)
-          discard-card-ids (high-priestess-valid-discard-card-ids-in-state
-                            redraw-state
-                            (:discard-card-ids pass))
-          options (set (high-priestess-draw-count-options-in-state
-                        redraw-state
-                        discard-card-ids))]
-      (and (= (vec (:discard-card-ids pass)) discard-card-ids)
-           (contains? options (:draw-count pass))))))
-
-(defn- high-priestess-action-steps [db source-id params]
-  (let [selected (selected-high-priestess-redraw-count params)]
-    (mapv (fn [n]
-            (let [complete? (high-priestess-redraw-pass-complete?
-                             db
-                             source-id
-                             params
-                             n)]
-              {:id (str "high-priestess-redraw-" n)
-               :power :high-priestess-redraw
-               :label (str "Redraw " n)
-               :status (cond
-                         (nil? selected) (if (= 1 n) :active :pending)
-                         (< selected n) :skipped
-                         complete? :ready
-                         :else :active)
-               :detail (cond
-                         (nil? selected) "Choose redraw count"
-                         (< selected n) "Skipped"
-                         complete? "Discard/draw selected"
-                         :else "Choose discards and draw count")}))
-          [1 2])))
-
-(defn- judgement-action-steps [db source-id params]
-  [{:id "judgement-draw"
-    :power :judgement-draw
-    :label "Draw discards"
-    :status (if (requirement-complete? db
-                                       source-id
-                                       params
-                                       :judgement-card-selection)
-              :ready
-              :active)
-    :detail (let [selected-count (count (:judgement-card-ids params))]
-              (str selected-count
-                   "/"
-                   (judgement-card-maximum db source-id params)
-                   " cards"))}])
-
-(defn- non-world-action-steps [db source-id params power]
-  (cond
-    (= :fool power)
-    (fool-action-steps params)
-
-    (composite-major-move? db source-id params)
-    (sequence-action-steps db
-                           source-id
-                           params
-                           (composite-action-plan db source-id params))
-
-    (sword-major-move? db source-id params)
-    (sequence-action-steps db
-                           source-id
-                           params
-                           (sword-major-action-plan db source-id params))
-
-    (devil-move? db source-id params)
-    (if (requirement-complete? db source-id params :devil-action-count)
-      (sequence-action-steps db
-                             source-id
-                             params
-                             (devil-action-plan params))
-      [{:id "devil-action-count"
-        :power :orient-target
-        :label "Orientations"
-        :status :active
-        :detail "Choose orientation count"}])
-
-    (= :sun power)
-    (sun-action-steps db source-id params)
-
-    (= :high-priestess power)
-    (high-priestess-action-steps db source-id params)
-
-    (= :judgement power)
-    (judgement-action-steps db source-id params)
-
-    :else
-    []))
-
-(defn- world-copy-detail [db params]
-  (when-let [board-index (:copied-board-index params)]
-    (territory-label db board-index)))
-
-(defn- world-action-steps [db source-id params]
-  (let [copy-complete? (requirement-complete? db source-id params :copied-board-index)
-        copied-power (selected-world-copied-power db source-id params)
-        copy-step {:id "world-copy"
-                   :power :world-copy
-                   :label "World copy"
-                   :status (if copy-complete? :done :active)
-                   :board-index (:copied-board-index params)
-                   :detail (or (world-copy-detail db params)
-                               "Choose a non-World major territory")}
-        power-step {:id "world-power"
-                    :power :world-power
-                    :label "Copied power"
-                    :status (cond
-                              (not copy-complete?) :pending
-                              copied-power :done
-                              :else :active)
-                    :detail (if copied-power
-                              (power-label copied-power)
-                              "Choose copied power")}]
-    (vec
-     (concat [copy-step power-step]
-             (when copied-power
-               (non-world-action-steps db source-id params copied-power))))))
+(defn- ribbon-context []
+  (ribbon/make-context
+   {:active-power active-power
+    :board-cell-by-index board-cell-by-index
+    :completed-major-actions completed-major-actions
+    :composite-current-action composite-current-action
+    :composite-current-action-complete? composite-current-action-complete?
+    :composite-major-move? composite-major-move?
+    :devil-current-action devil-current-action
+    :devil-current-action-complete? devil-current-action-complete?
+    :devil-move? devil-move?
+    :fool-active-reveal fool-active-reveal
+    :fool-completed-reveals fool-completed-reveals
+    :high-priestess-draw-count-options-in-state high-priestess-draw-count-options-in-state
+    :high-priestess-redraw-pass high-priestess-redraw-pass
+    :high-priestess-redraw-state-before-pass high-priestess-redraw-state-before-pass
+    :high-priestess-valid-discard-card-ids-in-state high-priestess-valid-discard-card-ids-in-state
+    :judgement-card-maximum judgement-card-maximum
+    :move-prompt move-prompt
+    :move-ready? move-ready?
+    :move-selection move-selection
+    :piece-by-id piece-by-id
+    :requirement-complete? requirement-complete?
+    :selected-death-sword-action-count selected-death-sword-action-count
+    :selected-devil-action-count selected-devil-action-count
+    :selected-fool-reveal-count selected-fool-reveal-count
+    :selected-hand-trade-major-action-count selected-hand-trade-major-action-count
+    :selected-high-priestess-redraw-count selected-high-priestess-redraw-count
+    :selected-power selected-power
+    :selected-sun-disc-mode selected-sun-disc-mode
+    :selected-world-copied-power selected-world-copied-power
+    :sun-cup-needs-one-point-card? sun-cup-needs-one-point-card?
+    :sun-cup-target-ready? sun-cup-target-ready?
+    :sword-major-current-action sword-major-current-action
+    :sword-major-current-action-complete? sword-major-current-action-complete?
+    :sword-major-move? sword-major-move?}))
 
 (defn move-action-ribbon [db]
-  (let [{:keys [source params]} (move-selection db)
-        selected (selected-power db source params)
-        power (active-power db source params)]
-    (when (and source
-               (contains? action-ribbon-powers selected)
-               (not= :unavailable selected))
-      (let [world? (= :world selected)
-            steps (if world?
-                    (world-action-steps db source params)
-                    (non-world-action-steps db source params selected))]
-        {:visible? true
-         :power selected
-         :power-label (power-label selected)
-         :copied-power (when world? power)
-         :copied-power-label (when (and world? power)
-                               (power-label power))
-         :summary (if (and world? power)
-                    (str "World copies " (power-label power))
-                    (power-label selected))
-         :prompt (move-prompt db)
-         :ready? (move-ready? db)
-         :steps steps}))))
+  (ribbon/move-action-ribbon (ribbon-context) db))
+
 
 (defn select-move-source [db source-id]
   (let [reason (source-unavailable-reason db source-id)]
@@ -5260,458 +4702,46 @@
     :empty-move-selection empty-move-selection
     :game-turn-key game-turn-key}))
 
-(def ^:private direction-deltas
-  {:north [-1 0]
-   :east [0 1]
-   :south [1 0]
-   :west [0 -1]})
-
-(defn- add-coordinates [[row col] [row-delta col-delta] distance]
-  [(+ row (* row-delta distance))
-   (+ col (* col-delta distance))])
-
-(defn- path-coordinates [from orientation distance]
-  (when-let [delta (get direction-deltas orientation)]
-    (mapv #(add-coordinates from delta %)
-          (range 1 (inc (or distance 0))))))
-
-(defn- board-cell-at-coordinate [db [row col]]
-  (some #(when (and (= row (:row %))
-                    (= col (:col %)))
-           %)
-        (board db)))
-
-(defn- wasteland-space-at-coordinate [db [row col]]
-  (some #(when (and (= row (:row %))
-                    (= col (:col %)))
-           %)
-        (layout/wasteland-spaces (board db))))
-
-(defn- coordinate-space [db [row col]]
-  (cond
-    (nil? row)
-    nil
-
-    (board-cell-at-coordinate db [row col])
-    (let [{:keys [index orientation]} (board-cell-at-coordinate db [row col])]
-      {:kind :territory
-       :board-index index
-       :row row
-       :col col
-       :orientation orientation
-       :label (territory-label db index)})
-
-    (wasteland-space-at-coordinate db [row col])
-    (let [{:keys [orientation] :as space} (wasteland-space-at-coordinate db [row col])]
-      {:kind :wasteland
-       :row row
-       :col col
-       :orientation orientation
-       :label (wasteland-label space)})
-
-    :else
-    {:kind :void
-     :row row
-     :col col
-     :orientation :portrait
-     :label (str "Void row " (inc row) ", column " (inc col))}))
-
-(defn- coordinate-for-board-index [db board-index]
-  (when-let [{:keys [row col]} (board-cell-by-index db board-index)]
-    [row col]))
-
-(defn- coordinate-for-wasteland [{:keys [row col]}]
-  (when (and (int? row) (int? col))
-    [row col]))
-
-(defn- target-coordinate-from-params [db params]
-  (cond
-    (some? (:sun-disc-target-piece-id params))
-    (some->> (:sun-disc-target-piece-id params)
-             (piece-by-id db)
-             (piece-coordinate db))
-
-    (some? (:target-piece-id params))
-    (some->> (:target-piece-id params)
-             (piece-by-id db)
-             (piece-coordinate db))
-
-    (some? (:sun-disc-target-board-index params))
-    (coordinate-for-board-index db (:sun-disc-target-board-index params))
-
-    (some? (:target-board-index params))
-    (coordinate-for-board-index db (:target-board-index params))
-
-    (:hermit-destination-wasteland params)
-    (coordinate-for-wasteland (:hermit-destination-wasteland params))
-
-    (some? (:hermit-destination-board-index params))
-    (coordinate-for-board-index db (:hermit-destination-board-index params))
-
-    (:target-wasteland params)
-    (coordinate-for-wasteland (:target-wasteland params))))
-
-(defn- rod-preview-moved-coordinate [db params]
-  (case (:rod-mode params)
-    :move-minion
-    (some->> (:piece-id params)
-             (piece-by-id db)
-             (piece-coordinate db))
-
-    :push-piece
-    (some->> (:target-piece-id params)
-             (piece-by-id db)
-             (piece-coordinate db))
-
-    :push-territory
-    (coordinate-for-board-index db (:target-board-index params))
-
-    nil))
-
-(defn- rod-preview [db _source params preview-status preview-error]
-  (let [minion (piece-by-id db (:piece-id params))
-        from (rod-preview-moved-coordinate db params)
-        distance (:distance params)
-        coordinates (when (and from
-                               (:orientation minion)
-                               (pos-int? distance))
-                      (path-coordinates from (:orientation minion) distance))]
-    (when (or from (seq coordinates))
-      {:kind :movement
-       :power :rod
-       :mode (:rod-mode params)
-       :status preview-status
-       :error preview-error
-       :source-space (coordinate-space db from)
-       :path (mapv #(coordinate-space db %) coordinates)
-       :destination-space (coordinate-space db (last coordinates))
-       :distance distance
-       :summary (str "Rod "
-                     (get-in rod-mode-definitions [(:rod-mode params) :label] "movement")
-                     (when distance
-                       (str " " distance)))})))
-
-(defn- hermit-preview [db _source params preview-status preview-error]
-  (let [from (cond
-               (:target-piece-id params)
-               (some->> (:target-piece-id params)
-                        (piece-by-id db)
-                        (piece-coordinate db))
-
-               (some? (:target-board-index params))
-               (coordinate-for-board-index db (:target-board-index params)))
-        to (or (coordinate-for-wasteland (:hermit-destination-wasteland params))
-               (coordinate-for-board-index db (:hermit-destination-board-index params)))]
-    (when (or from to)
-      {:kind :movement
-       :power :hermit
-       :status preview-status
-       :error preview-error
-       :source-space (coordinate-space db from)
-       :path (cond-> []
-               from (conj (coordinate-space db from))
-               to (conj (coordinate-space db to)))
-       :destination-space (coordinate-space db to)
-       :summary "Hermit relocation"})))
-
-(defn- piece-size-after-growth [size steps]
-  (nth (iterate {:small :medium
-                 :medium :large
-                 :large :large}
-                size)
-       (or steps 1)
-       size))
-
-(defn- piece-size-for-pips [pips]
-  (case pips
-    1 :small
-    2 :medium
-    3 :large
-    nil))
-
-(defn- selected-replacement-card [db source params card-id]
-  (some #(when (= card-id (:id %)) %)
-        (replacement-card-options-for-source
-         db
-         source
-         params
-         (selected-replacement-card-source db source params))))
-
-(defn- disc-mutation-preview [db source params preview-status preview-error]
-  (case (:disc-target-kind params)
-    :piece
-    (when-let [piece (piece-by-id db (:target-piece-id params))]
-      (let [action-count (selected-disc-action-count db source params)]
-        {:kind :mutation
-         :power :disc
-         :status preview-status
-         :error preview-error
-         :target-space (coordinate-space db (piece-coordinate db piece))
-         :target {:kind :piece
-                  :piece-id (:id piece)}
-         :summary (str "Grow "
-                       (pieces/size-label (:size piece))
-                       " to "
-                       (pieces/size-label (piece-size-after-growth (:size piece)
-                                                                  action-count)))}))
-
-    :territory
-    (when-let [cell (target-board-cell db params)]
-      (let [old-value (cards/card-point-value (:card cell))
-            replacement (selected-replacement-card db
-                                                   source
-                                                   params
-                                                   (:replacement-card-id params))
-            new-value (or (some-> replacement cards/card-point-value)
-                          (replacement-card-expected-value db source params))]
-        {:kind :mutation
-         :power :disc
-         :status preview-status
-         :error preview-error
-         :target-space (coordinate-space db [(:row cell) (:col cell)])
-         :target {:kind :territory
-                  :board-index (:index cell)}
-         :summary (str "Grow territory "
-                       (or old-value "?")
-                       " to "
-                       (or new-value "?"))}))
-
-    nil))
-
-(defn- sword-mutation-preview [db _source params preview-status preview-error]
-  (case (:sword-target-kind params)
-    :piece
-    (when-let [piece (piece-by-id db (:target-piece-id params))]
-      (let [damage (:damage params)
-            remaining (when (int? damage)
-                        (- (pieces/pips piece) damage))]
-        {:kind :mutation
-         :power :sword
-         :status preview-status
-         :error preview-error
-         :target-space (coordinate-space db (piece-coordinate db piece))
-         :target {:kind :piece
-                  :piece-id (:id piece)}
-         :summary (if (and (int? remaining) (pos? remaining))
-                    (str "Shrink "
-                         (pieces/size-label (:size piece))
-                         " to "
-                         (pieces/size-label (piece-size-for-pips remaining)))
-                    "Destroy piece")}))
-
-    :territory
-    (when-let [cell (target-board-cell db params)]
-      (let [old-value (cards/card-point-value (:card cell))
-            damage (:damage params)
-            new-value (when (and old-value damage)
-                        (- old-value damage))]
-        {:kind :mutation
-         :power :sword
-         :status preview-status
-         :error preview-error
-         :target-space (coordinate-space db [(:row cell) (:col cell)])
-         :target {:kind :territory
-                  :board-index (:index cell)}
-         :summary (if (and (int? new-value) (pos? new-value))
-                    (str "Reduce territory "
-                         old-value
-                         " to "
-                         new-value)
-                    "Destroy territory")}))
-
-    nil))
-
-(defn- sun-mutation-preview [db source params preview-status preview-error]
-  (case (selected-sun-disc-mode db source params)
-    :created-piece
-    {:kind :mutation
-     :power :sun
-     :status preview-status
-     :error preview-error
-     :target-space (coordinate-space db (target-coordinate-from-params db params))
-     :target {:kind :created-piece}
-     :summary "Create a medium piece"}
-
-    :created-territory
-    {:kind :mutation
-     :power :sun
-     :status preview-status
-     :error preview-error
-     :target-space (coordinate-space db (target-coordinate-from-params db params))
-     :target {:kind :created-territory}
-     :summary "Create a two-point territory"}
-
-    :piece
-    (when-let [piece (piece-by-id db (:sun-disc-target-piece-id params))]
-      {:kind :mutation
-       :power :sun
-       :status preview-status
-       :error preview-error
-       :target-space (coordinate-space db (piece-coordinate db piece))
-       :target {:kind :piece
-                :piece-id (:id piece)}
-       :summary (str "Grow "
-                     (pieces/size-label (:size piece))
-                     " to "
-                     (pieces/size-label (piece-size-after-growth (:size piece) 1)))})
-
-    :territory
-    (when-let [cell (sun-disc-target-cell db params)]
-      {:kind :mutation
-       :power :sun
-       :status preview-status
-       :error preview-error
-       :target-space (coordinate-space db [(:row cell) (:col cell)])
-       :target {:kind :territory
-                :board-index (:index cell)}
-       :summary (str "Grow territory "
-                     (or (cards/card-point-value (:card cell)) "?")
-                     " to "
-                     (or (replacement-card-expected-value db source params) "?"))})
-
-    nil))
-
-(defn- mutation-preview [db source params preview-status preview-error]
-  (cond
-    (disc-move? db source params)
-    (disc-mutation-preview db source params preview-status preview-error)
-
-    (sword-move? db source params)
-    (sword-mutation-preview db source params preview-status preview-error)
-
-    (sun-move? db source params)
-    (sun-mutation-preview db source params preview-status preview-error)
-
-    :else
-    nil))
-
-(defn- initial-placement-preview [db source params preview-status preview-error]
-  (when (= :place-initial-small source)
-    (when-let [coordinate (target-coordinate-from-params db params)]
-      {:kind :placement
-       :status preview-status
-       :error preview-error
-       :target-space (coordinate-space db coordinate)
-       :player-id (current-player-id db)
-       :piece-size :small
-       :orientation (:orientation params)
-       :summary "Place small piece"})))
-
-(defn- compass-field [db source params]
-  (let [stage (:stage (move-selection db))]
-    (cond
-      (or (= :minion-orientation stage)
-          (and (= :confirm stage)
-               (major-orient-step? db source params)))
-      :minion-orientation
-
-      (and (= :sun (active-power db source params))
-           (move-sun-disc-orientation-available? db))
-      :sun-disc-orientation
-
-      (or (= :orientation stage)
-          (= :orient-piece source)
-          (= :place-initial-small source)
-          (and (rod-move? db source params)
-               (move-rod-orientation-required? db)
-               (:distance params))
-          (move-hermit-orientation-required? db)
-          (move-disc-orientation-available? db)
-          (move-sword-orientation-available? db)
-          (hierophant-move? db source params)
-          (devil-move? db source params)
-          (and (or (cup-move? db source params)
-                   (sun-move? db source params))
-               (some? (:target-board-index params))
-               (nil? (:target-piece-id params))))
-      :orientation)))
-
-(defn- compass-coordinate [db source params field movement]
-  (case field
-    :minion-orientation
-    (some->> (:piece-id params)
-             (piece-by-id db)
-             (piece-coordinate db))
-
-    :sun-disc-orientation
-    (some->> (:sun-disc-target-piece-id params)
-             (piece-by-id db)
-             (piece-coordinate db))
-
-    :orientation
-    (or (some-> movement :destination-space ((juxt :row :col)))
-        (cond
-          (= :orient-piece source)
-          (some->> (:piece-id params)
-                   (piece-by-id db)
-                   (piece-coordinate db))
-
-          (= :place-initial-small source)
-          (target-coordinate-from-params db params)
-
-          (hermit-move? db source params)
-          (or (coordinate-for-wasteland (:hermit-destination-wasteland params))
-              (coordinate-for-board-index db (:hermit-destination-board-index params)))
-
-          :else
-          (target-coordinate-from-params db params)))))
-
-(defn- orientation-compass [db source params movement]
-  (when-let [field (compass-field db source params)]
-    (when-let [coordinate (compass-coordinate db source params field movement)]
-      {:active? true
-       :field field
-       :space (coordinate-space db coordinate)
-       :selected-orientation (case field
-                               :minion-orientation (:minion-orientation params)
-                               :sun-disc-orientation (:sun-disc-orientation params)
-                               (:orientation params))
-       :options (move-orientation-options db)})))
 
 (declare move-preview-result)
 
+(defn- preview-context []
+  (preview/make-context
+   {:active-power active-power
+    :board board
+    :board-cell-by-index board-cell-by-index
+    :cup-move? cup-move?
+    :current-player-id current-player-id
+    :devil-move? devil-move?
+    :disc-move? disc-move?
+    :hermit-move? hermit-move?
+    :hierophant-move? hierophant-move?
+    :major-orient-step? major-orient-step?
+    :move-disc-orientation-available? move-disc-orientation-available?
+    :move-hermit-orientation-required? move-hermit-orientation-required?
+    :move-orientation-options move-orientation-options
+    :move-preview-result move-preview-result
+    :move-ready? move-ready?
+    :move-rod-orientation-required? move-rod-orientation-required?
+    :move-selection move-selection
+    :move-sun-disc-orientation-available? move-sun-disc-orientation-available?
+    :move-sword-orientation-available? move-sword-orientation-available?
+    :piece-by-id piece-by-id
+    :piece-coordinate piece-coordinate
+    :replacement-card-expected-value replacement-card-expected-value
+    :replacement-card-options-for-source replacement-card-options-for-source
+    :rod-move? rod-move?
+    :selected-disc-action-count selected-disc-action-count
+    :selected-replacement-card-source selected-replacement-card-source
+    :selected-sun-disc-mode selected-sun-disc-mode
+    :sun-disc-target-cell sun-disc-target-cell
+    :sun-move? sun-move?
+    :sword-move? sword-move?
+    :target-board-cell target-board-cell}))
+
 (defn move-preview [db]
-  (let [{:keys [source params]} (move-selection db)
-        preview-result (when (move-ready? db)
-                         (move-preview-result db))
-        preview-error (when (false? (:ok? preview-result))
-                        (:error preview-result))
-        preview-status (cond
-                         (false? (:ok? preview-result)) :disabled
-                         (:ok? preview-result) :legal
-                         :else :pending)
-        movement (cond
-                   (rod-move? db source params)
-                   (rod-preview db source params preview-status preview-error)
+  (preview/move-preview (preview-context) db))
 
-                   (hermit-move? db source params)
-                   (hermit-preview db source params preview-status preview-error)
-
-                   :else
-                   nil)
-        mutation (mutation-preview db source params preview-status preview-error)
-        placement (initial-placement-preview db source params preview-status preview-error)
-        compass (orientation-compass db source params movement)]
-    (cond-> {:active? (boolean (or movement mutation placement compass))
-             :status preview-status
-             :error preview-error}
-      movement
-      (assoc :movement movement)
-
-      mutation
-      (assoc :mutation mutation)
-
-      placement
-      (assoc :placement placement)
-
-      compass
-      (assoc :orientation-compass compass)
-
-      (or movement mutation placement compass)
-      (assoc :summary (or (:summary mutation)
-                          (:summary placement)
-                          (:summary movement)
-                          "Choose orientation")))))
 
 (defn move-preview-result
   ([db] (move-preview-result db {}))
