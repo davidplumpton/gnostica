@@ -3,6 +3,7 @@
             [gnostica.icon-view :as icon-view]
             [gnostica.icons :as icons]
             [gnostica.legal-targets :as legal-targets]
+            [gnostica.three-board.accessibility :as accessibility]
             [gnostica.three-board.controls :as controls]
             [gnostica.three-board.lifecycle :as lifecycle]
             [gnostica.three-board.pointer :as pointer]
@@ -148,12 +149,9 @@
         [:div.board-three
          {:role "img"
           :tabIndex 0
-          :aria-label (str "Three-dimensional Gnostica board with nine face-up tarot territory cards and Icehouse pieces. "
-                           "Use W, A, S, D, or arrow keys to move the board view when focused"
-                           (when-let [summary (and (= :popup card-icon-mode)
-                                                   (icons/icon-stack-label (:gnostica-icons selected-card)))]
-                             (when (seq summary)
-                               (str ". Selected card special moves: " summary))))
+          :aria-label (accessibility/board-aria-label _cells
+                                                      selected-card
+                                                      card-icon-mode)
           :on-focus #(lifecycle/assoc-component-state! component :board-focused? true)
           :on-blur #(lifecycle/assoc-component-state! component :board-focused? false)
           :on-pointer-down pointer/focus-board-on-pointer-down!

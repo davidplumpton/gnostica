@@ -71,6 +71,7 @@
        threeRevision: window.THREE ? window.THREE.REVISION : null,
        orbitControls: Boolean(window.THREE && window.THREE.OrbitControls),
        board: Boolean(board),
+       boardAriaLabel: board ? board.getAttribute('aria-label') : '',
        boardCardIconMode: board ? board.dataset.cardIconMode : null,
        boardCardCount: board ? Number(board.dataset.boardCardCount || -1) : -1,
        majorIconCardCount: board ? Number(board.dataset.majorIconCardCount || -1) : -1,
@@ -956,6 +957,9 @@
          (= "always" (get stats "cardIconMode"))
          (true? (get stats "orbitControls"))
          (true? (get stats "board"))
+         (str/includes? (or (get stats "boardAriaLabel") "")
+                        (str "with " (get stats "boardCardCount")
+                             " face-up tarot territory cards"))
          (<= (- viewport-width 2) shell-width)
          (<= (- viewport-height 2) shell-height)
          (<= (- shell-width 2) board-width)
