@@ -1,39 +1,60 @@
 (ns gnostica.test-runner
-  (:require [clojure.test :refer [run-tests]]
-            [gnostica.app-state-test]
-            [gnostica.board-layout-test]
-            [gnostica.board-test]
-            [gnostica.cards-test]
-            [gnostica.fixtures-test]
-            [gnostica.gameplay-feature-test]
-            [gnostica.game-schema-test]
-            [gnostica.game-state.command-schema-test]
-            [gnostica.game-state-test]
-            [gnostica.game-state.spatial-test]
-            [gnostica.gesture-input-test]
-            [gnostica.icon-layout-test]
-            [gnostica.keyboard-shortcuts-test]
-            [gnostica.major-sequence-test]
-            [gnostica.move-selection.confirmation-test]
-            [gnostica.move-selection.context-test]
-            [gnostica.pieces-test]))
+  (:require [clojure.java.io :as io]
+            [clojure.string :as str]
+            [clojure.test :refer [run-tests]]))
+
+(def namespace-prefix "gnostica")
+
+(defn- normalized-relative-path [root file]
+  (-> (.relativize (.toPath (io/file root)) (.toPath (io/file file)))
+      str
+      (str/replace "\\" "/")))
+
+(defn- smoke-helper-file? [relative-path]
+  (or (= "smoke_runner.clj" relative-path)
+      (str/starts-with? relative-path "smoke/")))
+
+(defn test-file? [root file]
+  (let [relative-path (normalized-relative-path root file)]
+    (and (.isFile (io/file file))
+         (str/ends-with? relative-path "_test.clj")
+         (not (smoke-helper-file? relative-path)))))
+
+(defn test-file->namespace [root file]
+  (->> (normalized-relative-path root file)
+       (#(str/replace % #"\.clj$" ""))
+       (#(str/replace % "_" "-"))
+       (#(str/replace % "/" "."))
+       (str namespace-prefix ".")
+       symbol))
+
+(defn test-namespaces-in [root]
+  (->> (file-seq (io/file root))
+       (filter #(test-file? root %))
+       (map #(test-file->namespace root %))
+       (sort-by str)
+       vec))
+
+(defn test-root []
+  (if-let [resource (io/resource "gnostica/test_runner.clj")]
+    (try
+      (-> resource .toURI io/file .getParentFile)
+      (catch Exception _
+        (io/file "test" "gnostica")))
+    (io/file "test" "gnostica")))
+
+(defn test-namespaces []
+  (test-namespaces-in (test-root)))
+
+(defn require-test-namespaces! [test-namespaces]
+  (doseq [test-ns test-namespaces]
+    (require test-ns)))
 
 (defn -main [& _]
-  (let [{:keys [fail error]} (run-tests 'gnostica.cards-test
-                                        'gnostica.board-test
-                                        'gnostica.board-layout-test
-                                        'gnostica.app-state-test
-                                        'gnostica.fixtures-test
-                                        'gnostica.pieces-test
-                                        'gnostica.game-schema-test
-                                        'gnostica.game-state.command-schema-test
-                                        'gnostica.game-state.spatial-test
-                                        'gnostica.game-state-test
-                                        'gnostica.gesture-input-test
-                                        'gnostica.icon-layout-test
-                                        'gnostica.keyboard-shortcuts-test
-                                        'gnostica.major-sequence-test
-                                        'gnostica.move-selection.confirmation-test
-                                        'gnostica.move-selection.context-test
-                                        'gnostica.gameplay-feature-test)]
-    (System/exit (if (zero? (+ fail error)) 0 1))))
+  (let [test-namespaces (test-namespaces)]
+    (when (empty? test-namespaces)
+      (throw (ex-info "No test namespaces found."
+                      {:test-root (str (test-root))})))
+    (require-test-namespaces! test-namespaces)
+    (let [{:keys [fail error]} (apply run-tests test-namespaces)]
+      (System/exit (if (zero? (+ fail error)) 0 1)))))
