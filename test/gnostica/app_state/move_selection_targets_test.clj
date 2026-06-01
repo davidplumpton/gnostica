@@ -97,6 +97,12 @@
                        (assoc :selected-board-index 99)
                        (app-state/select-move-source :place-initial-small))
         initial-targets (app-state/move-legal-targets initial-db)
+        highlighted-initial-territories (->> (:territories initial-targets)
+                                             (filter :highlight?)
+                                             (mapv :board-index))
+        highlighted-initial-wastelands (->> (:wastelands initial-targets)
+                                            (filter :highlight?)
+                                            (mapv #(select-keys % [:row :col])))
         hand-db (-> (app-state/initialize
                      {:player-specs test-player-specs
                       :game-options {:deck-order (deck-starting-with ["cups2"])}
@@ -106,9 +112,11 @@
     (is (= :piece (:stage (app-state/move-selection piece-db))))
     (is (= :legal (:status (piece-target piece-targets :rose-scout))))
     (is (= :minion (:role (piece-target piece-targets :rose-scout))))
-    (is (= :target (:stage (app-state/move-selection initial-db))))
+    (is (= :orientation (:stage (app-state/move-selection initial-db))))
     (is (= 9 (count (filter :enabled? (:territories initial-targets)))))
     (is (= 12 (count (filter :enabled? (:wastelands initial-targets)))))
+    (is (= [4] highlighted-initial-territories))
+    (is (empty? highlighted-initial-wastelands))
     (is (= [{:kind :stash-piece
              :role :source
              :player-id :rose

@@ -1682,6 +1682,7 @@ img {
 .board-card.is-drag-hover-legal,
 .board-wasteland.is-drag-hover-legal {
   border-color: rgba(255, 242, 166, 0.98);
+  animation: placement-target-pulse 0.82s ease-in-out infinite alternate;
   box-shadow:
     0 0 0 4px rgba(255, 224, 138, 0.2),
     0 0 1.35rem rgba(255, 224, 138, 0.36);
@@ -1694,6 +1695,29 @@ img {
   box-shadow:
     0 0 0 3px rgba(255, 138, 122, 0.16),
     0 0 1rem rgba(255, 138, 122, 0.22);
+}
+
+@keyframes placement-target-pulse {
+  from {
+    outline-color: rgba(255, 224, 138, 0.42);
+    box-shadow:
+      0 0 0 3px rgba(255, 224, 138, 0.16),
+      0 0 0.85rem rgba(255, 224, 138, 0.24);
+  }
+
+  to {
+    outline-color: rgba(255, 242, 166, 0.88);
+    box-shadow:
+      0 0 0 5px rgba(255, 224, 138, 0.26),
+      0 0 1.55rem rgba(255, 224, 138, 0.44);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .board-card.is-drag-hover-legal,
+  .board-wasteland.is-drag-hover-legal {
+    animation: none;
+  }
 }
 
 .board-wasteland.is-legal-target,

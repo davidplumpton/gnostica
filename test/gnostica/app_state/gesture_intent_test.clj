@@ -467,6 +467,11 @@
                                   :player-id :rose
                                   :size :small}})
         source-only-targets (app-state/move-legal-targets source-only-db)
+        source-only-highlighted-targets (concat
+                                         (filter :highlight?
+                                                 (:territories source-only-targets))
+                                         (filter :highlight?
+                                                 (:wastelands source-only-targets)))
         partial-db (app-state/start-gesture-intent
                     db
                     {:source {:kind :stash-piece
@@ -502,6 +507,7 @@
     (is (= {} (app-state/move-params source-only-db)))
     (is (= 9 (count (filter :enabled? (:territories source-only-targets)))))
     (is (= 12 (count (filter :enabled? (:wastelands source-only-targets)))))
+    (is (empty? source-only-highlighted-targets))
     (is (= source-only-targets
            (:legal-targets (app-state/board-view source-only-db))))
     (is (= original-game (app-state/game pending-db)))

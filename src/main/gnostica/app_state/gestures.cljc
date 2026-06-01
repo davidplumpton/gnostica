@@ -66,6 +66,25 @@
 (defn- target-sort-key [{:keys [kind board-index row col]}]
   [row col (case kind :territory 0 :wasteland 1 2) (or board-index 0)])
 
+(defn- abs-number [n]
+  (if (neg? n) (- n) n))
+
+(defn- center-coordinate [targets coordinate-key]
+  (when (seq targets)
+    (/ (+ (apply min (map coordinate-key targets))
+          (apply max (map coordinate-key targets)))
+       2)))
+
+(defn- center-target [targets]
+  (when (seq targets)
+    (let [center-row (center-coordinate targets :row)
+          center-col (center-coordinate targets :col)]
+      (first (sort-by (fn [target]
+                        [(+ (abs-number (- (:row target) center-row))
+                            (abs-number (- (:col target) center-col)))
+                         (target-sort-key target)])
+                      targets)))))
+
 (defn- board-targets [app-db]
   (mapv (fn [{:keys [index row col]}]
           {:kind :territory
@@ -115,6 +134,7 @@
   (let [targets (placement-targets app-db)
         selected-index (:selected-board-index app-db)]
     (or (target-by-key targets (current-placement-target app-db))
+        (center-target targets)
         (when (some? selected-index)
           (target-by-key targets {:kind :territory
                                   :board-index selected-index}))

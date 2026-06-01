@@ -66,7 +66,7 @@
     (is (= 9 (count (app-state/move-target-board-options source-db))))
     (is (= 12 (count (app-state/move-target-wasteland-options source-db))))
     (is (= :orientation (:stage (app-state/move-selection source-db))))
-    (is (= {:target-board-index 0}
+    (is (= {:target-board-index 4}
            (app-state/move-params source-db)))
     (is (= :confirm (:stage (app-state/move-selection oriented-db))))
     (is (= {:target-wasteland {:kind :wasteland
@@ -104,7 +104,7 @@
                      (app-state/game oriented-db)
                      [{:id :indigo-blocker
                        :player-id :indigo
-                       :space-index 0
+                       :space-index 4
                        :size :small
                        :orientation :up}])
         stale-db (assoc oriented-db :game stale-game)
@@ -139,7 +139,7 @@
             :mode :target}
            (app-state/keyboard-placement-targeting moved-db)))
     (is (true? (get-in moved-db [:gesture-intent :active?])))
-    (is (= {:target-board-index 1}
+    (is (= {:target-board-index 5}
            (app-state/move-params moved-db)))
     (is (= :orientation (:stage (app-state/move-selection moved-db))))
     (is (= [:orientation]
@@ -156,13 +156,13 @@
     (is (= {:source :place-initial-small
             :player-id :rose
             :target {:kind :territory
-                     :board-index 1}
+                     :board-index 5}
             :orientation :east}
            (app-state/move-command oriented-db)))
     (is (:ok? (get-in confirmed-db [:move-selection :last-result])))
     (is (= {:id :rose-small-1
             :player-id :rose
-            :space-index 1
+            :space-index 5
             :size :small
             :orientation :east}
            created-piece))
@@ -175,15 +175,17 @@
   (let [db (app-state/initialize {:game-options {:shuffle-fn identity}
                                   :demo-board-pieces [{:id :indigo-blocker
                                                        :player-id :indigo
-                                                       :space-index 1
+                                                       :space-index 5
                                                        :size :small
                                                        :orientation :up}]})
         started-db (app-state/start-keyboard-placement-targeting db)
         moved-db (app-state/move-keyboard-placement-target started-db :east)
         cancelled-db (app-state/cancel-gesture-intent moved-db)]
-    (is (= {:target-board-index 0}
+    (is (= {:target-board-index 4}
            (app-state/move-params started-db)))
-    (is (= {:target-board-index 2}
+    (is (= {:target-wasteland {:kind :wasteland
+                               :row 1
+                               :col 3}}
            (app-state/move-params moved-db)))
     (is (= (app-state/game db)
            (app-state/game moved-db)))

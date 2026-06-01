@@ -28,7 +28,9 @@
 
 (defn- target-highlight-class [drag-hover target descriptor]
   (legal-targets/status-class
-   (gesture-input/show-target-highlight? drag-hover target)
+   (if drag-hover
+     (gesture-input/show-target-highlight? drag-hover target)
+     (legal-targets/highlighted? descriptor))
    descriptor))
 
 (defn- drop-target-class [descriptor]

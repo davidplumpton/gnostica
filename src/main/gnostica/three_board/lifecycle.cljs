@@ -77,12 +77,14 @@
       :opacity 0.82}
 
      (and (legal-targets/active? descriptor)
+          (legal-targets/highlighted? descriptor)
           (legal-targets/enabled? descriptor))
      {:visible? true
       :color 0xffe08a
       :opacity 0.68}
 
      (and (legal-targets/active? descriptor)
+          (legal-targets/highlighted? descriptor)
           (not (legal-targets/enabled? descriptor)))
      {:visible? true
       :color 0xff8a7a

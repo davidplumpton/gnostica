@@ -45,7 +45,7 @@
                      (app-state/game ready-db)
                      [{:id :indigo-blocker
                        :player-id :indigo
-                       :space-index 0
+                       :space-index 4
                        :size :small
                        :orientation :up}])
         stale-db (assoc ready-db :game stale-game)

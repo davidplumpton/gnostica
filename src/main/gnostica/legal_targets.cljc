@@ -12,6 +12,9 @@
 (defn selected? [descriptor]
   (true? (:selected? descriptor)))
 
+(defn highlighted? [descriptor]
+  (not (false? (:highlight? descriptor))))
+
 (defn status [descriptor]
   (:status descriptor))
 

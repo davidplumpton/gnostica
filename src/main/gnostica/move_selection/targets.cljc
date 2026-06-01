@@ -155,6 +155,14 @@
   (set (keep params
              [:piece-id :target-piece-id :sun-disc-target-piece-id])))
 
+(defn- target-highlight? [source params {:keys [kind board-index row col]}]
+  (if (= :place-initial-small source)
+    (case kind
+      :territory (= board-index (:target-board-index params))
+      :wasteland (selected-wasteland? params {:row row :col col})
+      false)
+    true))
+
 (defn- current-target-role [stage]
   (case stage
     :source-territory :source
@@ -227,36 +235,45 @@
       nil)))
 
 (defn- territory-descriptor-context [ctx db]
-  (let [{:keys [stage]} (call ctx :move-selection db)]
-    (case stage
-      :source-territory
-      {:active? true
-       :role :source
-       :options (call ctx :move-source-board-options db)
-       :disabled-error (territory-disabled-error ctx db stage)}
-
-      :world-copy
-      {:active? true
-       :role :copy
-       :options (call ctx :move-world-copy-options db)
-       :disabled-error (territory-disabled-error ctx db stage)}
-
-      :target
+  (let [{:keys [source stage]} (call ctx :move-selection db)]
+    (cond
+      (and (= :place-initial-small source)
+           (contains? #{:orientation :confirm :rejected} stage))
       {:active? true
        :role :target
        :options (call ctx :move-target-board-options db)
-       :disabled-error (territory-disabled-error ctx db stage)}
+       :disabled-error (territory-disabled-error ctx db :target)}
 
-      :hermit-destination
-      {:active? true
-       :role :destination
-       :options (call ctx :move-target-board-options db)
-       :disabled-error (territory-disabled-error ctx db stage)}
+      :else
+      (case stage
+        :source-territory
+        {:active? true
+         :role :source
+         :options (call ctx :move-source-board-options db)
+         :disabled-error (territory-disabled-error ctx db stage)}
 
-      nil)))
+        :world-copy
+        {:active? true
+         :role :copy
+         :options (call ctx :move-world-copy-options db)
+         :disabled-error (territory-disabled-error ctx db stage)}
+
+        :target
+        {:active? true
+         :role :target
+         :options (call ctx :move-target-board-options db)
+         :disabled-error (territory-disabled-error ctx db stage)}
+
+        :hermit-destination
+        {:active? true
+         :role :destination
+         :options (call ctx :move-target-board-options db)
+         :disabled-error (territory-disabled-error ctx db stage)}
+
+        nil))))
 
 (defn- territory-descriptors [ctx db]
-  (let [{:keys [params]} (call ctx :move-selection db)
+  (let [{:keys [source params]} (call ctx :move-selection db)
         {:keys [active? role options disabled-error]} (or (territory-descriptor-context ctx db)
                                                           {})
         legal-indexes (set (map :index options))
@@ -277,6 +294,10 @@
                        :active? (true? active?)
                        :enabled? enabled?
                        :status status
+                       :highlight? (target-highlight? source
+                                                      params
+                                                      {:kind :territory
+                                                       :board-index index})
                        :selected? (contains? selected-indexes index)}
                 (and active? (not enabled?) disabled-error)
                 (assoc :error (assoc-in disabled-error [:data :board-index] index)
@@ -304,24 +325,33 @@
       nil)))
 
 (defn- wasteland-descriptor-context [ctx db]
-  (let [{:keys [stage]} (call ctx :move-selection db)]
-    (case stage
-      :target
+  (let [{:keys [source stage]} (call ctx :move-selection db)]
+    (cond
+      (and (= :place-initial-small source)
+           (contains? #{:orientation :confirm :rejected} stage))
       {:active? true
        :role :target
        :options (call ctx :move-target-wasteland-options db)
-       :disabled-error (wasteland-disabled-error ctx db stage)}
+       :disabled-error (wasteland-disabled-error ctx db :target)}
 
-      :hermit-destination
-      {:active? true
-       :role :destination
-       :options (call ctx :move-target-wasteland-options db)
-       :disabled-error (wasteland-disabled-error ctx db stage)}
+      :else
+      (case stage
+        :target
+        {:active? true
+         :role :target
+         :options (call ctx :move-target-wasteland-options db)
+         :disabled-error (wasteland-disabled-error ctx db stage)}
 
-      nil)))
+        :hermit-destination
+        {:active? true
+         :role :destination
+         :options (call ctx :move-target-wasteland-options db)
+         :disabled-error (wasteland-disabled-error ctx db stage)}
+
+        nil))))
 
 (defn- wasteland-descriptors [ctx db]
-  (let [{:keys [params]} (call ctx :move-selection db)
+  (let [{:keys [source params]} (call ctx :move-selection db)
         {:keys [active? role options disabled-error]} (or (wasteland-descriptor-context ctx db)
                                                           {})
         legal-coordinates (set (map (juxt :row :col) options))]
@@ -339,6 +369,11 @@
                        :active? (true? active?)
                        :enabled? enabled?
                        :status status
+                       :highlight? (target-highlight? source
+                                                      params
+                                                      {:kind :wasteland
+                                                       :row row
+                                                       :col col})
                        :selected? (selected-wasteland? params space)}
                 (and active? (not enabled?) disabled-error)
                 (assoc :error (assoc disabled-error

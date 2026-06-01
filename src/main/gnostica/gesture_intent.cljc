@@ -116,11 +116,19 @@
 (defn- select-source-for-gesture [db move-source source]
   (if (and (= :place-initial-small move-source)
            (= :stash-piece (:kind source)))
-    (let [selected-index (:selected-board-index db)]
-      (assoc (move-selection/select-move-source
-              (assoc db :selected-board-index nil)
-              move-source)
-             :selected-board-index selected-index))
+    (let [selected-index (:selected-board-index db)
+          selected-db (move-selection/select-move-source
+                       (assoc db :selected-board-index nil)
+                       move-source)
+          restored-db (assoc selected-db :selected-board-index selected-index)]
+      (if (selection-error restored-db)
+        restored-db
+        (assoc restored-db
+               :move-selection {:stage :target
+                                :source :place-initial-small
+                                :params {}
+                                :error nil
+                                :last-result nil})))
     (move-selection/select-move-source db move-source)))
 
 (defn- start-source [db {:keys [move-source source]}]

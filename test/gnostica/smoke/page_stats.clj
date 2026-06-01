@@ -1223,19 +1223,19 @@
 (defn keyboard-placement-target-started? [stats]
   (and (pending-tray-needs-choice-ready? stats)
        (= "territory" (get stats "previewTargetKind"))
-       (= 0 (long (or (get stats "previewTargetBoardIndex") -1)))
+       (= 4 (long (or (get stats "previewTargetBoardIndex") -1)))
        (nil? (get stats "previewPlacementOrientation"))))
 
 (defn keyboard-placement-target-moved? [stats]
   (and (pending-tray-needs-choice-ready? stats)
        (= "territory" (get stats "previewTargetKind"))
-       (= 1 (long (or (get stats "previewTargetBoardIndex") -1)))
+       (= 5 (long (or (get stats "previewTargetBoardIndex") -1)))
        (nil? (get stats "previewPlacementOrientation"))))
 
 (defn keyboard-placement-ready-east? [stats]
   (and (pending-tray-ready? stats)
        (= "territory" (get stats "previewTargetKind"))
-       (= 1 (long (or (get stats "previewTargetBoardIndex") -1)))
+       (= 5 (long (or (get stats "previewTargetBoardIndex") -1)))
        (= "east" (get stats "previewPlacementOrientation"))))
 
 (defn- first-piece-source-icon-ready? [stats]

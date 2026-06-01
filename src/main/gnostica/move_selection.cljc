@@ -988,6 +988,18 @@
 (defn- empty-wasteland-target? [db {:keys [row col]}]
   (empty? (pieces-at-coordinate db row col)))
 
+(def default-initial-placement-board-index 4)
+
+(defn- default-initial-placement-target-index [db selected-index]
+  (or (when (empty-board-target? db default-initial-placement-board-index)
+        default-initial-placement-board-index)
+      (when (empty-board-target? db selected-index)
+        selected-index)
+      (some (fn [{:keys [index]}]
+              (when (empty-board-target? db index)
+                index))
+            (board db))))
+
 (declare valid-wasteland-target? enemy-pieces-at-coordinate)
 
 (defn- cup-target-wasteland? [db source-id params {:keys [row col] :as space}]
@@ -2860,6 +2872,10 @@
                                        reason
                                        {:source source-id})))
       (let [selected-index (selected-board-index db)
+            placement-target-index (when (= source-id :place-initial-small)
+                                     (default-initial-placement-target-index
+                                      db
+                                      selected-index))
             base-params (cond-> (if (= source-id :draw-cards)
                                   (normalize-draw-selection-params db
                                                                    {:discard-card-ids []})
@@ -2869,9 +2885,8 @@
                                (seq (current-player-pieces-on-space db selected-index)))
                           (assoc :source-board-index selected-index)
 
-                          (and (= source-id :place-initial-small)
-                               (empty-board-target? db selected-index))
-                          (assoc :target-board-index selected-index))]
+                          placement-target-index
+                          (assoc :target-board-index placement-target-index))]
         (refresh-move-selection
          (assoc db :move-selection
                 {:stage :source
