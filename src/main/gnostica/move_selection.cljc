@@ -147,6 +147,16 @@
        (filter #(current-player-piece? db %))
        vec))
 
+(defn- current-player-territory-source-indexes [db]
+  (->> (current-player-pieces db)
+       (keep :space-index)
+       set))
+
+(defn- current-player-territory-source-options [db]
+  (let [owned-spaces (current-player-territory-source-indexes db)]
+    (filterv #(contains? owned-spaces (:index %))
+             (board db))))
+
 (defn hand-card-by-id [db card-id]
   (some #(when (= card-id (:id %)) %)
         (current-player-hand db)))
@@ -1718,8 +1728,12 @@
       (get-in turn-action-result [:error :message])
 
       (= :activate-territory source-id)
-      (when-not (seq owned-pieces)
-        "The current player has no pieces on the board.")
+      (cond
+        (empty? owned-pieces)
+        "The current player has no pieces on the board."
+
+        (empty? (current-player-territory-source-indexes db))
+        "The current player has no pieces on a territory.")
 
       (= :play-hand-card source-id)
       (cond
@@ -3582,6 +3596,13 @@
       (= :activate-territory source)
       (let [source-index (:source-board-index params)]
         (cond
+          (nil? (:space-index piece))
+          (update-move-selection db assoc
+                                 :error
+                                 (move-error :piece-outside-source-territory
+                                             "Choose a minion on a territory."
+                                             {:piece-id piece-id}))
+
           (nil? source-index)
           (-> db
               (update-move-selection-success assoc-in [:params :source-board-index] (:space-index piece))
@@ -4505,9 +4526,7 @@
     []))
 
 (defn move-source-board-options [db]
-  (let [owned-spaces (set (map :space-index (current-player-pieces db)))]
-    (filterv #(contains? owned-spaces (:index %))
-             (board db))))
+  (current-player-territory-source-options db))
 
 (defn move-target-board-options [db]
   (let [{:keys [source params]} (move-selection db)]

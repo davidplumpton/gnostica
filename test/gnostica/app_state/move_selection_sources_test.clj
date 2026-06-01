@@ -28,6 +28,15 @@
                                                 deck-with-card-at
                                                 deck-with-cards-at]]))
 
+(def rose-wasteland-piece
+  {:id :rose-wasteland-scout
+   :player-id :rose
+   :space {:kind :wasteland
+           :row 0
+           :col 3}
+   :size :small
+   :orientation :north})
+
 (deftest activating-a-board-territory-uses-board-and-piece-selections
   (let [deck-order (deck-with-card-at (board-card-position test-player-specs 0)
                                       "cups2")
@@ -64,6 +73,35 @@
     (is (game-schema/valid-game? (app-state/game confirmed-db)))
     (is (= :source (:stage (app-state/move-selection confirmed-db))))
     (is (:ok? (get-in confirmed-db [:move-selection :last-result])))))
+
+(deftest activate-territory-requires-an-owned-piece-on-a-territory
+  (let [db (app-state/initialize {:player-specs test-player-specs
+                                  :game-options {:shuffle-fn identity}
+                                  :demo-board-pieces [rose-wasteland-piece]})
+        activate-option (source-option db :activate-territory)
+        source-db (app-state/select-move-source db :activate-territory)
+        stale-piece-db (-> db
+                           (assoc :move-selection
+                                  {:stage :piece
+                                   :source :activate-territory
+                                   :params {}
+                                   :error nil
+                                   :last-result nil})
+                           (app-state/select-move-piece :rose-wasteland-scout))]
+    (is (empty? (app-state/move-source-board-options db)))
+    (is (not (:enabled? activate-option)))
+    (is (= "The current player has no pieces on a territory."
+           (:reason activate-option)))
+    (is (:enabled? (source-option db :play-hand-card)))
+    (is (= :move-source-unavailable
+           (get-in source-db [:move-selection :error :code])))
+    (is (= {}
+           (app-state/move-params source-db)))
+    (is (= :piece-outside-source-territory
+           (get-in stale-piece-db [:move-selection :error :code])))
+    (is (nil? (get-in stale-piece-db
+                      [:move-selection :params :source-board-index])))))
+
 (deftest playing-a-hand-card-stages-card_piece_and_target
   (let [db (app-state/initialize {:player-specs test-player-specs
                                   :game-options {:deck-order (deck-starting-with ["cups2"])}
