@@ -612,14 +612,24 @@
    [:message NonBlankString]
    [:data :any]])
 
-(def FailureResult
-  [:map
-   [:ok? [:= false]]
-   [:error ErrorShape]])
+(def StateSuccessResult
+  (closed-map
+   [:ok? [:= true]]
+   [:state :map]
+   [:events [:vector :map]]))
+
+(def CommandValidationSuccessResult
+  (closed-map
+   [:ok? [:= true]]
+   [:command :map]))
 
 (def SuccessResult
-  [:map
-   [:ok? [:= true]]])
+  [:or StateSuccessResult CommandValidationSuccessResult])
+
+(def FailureResult
+  (closed-map
+   [:ok? [:= false]]
+   [:error ErrorShape]))
 
 (def Result
   [:or SuccessResult FailureResult])

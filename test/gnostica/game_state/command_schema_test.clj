@@ -276,11 +276,29 @@
 
 (deftest structured-result-contract-covers-public-result-maps
   (let [create-result (game-state/create-game player-specs {:shuffle-fn identity})
+        command-result (game-state/validate-command :draw
+                                                    {:player-id :rose
+                                                     :draw-count 0})
         failure-result (game-state/failure :example
                                            "Example failure."
                                            {:field :value})]
     (is (game-state/valid-result? create-result))
+    (is (game-state/valid-result? command-result))
     (is (game-state/valid-result? failure-result))
+    (is (nil? (game-state/explain-result create-result)))
+    (is (nil? (game-state/explain-result command-result)))
     (is (nil? (game-state/explain-result failure-result)))
+    (is (false? (game-state/valid-result? {:ok? true})))
+    (is (false? (game-state/valid-result? {:ok? true
+                                           :events []})))
+    (is (false? (game-state/valid-result? {:ok? true
+                                           :state nil
+                                           :events []})))
+    (is (false? (game-state/valid-result? {:ok? true
+                                           :state (:state create-result)
+                                           :events :not-vector})))
+    (is (false? (game-state/valid-result? {:ok? true
+                                           :state (:state create-result)
+                                           :events [::not-an-event-map]})))
     (is (false? (game-state/valid-result? {:ok? false
                                            :error {:code :missing-message}})))))
