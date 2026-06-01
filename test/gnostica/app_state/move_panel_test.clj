@@ -228,6 +228,38 @@
            (action-ribbon-step-summary (app-state/move-panel-view ready-db))))
     (is (true? (get-in (app-state/move-panel-view ready-db)
                        [:action-ribbon :ready?])))))
+
+(deftest move-panel-confirm-actions-stay-canonical-for-action-ribbon-flows
+  (let [db (app-state/initialize
+            {:player-specs test-player-specs
+             :game-options {:deck-order (deck-starting-with ["empress"])}
+             :demo-board-pieces [rose-hand-piece]})
+        power-db (-> db
+                     (app-state/select-move-source :play-hand-card)
+                     (app-state/select-move-hand-card "empress")
+                     (app-state/select-move-piece :rose-striker)
+                     (app-state/select-move-power :empress))
+        orient-db (app-state/set-move-minion-orientation power-db :north)
+        target-db (app-state/select-board-card orient-db 5)
+        ready-db (app-state/set-move-orientation target-db :north)
+        power-view (app-state/move-panel-view power-db)
+        ready-view (app-state/move-panel-view ready-db)]
+    (is (true? (get-in power-view [:action-ribbon :visible?])))
+    (is (= {:visible? true
+            :can-cancel? true
+            :can-confirm? false}
+           (:actions power-view)))
+    (is (= {:visible? true
+            :can-cancel? true
+            :can-confirm? true}
+           (:actions ready-view)))
+    (is (= (:ready? power-view)
+           (get-in power-view [:action-ribbon :ready?])))
+    (is (= (:ready? ready-view)
+           (get-in ready-view [:action-ribbon :ready?])))
+    (is (not (contains? (:action-ribbon ready-view) :actions)))
+    (is (not (contains? (:action-ribbon ready-view) :can-confirm?)))))
+
 (deftest action-ribbon-represents-trade-only-major-paths
   (let [justice-db (app-state/initialize
                     {:player-specs test-player-specs

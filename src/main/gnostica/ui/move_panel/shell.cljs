@@ -6,10 +6,12 @@
             [re-frame.core :as rf]))
 
 (defn move-panel []
-  (let [{:keys [current-player selection source-options prompt ready? controls
-                control-groups action-ribbon direct-manipulation]}
+  (let [{:keys [current-player selection source-options prompt controls
+                control-groups action-ribbon direct-manipulation
+                actions]}
         @(rf/subscribe [events/move-panel-view])
-        {:keys [source error]} selection]
+        {:keys [source error]} selection
+        {:keys [can-cancel? can-confirm?]} actions]
     [:section.move-panel
      {:id "move-panel"
       :class (if source "is-active" "is-idle")}
@@ -27,7 +29,7 @@
         "Close"]]]
      [source/move-source-picker source-options source current-player direct-manipulation]
      [:p.move-panel__prompt prompt]
-     [ribbon/action-ribbon-view action-ribbon {:actions? true}]
+     [ribbon/action-ribbon-view action-ribbon]
      (when source
        [controls/active-controls selection controls control-groups])
      (when error
@@ -38,10 +40,11 @@
        [:div.move-actions
         [:button.move-action
          {:type "button"
+          :disabled (not can-cancel?)
           :on-click #(rf/dispatch [events/cancel-move])}
          "Cancel"]
         [:button.move-action.is-primary
          {:type "button"
-          :disabled (not ready?)
+          :disabled (not can-confirm?)
           :on-click #(rf/dispatch [events/confirm-move])}
          "Confirm"]])]))

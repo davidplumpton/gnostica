@@ -272,6 +272,9 @@
      :source-options source-options
      :prompt prompt
      :ready? ready?
+     :actions {:visible? (boolean (:source selection))
+               :can-cancel? (boolean (:source selection))
+               :can-confirm? (boolean (and (:source selection) ready?))}
      :control-groups control-groups
      :action-ribbon action-ribbon
      :direct-manipulation (db/normalize-direct-manipulation
