@@ -1,4 +1,4 @@
-(ns gnostica.game-state.command-schema
+(ns gnostica.game-state.command-contracts
   (:require [clojure.string :as str]
             [gnostica.pieces :as pieces]
             [malli.core :as m]

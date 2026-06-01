@@ -1,5 +1,5 @@
 (ns gnostica.game-state
-  (:require [gnostica.game-state.command-schema :as command-schema]
+  (:require [gnostica.game-state.command-contracts :as command-contracts]
             [gnostica.game-state.composite :as composite]
             [gnostica.game-state.core :as core]
             [gnostica.game-state.cup :as cup]
@@ -24,28 +24,28 @@
 (def required-player-fields core/required-player-fields)
 (def required-card-fields core/required-card-fields)
 
-(def command-schemas command-schema/command-schemas)
+(def command-schemas command-contracts/command-schemas)
 
 (defn command-schema [command-kind]
-  (command-schema/command-schema command-kind))
+  (command-contracts/command-schema command-kind))
 
 (defn known-command-kinds []
-  (command-schema/known-command-kinds))
+  (command-contracts/known-command-kinds))
 
 (defn valid-command? [command-kind command]
-  (command-schema/valid-command? command-kind command))
+  (command-contracts/valid-command? command-kind command))
 
 (defn explain-command [command-kind command]
-  (command-schema/explain-command command-kind command))
+  (command-contracts/explain-command command-kind command))
 
 (defn validate-command [command-kind command]
-  (command-schema/validate-command command-kind command))
+  (command-contracts/validate-command command-kind command))
 
 (defn valid-result? [result]
-  (command-schema/valid-result? result))
+  (command-contracts/valid-result? result))
 
 (defn explain-result [result]
-  (command-schema/explain-result result))
+  (command-contracts/explain-result result))
 
 (defn success
   ([state]
