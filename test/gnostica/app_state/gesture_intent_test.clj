@@ -622,6 +622,88 @@
            (app-state/move-command pending-db)))
     (is (true? (:can-confirm? (app-state/pending-move-tray-view
                                pending-db))))))
+(deftest pending-initial-placement-orientation-keys-update-after-drop
+  (let [db (app-state/initialize {:player-specs test-player-specs
+                                  :game-options {:shuffle-fn identity}
+                                  :demo-board-pieces []})
+        source-input {:source {:kind :stash-piece
+                               :player-id :rose
+                               :size :small}}
+        source-only-db (app-state/start-gesture-intent db source-input)
+        ignored-source-result
+        (app-state/pending-placement-orientation-result
+         source-only-db
+         (gesture-input/orientation-key-request {:key "ArrowRight"}))
+        target-db (app-state/start-gesture-intent
+                   db
+                   (assoc source-input
+                          :target {:kind :wasteland
+                                   :row 0
+                                   :col 3}))
+        east-result (app-state/pending-placement-orientation-result
+                     target-db
+                     (gesture-input/orientation-key-request {:key "ArrowRight"}))
+        east-db (app-state/set-pending-placement-orientation target-db
+                                                             east-result)
+        east-tray (app-state/pending-move-tray-view east-db)
+        east-preview (:move-preview (app-state/board-view east-db))
+        east-detailed-db (app-state/open-gesture-detailed-entry east-db)
+        south-result (app-state/pending-placement-orientation-result
+                      east-db
+                      (gesture-input/orientation-key-request {:key "O"}))
+        south-db (app-state/set-pending-placement-orientation east-db
+                                                              south-result)
+        confirmed-db (app-state/confirm-move south-db)
+        ignored-confirmed-result
+        (app-state/pending-placement-orientation-result
+         confirmed-db
+         (gesture-input/orientation-key-request {:key "ArrowLeft"}))
+        ignored-confirmed-db
+        (app-state/set-pending-placement-orientation confirmed-db
+                                                     {:orientation :west})
+        created-piece (piece-by-id confirmed-db :rose-small-1)]
+    (is (nil? ignored-source-result))
+    (is (= :orientation (:stage (app-state/move-selection target-db))))
+    (is (= {:handled? true
+            :accepted? true
+            :orientation :east}
+           east-result))
+    (is (= {:target-wasteland {:kind :wasteland
+                               :row 0
+                               :col 3}
+            :orientation :east}
+           (app-state/move-params east-db)))
+    (is (= {:source :place-initial-small
+            :player-id :rose
+            :target {:kind :wasteland
+                     :row 0
+                     :col 3}
+            :orientation :east}
+           (app-state/move-command east-db)))
+    (is (= (app-state/move-command east-db)
+           (:preview-command east-tray)))
+    (is (= :east
+           (get-in east-preview [:placement :orientation])))
+    (is (= {:field :orientation
+            :selected-orientation :east}
+           (select-keys (:orientation-compass east-preview)
+                        [:field :selected-orientation])))
+    (is (= [{:type :target-space}
+            {:type :orientation}]
+           (move-control-group-summary east-detailed-db)))
+    (is (= :east
+           (get-in (app-state/move-panel-view east-detailed-db)
+                   [:selection :params :orientation])))
+    (is (= {:handled? true
+            :accepted? true
+            :orientation :south}
+           south-result))
+    (is (= :south (:orientation (app-state/move-command south-db))))
+    (is (:ok? (get-in confirmed-db [:move-selection :last-result])))
+    (is (= :south (:orientation created-piece)))
+    (is (nil? ignored-confirmed-result))
+    (is (= confirmed-db ignored-confirmed-db))
+    (is (game-schema/valid-game? (app-state/game confirmed-db)))))
 (deftest gesture-intent-stages-direct-rod-piece-movement
   (let [enemy-db (app-state/initialize
                   {:player-specs test-player-specs

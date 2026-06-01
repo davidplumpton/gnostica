@@ -11,6 +11,9 @@
 (def set-gesture-drag-orientation-event
   :gnostica.app/set-gesture-drag-orientation)
 
+(def set-pending-placement-orientation-event
+  :gnostica.app/set-pending-placement-orientation)
+
 (defonce global-shortcut-listener
   (atom nil))
 
@@ -30,6 +33,13 @@
    :ctrl? (.-ctrlKey event)
    :meta? (.-metaKey event)})
 
+(defn- dispatch-orientation-change! []
+  (.dispatchEvent js/window
+                  (js/CustomEvent.
+                   gesture-input/orientation-change-event
+                   #js {:bubbles false
+                        :cancelable false})))
+
 (defn- handle-drag-orientation-key! [event]
   (when-let [request (gesture-input/orientation-key-request (event-info event))]
     (when-let [input (gesture-input/active-gesture-input)]
@@ -42,13 +52,20 @@
         (when-let [orientation (:orientation result)]
           (gesture-input/set-active-gesture-input!
            (gesture-input/with-drag-orientation input orientation)))
-        (.dispatchEvent js/window
-                        (js/CustomEvent.
-                         gesture-input/orientation-change-event
-                         #js {:bubbles false
-                              :cancelable false}))
+        (dispatch-orientation-change!)
         (rf/dispatch [set-gesture-drag-orientation-event result])
         true))))
+
+(defn- handle-pending-placement-orientation-key! [event]
+  (when-let [request (gesture-input/orientation-key-request (event-info event))]
+    (when-let [result (app-state/pending-placement-orientation-result
+                       @rf-db/app-db
+                       request)]
+      (.preventDefault event)
+      (.stopPropagation event)
+      (dispatch-orientation-change!)
+      (rf/dispatch [set-pending-placement-orientation-event result])
+      true)))
 
 (defn uninstall! []
   (when-let [listener @global-shortcut-listener]
@@ -63,6 +80,7 @@
   (let [listener (fn [event]
                    (when-not (editable-target? (.-target event))
                      (or (handle-drag-orientation-key! event)
+                         (handle-pending-placement-orientation-key! event)
                          (when-let [shortcut-event (shortcuts/global-shortcut-event
                                                     (event-info event))]
                            (.preventDefault event)

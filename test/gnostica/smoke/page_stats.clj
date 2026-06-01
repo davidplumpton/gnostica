@@ -346,6 +346,11 @@
      const confirm = buttonByText('Confirm');
      const cancel = buttonByText('Cancel');
      const detailed = buttonByText('Detailed entry');
+     const steps = Array.from(document.querySelectorAll('.move-panel .move-step'));
+     const orientationStep = steps.find((step) => text(step.querySelector('.move-step__header span')) === 'Orientation');
+     const selectedOrientation = orientationStep
+       ? orientationStep.querySelector('button.move-chip[aria-pressed=\"true\"]')
+       : null;
      return {
        active: Boolean(tray),
        status: text(document.querySelector('.pending-move-tray__status')),
@@ -359,6 +364,7 @@
        detailedPressed: detailed ? detailed.getAttribute('aria-pressed') : null,
        panelOpen: Boolean(panel),
        panelActive: Boolean(panel && panel.classList.contains('is-active')),
+       selectedOrientation: text(selectedOrientation),
        boardPointerDragEnabled: board ? board.dataset.pointerDragEnabled === 'true' : null,
        fallbackPointerDragEnabled: stage ? stage.dataset.pointerDragEnabled === 'true' : null
      };
@@ -513,6 +519,7 @@
        cssWastelands: document.querySelectorAll('.board-fallback .board-wasteland').length,
        pieceCount: document.querySelectorAll('.board-fallback .board-piece').length,
        northPieceCount: document.querySelectorAll('.board-fallback .board-piece.is-north').length,
+       eastPieceCount: document.querySelectorAll('.board-fallback .board-piece.is-east').length,
        smallPieceCount: document.querySelectorAll('.board-fallback .board-piece.is-small').length,
        rosePieceCount: document.querySelectorAll('.board-fallback .board-piece[data-piece-id^=\"rose-\"]').length,
        pendingActive: Boolean(document.querySelector('.pending-move-tray')),
@@ -768,21 +775,6 @@
 	       }));
 	     }));
 	   }))()")
-
-(def choose-north-orientation-js
-  "(() => {
-     const text = (node) => node ? node.textContent.trim() : '';
-     const steps = Array.from(document.querySelectorAll('.move-panel .move-step'));
-     const step = steps.find((node) => text(node.querySelector('.move-step__header span')) === 'Orientation');
-     const choices = Array.from(step ? step.querySelectorAll('button.move-chip') : []);
-     const north = choices.find((button) => text(button) === 'North');
-     if (north) north.click();
-     return {
-       selected: Boolean(north),
-       stepText: text(step),
-       choiceLabels: choices.map(text)
-     };
-   })()")
 
 (def confirm-pending-move-js
   "(() => {
@@ -1180,6 +1172,13 @@
        (true? (get stats "panelOpen"))
        (true? (get stats "panelActive"))))
 
+(defn pending-tray-ready-detailed-east? [stats]
+  (and (pending-tray-ready? stats)
+       (= "true" (get stats "detailedPressed"))
+       (true? (get stats "panelOpen"))
+       (true? (get stats "panelActive"))
+       (= "East" (get stats "selectedOrientation"))))
+
 (defn- first-piece-source-icon-ready? [stats]
   (and (= "small-pyramid" (get stats "firstPieceSourceIconShape"))
        (str/includes? (or (get stats "firstPieceSourceIconClipPath") "")
@@ -1218,7 +1217,7 @@
   (and (true? (get stats "fallback"))
        (false? (get stats "canvas"))
        (= 1 (long (or (get stats "pieceCount") -1)))
-       (= 1 (long (or (get stats "northPieceCount") -1)))
+       (= 1 (long (or (get stats "eastPieceCount") -1)))
        (= 1 (long (or (get stats "smallPieceCount") -1)))
        (= 1 (long (or (get stats "rosePieceCount") -1)))
        (false? (get stats "pendingActive"))

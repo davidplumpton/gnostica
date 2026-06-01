@@ -93,6 +93,27 @@
        :accepted? false
        :error (gesture-drag-orientation-error input)})))
 
+(defn- pending-placement-orientation-available? [app-db]
+  (let [intent (gesture-intent app-db)
+        {:keys [source params]} (move-selection/move-selection app-db)]
+    (and (true? (:active? intent))
+         (= :place-initial-small (:move-source intent))
+         (= :place-initial-small source)
+         (not (move-selection/turn-action-consumed? app-db))
+         (or (some? (:target-board-index params))
+             (some? (:target-wasteland params))))))
+
+(defn pending-placement-orientation-result [app-db request]
+  (when (and request
+             (pending-placement-orientation-available? app-db))
+    (when-let [orientation (gesture-input/orientation-request->orientation
+                            (get-in app-db
+                                    [:move-selection :params :orientation])
+                            request)]
+      {:handled? true
+       :accepted? true
+       :orientation orientation})))
+
 (defn set-gesture-drag-orientation [app-db {:keys [orientation error]}]
   (cond
     orientation
@@ -104,4 +125,12 @@
     (assoc-in app-db [:gesture-intent :error] error)
 
     :else
+    app-db))
+
+(defn set-pending-placement-orientation [app-db {:keys [orientation]}]
+  (if (and orientation
+           (pending-placement-orientation-available? app-db))
+    (-> app-db
+        (move-selection/set-move-orientation orientation)
+        gesture-intent/refresh-gesture-intent)
     app-db))

@@ -121,11 +121,6 @@
     (throw (ex-info (str description " was not clicked.")
                     {:result result}))))
 
-(defn- assert-selected! [description result]
-  (when-not (true? (get result "selected"))
-    (throw (ex-info (str description " was not selected.")
-                    {:result result}))))
-
 (defn- assert-touch-input! [description result ready?]
   (when-not (ready? result)
     (throw (ex-info (str description " did not produce touch input events.")
@@ -373,19 +368,17 @@
                                          "CSS initial-placement pending tray"
                                          stats/pending-tray-stats-js
                                          stats/pending-tray-needs-choice-ready?)]
-          (browser/evaluate! client stats/open-detailed-entry-js)
-          (browser/wait-for! client
-                             "CSS initial-placement Detailed entry"
-                             stats/pending-tray-stats-js
-                             stats/pending-tray-detailed-open-ready?)
-          (let [orientation-result (browser/evaluate! client
-                                                      stats/choose-north-orientation-js)]
-            (assert-selected! "North orientation" orientation-result)
-            (let [ready (browser/wait-for! client
-                                           "CSS initial-placement ready tray"
-                                           stats/pending-tray-stats-js
-                                           stats/pending-tray-ready?)
-                  confirm-result (browser/evaluate! client
+          (browser/dispatch-arrow-right-key! client)
+          (let [ready (browser/wait-for! client
+                                         "CSS initial-placement pending hotkey ready tray"
+                                         stats/pending-tray-stats-js
+                                         stats/pending-tray-ready?)]
+            (browser/evaluate! client stats/open-detailed-entry-js)
+            (browser/wait-for! client
+                               "CSS initial-placement Detailed entry after hotkey"
+                               stats/pending-tray-stats-js
+                               stats/pending-tray-ready-detailed-east?)
+            (let [confirm-result (browser/evaluate! client
                                                     stats/confirm-pending-move-js)]
               (assert-clicked! "CSS initial-placement Confirm" confirm-result)
               (let [confirmed (browser/wait-for! client
@@ -394,7 +387,6 @@
                                                  stats/direct-drop-confirmed?)]
                 {:drop-result drop-result
                  :pending pending
-                 :orientation-result orientation-result
                  :ready ready
                  :confirm-result confirm-result
                  :confirmed confirmed})))))

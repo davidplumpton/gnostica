@@ -59,6 +59,7 @@
 (def cancel-gesture-intent ids/cancel-gesture-intent)
 (def open-gesture-detailed-entry ids/open-gesture-detailed-entry)
 (def set-gesture-drag-orientation ids/set-gesture-drag-orientation)
+(def set-pending-placement-orientation ids/set-pending-placement-orientation)
 (def set-detailed-entry-default ids/set-detailed-entry-default)
 (def end-turn ids/end-turn)
 (def announce-challenge ids/announce-challenge)

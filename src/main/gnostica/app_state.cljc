@@ -211,6 +211,9 @@
 (def select-board-card gestures/select-board-card)
 (def gesture-drag-orientation-result gestures/gesture-drag-orientation-result)
 (def set-gesture-drag-orientation gestures/set-gesture-drag-orientation)
+(def pending-placement-orientation-result
+  gestures/pending-placement-orientation-result)
+(def set-pending-placement-orientation gestures/set-pending-placement-orientation)
 
 (def end-turn moves/end-turn)
 

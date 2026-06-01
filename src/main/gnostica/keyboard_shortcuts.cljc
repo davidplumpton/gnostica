@@ -24,7 +24,7 @@
    {:id :cycle-drag-orientation
     :scope :direct-manipulation
     :keys ["O"]
-    :command "Cycle dragged piece orientation"}
+    :command "Cycle dragged or pending piece orientation"}
    {:id :pan-board-view
     :scope :board
     :keys ["W/A/S/D" "Arrow keys"]
