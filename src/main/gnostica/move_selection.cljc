@@ -369,9 +369,9 @@
               :cup)
     :chariot :rod
     :hanged-man (let [action-count (selected-hand-trade-major-action-count
-                                     db
-                                     source-id
-                                     params)
+                                    db
+                                    source-id
+                                    params)
                       completed-count (completed-major-action-count params)]
                   (when (< completed-count action-count)
                     (if (= 1 action-count)
@@ -458,9 +458,9 @@
   (and piece
        (= :push-piece (:rod-mode params))
        (let [candidate-params (assoc params
-                                      :rod-mode :push-piece
-                                      :target-piece-id (:id piece)
-                                      :distance 1)]
+                                     :rod-mode :push-piece
+                                     :target-piece-id (:id piece)
+                                     :distance 1)]
          (rod-command-resolves?
           db
           source-id
@@ -475,9 +475,9 @@
   (and cell
        (= :push-territory (:rod-mode params))
        (let [candidate-params (assoc params
-                                      :rod-mode :push-territory
-                                      :target-board-index (:index cell)
-                                      :distance 1)]
+                                     :rod-mode :push-territory
+                                     :target-board-index (:index cell)
+                                     :distance 1)]
          (rod-command-resolves?
           db
           source-id
@@ -644,24 +644,24 @@
   (and piece
        (= :piece (:disc-target-kind params))
        (let [candidate-params (assoc params
-                                      :disc-target-kind :piece
-                                      :target-piece-id (:id piece))]
-        (disc-command-resolves?
-         db
-         source-id
-         candidate-params
-         (commands/disc-resolver-command
-          (command-context)
+                                     :disc-target-kind :piece
+                                     :target-piece-id (:id piece))]
+         (disc-command-resolves?
           db
           source-id
-          candidate-params)))))
+          candidate-params
+          (commands/disc-resolver-command
+           (command-context)
+           db
+           source-id
+           candidate-params)))))
 
 (defn- disc-territory-target? [db source-id params cell]
   (and cell
        (= :territory (:disc-target-kind params))
        (let [candidate-params (assoc params
-                                      :disc-target-kind :territory
-                                      :target-board-index (:index cell))]
+                                     :disc-target-kind :territory
+                                     :target-board-index (:index cell))]
          (disc-command-resolves?
           db
           source-id
@@ -717,8 +717,8 @@
              [])
            (filter #(and (card-worth-disc-actions-more?
                           %
-                         original-card
-                         (selected-disc-action-count db source-id params))
+                          original-card
+                          (selected-disc-action-count db source-id params))
                          (or (not= :hand replacement-source)
                              (not= source-card-id (:id %)))))
            vec))))
@@ -797,9 +797,9 @@
   (and piece
        (= :piece (:sword-target-kind params))
        (let [candidate-params (assoc params
-                                      :sword-target-kind :piece
-                                      :target-piece-id (:id piece)
-                                      :damage 1)]
+                                     :sword-target-kind :piece
+                                     :target-piece-id (:id piece)
+                                     :damage 1)]
          (sword-command-resolves?
           db
           source-id
@@ -814,9 +814,9 @@
   (and cell
        (= :territory (:sword-target-kind params))
        (let [candidate-params (assoc params
-                                      :sword-target-kind :territory
-                                      :target-board-index (:index cell)
-                                      :damage 1)]
+                                     :sword-target-kind :territory
+                                     :target-board-index (:index cell)
+                                     :damage 1)]
          (sword-command-resolves?
           db
           source-id
@@ -876,7 +876,7 @@
            (filter #(and (card-worth-sword-damage-less?
                           %
                           original-card
-                         damage)
+                          damage)
                          (or (not= :hand replacement-source)
                              (not= source-card-id (:id %)))))
            vec))))
@@ -1235,8 +1235,8 @@
   (and piece
        (= :piece (selected-sun-disc-mode db source-id params))
        (let [candidate-params (assoc params
-                                      :sun-disc-mode :piece
-                                      :sun-disc-target-piece-id (:id piece))]
+                                     :sun-disc-mode :piece
+                                     :sun-disc-target-piece-id (:id piece))]
          (sun-disc-command-resolves?
           db
           source-id
@@ -1251,8 +1251,8 @@
   (and cell
        (= :territory (selected-sun-disc-mode db source-id params))
        (let [candidate-params (assoc params
-                                      :sun-disc-mode :territory
-                                      :sun-disc-target-board-index (:index cell))]
+                                     :sun-disc-mode :territory
+                                     :sun-disc-target-board-index (:index cell))]
          (sun-disc-command-resolves?
           db
           source-id
@@ -2218,9 +2218,9 @@
              :territory
              (concat [:target-board-index]
                      (when (< 1 (count (disc-replacement-card-source-option-ids
-                                         db
-                                         source-id
-                                         params)))
+                                        db
+                                        source-id
+                                        params)))
                        [:replacement-card-source])
                      [:replacement-card-id])
              []))))
@@ -2811,7 +2811,6 @@
                  stage
                  "Complete the move selection."))))
 
-
 (defn- ribbon-context []
   (ribbon/make-context
    {:active-power active-power
@@ -2851,7 +2850,6 @@
 
 (defn move-action-ribbon [db]
   (ribbon/move-action-ribbon (ribbon-context) db))
-
 
 (defn select-move-source [db source-id]
   (let [reason (source-unavailable-reason db source-id)]
@@ -3420,8 +3418,8 @@
                                                "Choose a territory with one of the current player's pieces."
                                                {:board-index index}))))
 
-      :play-hand-card
-      (cond
+        :play-hand-card
+        (cond
           (= :world-copy (:stage (move-selection db)))
           (select-move-world-copy db index)
 
@@ -3691,9 +3689,9 @@
       (update-move-selection db assoc
                              :error
                              (move-error :invalid-disc-action-count
-                                     "Choose a supported Disc action count."
-                                     {:action-count action-count
-                                      :options options})))))
+                                         "Choose a supported Disc action count."
+                                         {:action-count action-count
+                                          :options options})))))
 
 (defn set-move-sword-action-count [db action-count]
   (let [{:keys [source params]} (move-selection db)
@@ -4702,7 +4700,6 @@
     :empty-move-selection empty-move-selection
     :game-turn-key game-turn-key}))
 
-
 (declare move-preview-result)
 
 (defn- preview-context []
@@ -4741,7 +4738,6 @@
 
 (defn move-preview [db]
   (preview/move-preview (preview-context) db))
-
 
 (defn move-preview-result
   ([db] (move-preview-result db {}))

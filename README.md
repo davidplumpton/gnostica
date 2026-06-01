@@ -18,6 +18,8 @@ The shadow-cljs dev server serves the app at `http://localhost:8080/index.html`.
 
 For the released Ring server path, run `clojure -M:release` first. `clojure -M:server` serves the existing files under `src/main/resources`, including the compiled browser bundle at `src/main/resources/js/main.js`; it does not rebuild stale or missing JavaScript assets.
 
+Run `clojure -M:lint` to verify clj-kondo warning/error findings and cljfmt formatting across `src/main`, `test`, `deps.edn`, and `shadow-cljs.edn`. The generated browser bundle under `src/main/resources/js` is excluded from these source checks.
+
 The browser runtime loads Three.js and OrbitControls from pinned `three@0.128.0` CDN scripts with SRI hashes and `crossorigin="anonymous"` before the compiled ClojureScript bundle. This keeps browser builds npm-free while still exposing the global `THREE` and `THREE.OrbitControls` values used by the `gnostica.three-board` renderer. The re-frame initialization boundary captures the runtime capability status into app-db, and the board view-model enables the 3D renderer only when `THREE.REVISION` is `"128"` and OrbitControls is present.
 
 ## 3D Board View
@@ -87,6 +89,7 @@ Gameplay rule examples live in Gherkin-style `.feature` files under `features/` 
 For the 3D board slice, run:
 
 ```sh
+clojure -M:lint
 clojure -M:test
 clojure -M:release
 clojure -M:smoke
@@ -104,6 +107,7 @@ The smoke checks also assert that the current-player card zones are present in t
 clojure -M:dev       # start the ClojureScript watcher
 clojure -M:release   # compile an optimized browser build
 clojure -M:server    # serve existing released assets with Clojure/Ring
+clojure -M:lint      # run clj-kondo and cljfmt source verification
 clojure -M:test      # run Clojure tests and gameplay feature scenarios
 clojure -M:smoke     # run the headless Chrome 3D board smoke check
 ```

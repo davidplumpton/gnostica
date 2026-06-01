@@ -1,0 +1,4 @@
+{:paths ["src/main" "test" "deps.edn" "shadow-cljs.edn"]
+ :file-pattern #re "\\.(clj[csx]?|edn)$"
+ :ansi? false
+ :parallel? false}

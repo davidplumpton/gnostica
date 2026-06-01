@@ -46,11 +46,11 @@
   ([state command spec power]
    (apply-specific-major-sequence state command spec power {}))
   ([state command spec power {:keys [source-opts]}]
-  (major/apply-major-sequence state
-                              (command-with-single-action command power)
-                              (cond-> spec
-                                source-opts
-                                (assoc :source-opts source-opts)))))
+   (major/apply-major-sequence state
+                               (command-with-single-action command power)
+                               (cond-> spec
+                                 source-opts
+                                 (assoc :source-opts source-opts)))))
 
 (defn- invalid-target-piece [target message]
   (core/failure :invalid-target-piece
@@ -496,11 +496,11 @@
                          :enemy-piece-ids (mapv :id enemy-pieces)})
           (let [destination (:destination destination-result)
                 moved-territory (assoc target-cell
-                                        :row (:row destination)
-                                        :col (:col destination)
-                                        :orientation (board/orientation-for
-                                                      (:row destination)
-                                                      (:col destination)))
+                                       :row (:row destination)
+                                       :col (:col destination)
+                                       :orientation (board/orientation-for
+                                                     (:row destination)
+                                                     (:col destination)))
                 event {:type :hermit/territory-moved
                        :player-id player-id
                        :source (core/source-summary (:action-source context))
@@ -515,12 +515,12 @@
                                (core/move-territory-cell (:index target-cell)
                                                          (:row destination)
                                                          (:col destination))
-                              (core/move-wasteland-pieces-to-board-index
-                               (:row destination)
-                               (:col destination)
-                               (:index target-cell))
-                              (core/return-void-pieces-to-stash)
-                              (core/append-history event))]
+                               (core/move-wasteland-pieces-to-board-index
+                                (:row destination)
+                                (:col destination)
+                                (:index target-cell))
+                               (core/return-void-pieces-to-stash)
+                               (core/append-history event))]
             (core/success next-state [event])))))))
 
 (defn- apply-hermit-action [state context action]
@@ -579,14 +579,14 @@
   ([state command source-card-id]
    (apply-devil-move-with-source-card-id state command source-card-id {}))
   ([state command source-card-id {:keys [source-opts]}]
-  (major/apply-major-sequence
-   state
-   (command-with-orientation-actions command)
-   (cond-> {:card-id source-card-id
-            :power-order [:orient-target :orient-target :orient-target]
-            :apply-action-fn apply-devil-action}
-     source-opts
-     (assoc :source-opts source-opts)))))
+   (major/apply-major-sequence
+    state
+    (command-with-orientation-actions command)
+    (cond-> {:card-id source-card-id
+             :power-order [:orient-target :orient-target :orient-target]
+             :apply-action-fn apply-devil-action}
+      source-opts
+      (assoc :source-opts source-opts)))))
 
 (defn apply-devil-move [state command]
   (apply-devil-move-with-source-card-id state command "devil"))

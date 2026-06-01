@@ -35,10 +35,10 @@
                   :fool {:player-id :rose
                          :source major-hand-source
                          :reveals [{} {:power :cup
-                                        :piece-id :rose-minion
-                                        :play-command {:target {:kind :territory
-                                                                :board-index 4}
-                                                       :orientation :south}}]}
+                                       :piece-id :rose-minion
+                                       :play-command {:target {:kind :territory
+                                                               :board-index 4}
+                                                      :orientation :south}}]}
                   :high-priestess {:player-id :rose
                                    :source (assoc major-hand-source
                                                   :card-id "high-priestess")
@@ -104,13 +104,13 @@
     (is (some? (get-in result [:error :data :errors])))
     (is (game-state/valid-result? result)))
   (is (false? (game-state/valid-command? :sword
-                                          {:player-id :rose
-                                           :source (assoc hand-source
-                                                          :card-id "swords2")})))
+                                         {:player-id :rose
+                                          :source (assoc hand-source
+                                                         :card-id "swords2")})))
   (is (false? (game-state/valid-command? :moon
-                                          {:player-id :rose
-                                           :source (assoc hand-source
-                                                          :card-id "moon")}))))
+                                         {:player-id :rose
+                                          :source (assoc hand-source
+                                                         :card-id "moon")}))))
 
 (deftest world-and-fool-command-contracts-validate-delegated-shapes
   (let [world-cup {:player-id :rose

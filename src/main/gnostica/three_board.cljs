@@ -163,7 +163,7 @@
           :data-board-card-count (count _cells)
           :data-major-icon-card-count (count (filter #(seq (icons/present-icon-ids
                                                             (get-in % [:card :gnostica-icons])))
-                                                      _cells))
+                                                     _cells))
           :data-major-icon-count (reduce + (map #(count (icons/present-icon-ids
                                                          (get-in % [:card :gnostica-icons])))
                                                 _cells))
@@ -180,10 +180,10 @@
                                              direct-manipulation))
           :data-detailed-entry-available (true? (:detailed-entry-available?
                                                  direct-manipulation))
-	          :data-drag-active (true? (:active? drag-preview))
-	          :data-drag-target-kind (some-> drag-preview :target :kind name)
-	          :data-drag-target-status (some-> drag-preview :target-status name)
-	          :data-drag-target-highlight-count (or (:drag-target-highlight-count state) 0)
+          :data-drag-active (true? (:active? drag-preview))
+          :data-drag-target-kind (some-> drag-preview :target :kind name)
+          :data-drag-target-status (some-> drag-preview :target-status name)
+          :data-drag-target-highlight-count (or (:drag-target-highlight-count state) 0)
           :data-drag-piece-preview-visible (true? (:visible? drag-piece-preview-meta))
           :data-drag-piece-preview-size (some-> drag-piece-preview-meta :size name)
           :data-drag-piece-preview-player-id (some-> drag-piece-preview-meta
@@ -192,7 +192,7 @@
           :data-drag-piece-preview-orientation (some-> drag-piece-preview-meta
                                                        :orientation
                                                        name)
-	          :data-move-preview-active (true? (:active? move-preview))
+          :data-move-preview-active (true? (:active? move-preview))
           :data-move-preview-status (some-> move-preview :status name)
           :data-visible-piece-count (scene-graph/visible-piece-count _cells _pieces)
           :data-piece-edge-outline-count (or (:piece-edge-outline-count state) 0)

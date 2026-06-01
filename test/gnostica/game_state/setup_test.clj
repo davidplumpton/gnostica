@@ -89,7 +89,7 @@
           :let [player-specs (mapv #(select-keys % [:id])
                                    (take player-count pieces/players))
                 {:keys [ok? state]} (game-state/create-game player-specs
-                                                             {:shuffle-fn identity})
+                                                            {:shuffle-fn identity})
                 player-ids (mapv :id (:players state))]]
     (is ok?)
     (is (= player-count (count (:players state))))
@@ -115,7 +115,7 @@
           :let [player-specs (mapv #(select-keys % [:id])
                                    (take player-count pieces/players))
                 {:keys [ok? state]} (game-state/create-game player-specs
-                                                             {:shuffle-fn identity})]]
+                                                            {:shuffle-fn identity})]]
     (is ok?)
     (is (every? #(= game-state/starting-hand-size (count (:hand %)))
                 (:players state)))
@@ -173,8 +173,8 @@
            events))))
 (deftest target-score-option-accepts-official-short-and-long-games
   (let [{:keys [ok? state]} (game-state/create-game player-specs
-                                                     {:shuffle-fn identity
-                                                      :target-score 10})
+                                                    {:shuffle-fn identity
+                                                     :target-score 10})
         invalid-result (game-state/create-game player-specs
                                                {:shuffle-fn identity
                                                 :target-score 7})]

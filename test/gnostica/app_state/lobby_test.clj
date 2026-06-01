@@ -111,8 +111,8 @@
             {:start-in-lobby? true
              :player-specs test-player-specs
              :game-options {:deck-order (deck-with-cards-at
-                                          {0 "cupsking"
-                                           6 "fool"})}})
+                                         {0 "cupsking"
+                                          6 "fool"})}})
         bidding-db (app-state/start-lobby-bidding db)
         bidding-view (app-state/lobby-view bidding-db)
         selected-db (-> bidding-db
@@ -180,9 +180,9 @@
             {:start-in-lobby? true
              :player-specs test-player-specs
              :game-options {:deck-order (deck-with-cards-at
-                                          {0 "cupsking"
-                                           1 "cupsqueen"
-                                           6 "fool"})}})
+                                         {0 "cupsking"
+                                          1 "cupsqueen"
+                                          6 "fool"})}})
         bidding-db (app-state/start-lobby-bidding db)
         selected-db (-> bidding-db
                         (app-state/select-lobby-bid-card :rose "cupsking")
@@ -220,13 +220,13 @@
             {:start-in-lobby? true
              :player-specs test-player-specs
              :game-options {:deck-order (deck-with-cards-at
-                                          {0 "cupsking"
-                                           1 "cupsqueen"
-                                           6 "fool"})}})
+                                         {0 "cupsking"
+                                          1 "cupsqueen"
+                                          6 "fool"})}})
         bidding-db (app-state/start-lobby-bidding db)
         invalid-db (app-state/select-lobby-bid-card bidding-db
-                                                     :rose
-                                                     "not-a-bid-card")
+                                                    :rose
+                                                    "not-a-bid-card")
         cleared-invalid-db (app-state/select-lobby-bid-card invalid-db
                                                             :rose
                                                             "")
@@ -264,12 +264,12 @@
             {:start-in-lobby? true
              :player-specs three-player-specs
              :game-options {:deck-order (deck-with-cards-at
-                                          {0 "cupsking"
-                                           1 "coins2"
-                                           6 "swordsking"
-                                           7 "cups3"
-                                           12 "wandsqueen"
-                                           13 "world"})}})
+                                         {0 "cupsking"
+                                          1 "coins2"
+                                          6 "swordsking"
+                                          7 "cups3"
+                                          12 "wandsqueen"
+                                          13 "world"})}})
         redrawing-db (-> db
                          app-state/start-lobby-bidding
                          (app-state/select-lobby-bid-card :rose "cupsking")
@@ -322,8 +322,8 @@
             {:start-in-lobby? true
              :player-specs test-player-specs
              :game-options {:deck-order (deck-with-cards-at
-                                          {0 "cupsking"
-                                           6 "fool"})}})
+                                         {0 "cupsking"
+                                          6 "fool"})}})
         redrawing-db (-> db
                          app-state/start-lobby-bidding
                          (app-state/select-lobby-bid-card :rose "cupsking")
@@ -414,10 +414,10 @@
             {:start-in-lobby? true
              :player-specs test-player-specs
              :game-options {:deck-order (deck-with-cards-at
-                                          {0 "cupsking"
-                                           1 "cupsqueen"
-                                           6 "swordsking"
-                                           7 "swords10"})}})
+                                         {0 "cupsking"
+                                          1 "cupsqueen"
+                                          6 "swordsking"
+                                          7 "swords10"})}})
         tie-db (-> db
                    app-state/start-lobby-bidding
                    (app-state/select-lobby-bid-card :rose "cupsking")

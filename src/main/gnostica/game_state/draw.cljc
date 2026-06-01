@@ -36,9 +36,9 @@
                      (conj drawn-cards card)
                      (or reshuffled? (:reshuffled? refresh-result)))
               (core/failure :insufficient-draw-cards
-                       "There are not enough cards available to draw."
-                       {:draw-count draw-count
-                        :drawn-count (count drawn-cards)}))))))))
+                            "There are not enough cards available to draw."
+                            {:draw-count draw-count
+                             :drawn-count (count drawn-cards)}))))))))
 
 (defn apply-draw-move [state command]
   (let [{:keys [player-id draw-count shuffle-fn]} command
@@ -47,44 +47,44 @@
     (cond
       (not (map? command))
       (core/failure :invalid-draw-command
-               "Draw moves require a command map."
-               {:command command})
+                    "Draw moves require a command map."
+                    {:command command})
 
       (nil? (get-in state [:players-by-id player-id]))
       (core/failure :unknown-player
-               "Draw moves require a participating player."
-               {:player-id player-id})
+                    "Draw moves require a participating player."
+                    {:player-id player-id})
 
       (not (core/current-player-id? state player-id))
       (core/failure :not-current-player
-               "Only the current player can apply a draw move."
-               {:player-id player-id
-                :current-player-id (get-in state [:turn :current-player-id])})
+                    "Only the current player can apply a draw move."
+                    {:player-id player-id
+                     :current-player-id (get-in state [:turn :current-player-id])})
 
       (not (sequential? discard-card-ids))
       (core/failure :invalid-discard-cards
-               "Draw moves require :discard-card-ids to be a sequential collection."
-               {:discard-card-ids discard-card-ids})
+                    "Draw moves require :discard-card-ids to be a sequential collection."
+                    {:discard-card-ids discard-card-ids})
 
       (seq (core/duplicate-values discard-card-ids))
       (core/failure :duplicate-discard-cards
-               "A card can only be discarded once by a draw move."
-               {:duplicate-card-ids (core/duplicate-values discard-card-ids)})
+                    "A card can only be discarded once by a draw move."
+                    {:duplicate-card-ids (core/duplicate-values discard-card-ids)})
 
       (not (int? draw-count))
       (core/failure :invalid-draw-count
-               "Draw moves require an integer draw count."
-               {:draw-count draw-count})
+                    "Draw moves require an integer draw count."
+                    {:draw-count draw-count})
 
       (neg? draw-count)
       (core/failure :invalid-draw-count
-               "Draw moves cannot draw a negative number of cards."
-               {:draw-count draw-count})
+                    "Draw moves cannot draw a negative number of cards."
+                    {:draw-count draw-count})
 
       (not (ifn? shuffle-fn))
       (core/failure :invalid-shuffle-fn
-               "Draw moves require a callable shuffle function."
-               {:shuffle-fn shuffle-fn})
+                    "Draw moves require a callable shuffle function."
+                    {:shuffle-fn shuffle-fn})
 
       :else
       (let [hand (get-in state [:players-by-id player-id :hand])
@@ -100,18 +100,18 @@
         (cond
           (seq missing-card-ids)
           (core/failure :invalid-discard-cards
-                   "Discarded cards must be in the current player's hand."
-                   {:player-id player-id
-                    :missing-card-ids missing-card-ids})
+                        "Discarded cards must be in the current player's hand."
+                        {:player-id player-id
+                         :missing-card-ids missing-card-ids})
 
           (< maximum-draw-count draw-count)
           (core/failure :invalid-draw-count
-                   "Draw moves cannot exceed the six-card hand limit or available deck cards."
-                   {:draw-count draw-count
-                    :maximum maximum-draw-count
-                    :hand-size (count hand)
-                    :discard-count (count cards-to-discard)
-                    :available-cards available-cards})
+                        "Draw moves cannot exceed the six-card hand limit or available deck cards."
+                        {:draw-count draw-count
+                         :maximum maximum-draw-count
+                         :hand-size (count hand)
+                         :discard-count (count cards-to-discard)
+                         :available-cards available-cards})
 
           :else
           (let [discarded-state (-> state
@@ -140,19 +140,19 @@
    (resolve-specific-major-source state command card-id error-code message {}))
   ([state command card-id error-code message source-opts]
    (let [source-result (major/resolve-major-source state command source-opts)]
-    (cond
-      (not (:ok? source-result))
-      source-result
+     (cond
+       (not (:ok? source-result))
+       source-result
 
-      (not= card-id (source-card-id source-result))
-      (core/failure error-code
-                    message
-                    {:card-id (source-card-id source-result)
-                     :required-card-id card-id
-                     :source (core/source-summary (:source source-result))})
+       (not= card-id (source-card-id source-result))
+       (core/failure error-code
+                     message
+                     {:card-id (source-card-id source-result)
+                      :required-card-id card-id
+                      :source (core/source-summary (:source source-result))})
 
-      :else
-      source-result))))
+       :else
+       source-result))))
 
 (defn- normalize-action-list [command key label maximum]
   (let [actions (get command key)]
@@ -259,50 +259,50 @@
   ([state command source-card-id]
    (apply-high-priestess-move-with-source-card-id state command source-card-id {}))
   ([state command source-card-id {:keys [source-opts]}]
-  (let [source-result (resolve-specific-major-source
-                       state
-                       command
-                       source-card-id
-                       :high-priestess-actions-unavailable
-                       "Only High Priestess can apply redraw passes."
-                       source-opts)
-        redraws-result (normalize-action-list command :redraws "High Priestess" 2)
-        shuffle-fn (or (:shuffle-fn command) shuffle)]
-    (cond
-      (not (:ok? source-result))
-      source-result
+   (let [source-result (resolve-specific-major-source
+                        state
+                        command
+                        source-card-id
+                        :high-priestess-actions-unavailable
+                        "Only High Priestess can apply redraw passes."
+                        source-opts)
+         redraws-result (normalize-action-list command :redraws "High Priestess" 2)
+         shuffle-fn (or (:shuffle-fn command) shuffle)]
+     (cond
+       (not (:ok? source-result))
+       source-result
 
-      (not (:ok? redraws-result))
-      redraws-result
+       (not (:ok? redraws-result))
+       redraws-result
 
-      (not (ifn? shuffle-fn))
-      (core/failure :invalid-shuffle-fn
-                    "High Priestess redraws require a callable shuffle function."
-                    {:shuffle-fn shuffle-fn})
+       (not (ifn? shuffle-fn))
+       (core/failure :invalid-shuffle-fn
+                     "High Priestess redraws require a callable shuffle function."
+                     {:shuffle-fn shuffle-fn})
 
-      :else
-      (let [player-id (:player-id command)
-            source-summary (core/source-summary (:source source-result))
-            cost-state (major/charge-source-once state source-result)]
-        (loop [current-state cost-state
-               pass-index 1
-               remaining (:actions redraws-result)
-               events []]
-          (if-let [pass (first remaining)]
-            (let [pass-result (apply-redraw-pass current-state
-                                                 player-id
-                                                 source-summary
-                                                 pass-index
-                                                 pass
-                                                 shuffle-fn
-                                                 :high-priestess/redrawn)]
-              (if-not (:ok? pass-result)
-                pass-result
-                (recur (:state pass-result)
-                       (inc pass-index)
-                       (rest remaining)
-                       (into events (:events pass-result)))))
-            (core/success current-state events))))))))
+       :else
+       (let [player-id (:player-id command)
+             source-summary (core/source-summary (:source source-result))
+             cost-state (major/charge-source-once state source-result)]
+         (loop [current-state cost-state
+                pass-index 1
+                remaining (:actions redraws-result)
+                events []]
+           (if-let [pass (first remaining)]
+             (let [pass-result (apply-redraw-pass current-state
+                                                  player-id
+                                                  source-summary
+                                                  pass-index
+                                                  pass
+                                                  shuffle-fn
+                                                  :high-priestess/redrawn)]
+               (if-not (:ok? pass-result)
+                 pass-result
+                 (recur (:state pass-result)
+                        (inc pass-index)
+                        (rest remaining)
+                        (into events (:events pass-result)))))
+             (core/success current-state events))))))))
 
 (defn apply-high-priestess-move [state command]
   (apply-high-priestess-move-with-source-card-id state
@@ -362,71 +362,71 @@
   ([state command source-card-id]
    (apply-judgement-move-with-source-card-id state command source-card-id {}))
   ([state command source-card-id {:keys [source-opts]}]
-  (let [source-result (resolve-specific-major-source
-                       state
-                       command
-                       source-card-id
-                       :judgement-actions-unavailable
-                       "Only Judgement can draw cards from the discard pile."
-                       source-opts)
-        card-ids (judgement-card-ids command)]
-    (if-not (:ok? source-result)
-      source-result
-      (let [minion-result (validate-major-minion state
-                                                 source-result
-                                                 (judgement-minion-id command))]
-        (cond
-          (not (:ok? minion-result))
-          minion-result
+   (let [source-result (resolve-specific-major-source
+                        state
+                        command
+                        source-card-id
+                        :judgement-actions-unavailable
+                        "Only Judgement can draw cards from the discard pile."
+                        source-opts)
+         card-ids (judgement-card-ids command)]
+     (if-not (:ok? source-result)
+       source-result
+       (let [minion-result (validate-major-minion state
+                                                  source-result
+                                                  (judgement-minion-id command))]
+         (cond
+           (not (:ok? minion-result))
+           minion-result
 
-          (not (sequential? card-ids))
-          (core/failure :invalid-judgement-cards
-                        "Judgement requires selected discard card ids as a sequential collection."
-                        {:card-ids card-ids})
+           (not (sequential? card-ids))
+           (core/failure :invalid-judgement-cards
+                         "Judgement requires selected discard card ids as a sequential collection."
+                         {:card-ids card-ids})
 
-          (seq (core/duplicate-values card-ids))
-          (core/failure :duplicate-judgement-cards
-                        "Judgement can draw each discard-pile card at most once."
-                        {:duplicate-card-ids (core/duplicate-values card-ids)})
+           (seq (core/duplicate-values card-ids))
+           (core/failure :duplicate-judgement-cards
+                         "Judgement can draw each discard-pile card at most once."
+                         {:duplicate-card-ids (core/duplicate-values card-ids)})
 
-          :else
-          (let [player-id (:player-id command)
-                cost-state (major/charge-source-once state source-result)
-                discard-by-id (into {} (map (juxt :id identity)) (:discard-pile cost-state))
-                missing-card-ids (vec (remove #(contains? discard-by-id %) card-ids))
-                cards-to-draw (mapv discard-by-id card-ids)
-                hand-count (count (get-in cost-state [:players-by-id player-id :hand]))
-                hand-slots (max 0 (- core/starting-hand-size hand-count))
-                minion-pips (or (pieces/pips (:piece minion-result)) 0)
-                maximum (min minion-pips hand-slots)]
-            (cond
-              (seq missing-card-ids)
-              (core/failure :invalid-judgement-cards
-                            "Judgement can only draw selected cards from the discard pile."
-                            {:missing-card-ids missing-card-ids})
+           :else
+           (let [player-id (:player-id command)
+                 cost-state (major/charge-source-once state source-result)
+                 discard-by-id (into {} (map (juxt :id identity)) (:discard-pile cost-state))
+                 missing-card-ids (vec (remove #(contains? discard-by-id %) card-ids))
+                 cards-to-draw (mapv discard-by-id card-ids)
+                 hand-count (count (get-in cost-state [:players-by-id player-id :hand]))
+                 hand-slots (max 0 (- core/starting-hand-size hand-count))
+                 minion-pips (or (pieces/pips (:piece minion-result)) 0)
+                 maximum (min minion-pips hand-slots)]
+             (cond
+               (seq missing-card-ids)
+               (core/failure :invalid-judgement-cards
+                             "Judgement can only draw selected cards from the discard pile."
+                             {:missing-card-ids missing-card-ids})
 
-              (< maximum (count cards-to-draw))
-              (core/failure :invalid-judgement-card-count
-                            "Judgement cannot draw more cards than the minion's pips or the hand limit allow."
-                            {:selected-count (count cards-to-draw)
-                             :maximum maximum
-                             :minion-pips minion-pips
-                             :hand-size hand-count
-                             :hand-limit core/starting-hand-size})
+               (< maximum (count cards-to-draw))
+               (core/failure :invalid-judgement-card-count
+                             "Judgement cannot draw more cards than the minion's pips or the hand limit allow."
+                             {:selected-count (count cards-to-draw)
+                              :maximum maximum
+                              :minion-pips minion-pips
+                              :hand-size hand-count
+                              :hand-limit core/starting-hand-size})
 
-              :else
-              (let [event {:type :judgement/cards-drawn
-                           :player-id player-id
-                           :source (core/source-summary (:source source-result))
-                           :piece-id (:piece-id minion-result)
-                           :card-ids (vec card-ids)
-                           :draw-count (count cards-to-draw)
-                           :maximum maximum}
-                    next-state (-> cost-state
-                                   (remove-cards-from-discard card-ids)
-                                   (core/append-cards-to-hand player-id cards-to-draw)
-                                   (core/append-history event))]
-                (core/success next-state [event]))))))))))
+               :else
+               (let [event {:type :judgement/cards-drawn
+                            :player-id player-id
+                            :source (core/source-summary (:source source-result))
+                            :piece-id (:piece-id minion-result)
+                            :card-ids (vec card-ids)
+                            :draw-count (count cards-to-draw)
+                            :maximum maximum}
+                     next-state (-> cost-state
+                                    (remove-cards-from-discard card-ids)
+                                    (core/append-cards-to-hand player-id cards-to-draw)
+                                    (core/append-history event))]
+                 (core/success next-state [event]))))))))))
 
 (defn apply-judgement-move [state command]
   (apply-judgement-move-with-source-card-id state command "judgement"))
@@ -565,49 +565,49 @@
   ([state command source-card-id]
    (apply-fool-move-with-source-card-id state command source-card-id {}))
   ([state command source-card-id {:keys [source-opts]}]
-  (let [source-result (resolve-specific-major-source
-                       state
-                       command
-                       source-card-id
-                       :fool-actions-unavailable
-                       "Only Fool can reveal and play draw-pile cards."
-                       source-opts)
-        reveals-result (normalize-action-list command :reveals "Fool" 2)
-        shuffle-fn (or (:shuffle-fn command) shuffle)]
-    (cond
-      (not (:ok? source-result))
-      source-result
+   (let [source-result (resolve-specific-major-source
+                        state
+                        command
+                        source-card-id
+                        :fool-actions-unavailable
+                        "Only Fool can reveal and play draw-pile cards."
+                        source-opts)
+         reveals-result (normalize-action-list command :reveals "Fool" 2)
+         shuffle-fn (or (:shuffle-fn command) shuffle)]
+     (cond
+       (not (:ok? source-result))
+       source-result
 
-      (not (:ok? reveals-result))
-      reveals-result
+       (not (:ok? reveals-result))
+       reveals-result
 
-      (not (ifn? shuffle-fn))
-      (core/failure :invalid-shuffle-fn
-                    "Fool reveals require a callable shuffle function."
-                    {:shuffle-fn shuffle-fn})
+       (not (ifn? shuffle-fn))
+       (core/failure :invalid-shuffle-fn
+                     "Fool reveals require a callable shuffle function."
+                     {:shuffle-fn shuffle-fn})
 
-      :else
-      (let [player-id (:player-id command)
-            source-summary (core/source-summary (:source source-result))
-            cost-state (major/charge-source-once state source-result)]
-        (loop [current-state cost-state
-               reveal-index 1
-               remaining (:actions reveals-result)
-               events []]
-          (if-let [action (first remaining)]
-            (let [reveal-result (apply-fool-reveal current-state
-                                                   player-id
-                                                   source-summary
-                                                   reveal-index
-                                                   action
-                                                   shuffle-fn)]
-              (if-not (:ok? reveal-result)
-                reveal-result
-                (recur (:state reveal-result)
-                       (inc reveal-index)
-                       (rest remaining)
-                       (into events (:events reveal-result)))))
-            (core/success current-state events))))))))
+       :else
+       (let [player-id (:player-id command)
+             source-summary (core/source-summary (:source source-result))
+             cost-state (major/charge-source-once state source-result)]
+         (loop [current-state cost-state
+                reveal-index 1
+                remaining (:actions reveals-result)
+                events []]
+           (if-let [action (first remaining)]
+             (let [reveal-result (apply-fool-reveal current-state
+                                                    player-id
+                                                    source-summary
+                                                    reveal-index
+                                                    action
+                                                    shuffle-fn)]
+               (if-not (:ok? reveal-result)
+                 reveal-result
+                 (recur (:state reveal-result)
+                        (inc reveal-index)
+                        (rest remaining)
+                        (into events (:events reveal-result)))))
+             (core/success current-state events))))))))
 
 (defn apply-fool-move [state command]
   (apply-fool-move-with-source-card-id state command "fool"))

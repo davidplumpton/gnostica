@@ -252,7 +252,7 @@
                        (pieces/size-label (:size piece))
                        " to "
                        (pieces/size-label (piece-size-after-growth (:size piece)
-                                                                  action-count)))}))
+                                                                   action-count)))}))
 
     :territory
     (when-let [cell (call ctx :target-board-cell db params)]

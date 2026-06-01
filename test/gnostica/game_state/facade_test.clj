@@ -87,10 +87,10 @@
                        :damage 1
                        :orientation :south}
         draw-major-state (-> (:state (game-state/create-game
-                                       player-specs
-                                       {:deck-order
-                                        (deck-starting-with
-                                         ["fool" "high-priestess" "judgement"])}))
+                                      player-specs
+                                      {:deck-order
+                                       (deck-starting-with
+                                        ["fool" "high-priestess" "judgement"])}))
                              (game-state/with-board-pieces [rose-target-minion]))
         fool-command {:player-id :rose
                       :source {:kind :hand-card
@@ -106,13 +106,13 @@
                            :piece-id :rose-target-minion
                            :card-ids []}
         manipulation-state (-> (:state (game-state/create-game
-                                         player-specs
-                                         {:deck-order
-                                          (deck-starting-with
-                                           ["hierophant" "hermit" "devil"])}))
+                                        player-specs
+                                        {:deck-order
+                                         (deck-starting-with
+                                          ["hierophant" "hermit" "devil"])}))
                                (game-state/with-board-pieces
-                                [rose-target-minion
-                                 indigo-cup-target]))
+                                 [rose-target-minion
+                                  indigo-cup-target]))
         hierophant-command {:player-id :rose
                             :source {:kind :hand-card
                                      :card-id "hierophant"
@@ -136,11 +136,11 @@
                                 :piece-id :indigo-cup-target}
                        :orientation :south}
         world-state (-> (:state (game-state/create-game
-                                  player-specs
-                                  {:deck-order
-                                   (deck-with-cards-at
-                                    {0 "world"
-                                     (board-card-position 3) "magician"})}))
+                                 player-specs
+                                 {:deck-order
+                                  (deck-with-cards-at
+                                   {0 "world"
+                                    (board-card-position 3) "magician"})}))
                         (game-state/with-board-pieces [rose-cup-minion]))
         world-command {:player-id :rose
                        :source {:kind :hand-card
@@ -156,9 +156,9 @@
     (is (= (game-state/apply-fool-move draw-major-state fool-command)
            (game-state-draw/apply-fool-move draw-major-state fool-command)))
     (is (= (game-state/apply-high-priestess-move draw-major-state
-                                                  high-priestess-command)
+                                                 high-priestess-command)
            (game-state-draw/apply-high-priestess-move draw-major-state
-                                                       high-priestess-command)))
+                                                      high-priestess-command)))
     (is (= (game-state/apply-judgement-move draw-major-state judgement-command)
            (game-state-draw/apply-judgement-move draw-major-state judgement-command)))
     (is (= (game-state/apply-orient-move orient-state orient-command)
@@ -169,8 +169,8 @@
            (game-state-rod/resolve-rod-command rod-state rod-command)))
     (is (= (game-state/apply-rod-move rod-state rod-command)
            (game-state-rod/apply-rod-move rod-state rod-command)))
-	    (is (= (game-state/resolve-disc-command disc-state disc-command)
-	           (game-state-disc/resolve-disc-command disc-state disc-command)))
+    (is (= (game-state/resolve-disc-command disc-state disc-command)
+           (game-state-disc/resolve-disc-command disc-state disc-command)))
     (is (= (game-state/apply-disc-move disc-state disc-command)
            (game-state-disc/apply-disc-move disc-state disc-command)))
     (is (= (game-state/resolve-sword-command sword-state sword-command)
@@ -179,13 +179,13 @@
            (game-state-sword/apply-sword-move sword-state sword-command)))
     (is (= (game-state/apply-hierophant-move manipulation-state hierophant-command)
            (game-state-manipulation/apply-hierophant-move manipulation-state
-                                                            hierophant-command)))
+                                                          hierophant-command)))
     (is (= (game-state/apply-hermit-move manipulation-state hermit-command)
            (game-state-manipulation/apply-hermit-move manipulation-state
-                                                       hermit-command)))
+                                                      hermit-command)))
     (is (= (game-state/apply-devil-move manipulation-state devil-command)
            (game-state-manipulation/apply-devil-move manipulation-state
-                                                      devil-command)))
+                                                     devil-command)))
     (is (= (game-state/world-major-territories world-state)
            (game-state-world/world-major-territories world-state)))
     (is (= (game-state/apply-world-move world-state world-command)

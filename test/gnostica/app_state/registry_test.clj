@@ -99,7 +99,7 @@
         power-renderer-types (set (mapcat #(or (:renderer-control-keys
                                                 (move-registry/power-definition %))
                                                (move-registry/power-control-groups %))
-                                           move-registry/move-power-order))
+                                          move-registry/move-power-order))
         missing-registry-types (sort (remove registry-types emitted-types))
         missing-power-renderers (sort (remove emitted-types power-renderer-types))
         nil-renderer-keys (sort (keep (fn [type]

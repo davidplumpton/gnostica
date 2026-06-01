@@ -74,13 +74,13 @@
   (let [deck-order (deck-starting-with ["wands2"])
         state (:state (game-state/create-game player-specs {:deck-order deck-order}))
         state (game-state/with-board-pieces
-               state
-               [rose-rod-minion
-                {:id :indigo-rod-target
-                 :player-id :indigo
-                 :space-index 4
-                 :size :small
-                 :orientation :north}])
+                state
+                [rose-rod-minion
+                 {:id :indigo-rod-target
+                  :player-id :indigo
+                  :space-index 4
+                  :size :small
+                  :orientation :north}])
         result (game-state/resolve-rod-command
                 state
                 {:player-id :rose
@@ -114,13 +114,13 @@
   (let [deck-order (deck-starting-with ["wands2"])
         state (:state (game-state/create-game player-specs {:deck-order deck-order}))
         state (game-state/with-board-pieces
-               state
-               [rose-rod-minion
-                {:id :indigo-rod-target
-                 :player-id :indigo
-                 :space-index 4
-                 :size :small
-                 :orientation :north}])
+                state
+                [rose-rod-minion
+                 {:id :indigo-rod-target
+                  :player-id :indigo
+                  :space-index 4
+                  :size :small
+                  :orientation :north}])
         result (game-state/resolve-rod-command
                 state
                 {:player-id :rose
@@ -329,13 +329,13 @@
   (let [deck-order (deck-starting-with ["wands2"])
         state (:state (game-state/create-game player-specs {:deck-order deck-order}))
         state (game-state/with-board-pieces
-               state
-               [rose-rod-minion
-                {:id :indigo-rod-target
-                 :player-id :indigo
-                 :space-index 4
-                 :size :small
-                 :orientation :north}])
+                state
+                [rose-rod-minion
+                 {:id :indigo-rod-target
+                  :player-id :indigo
+                  :space-index 4
+                  :size :small
+                  :orientation :north}])
         command {:player-id :rose
                  :source {:kind :hand-card
                           :card-id "wands2"
@@ -414,16 +414,16 @@
         target-card (get-in state [:board 5 :card])
         rod-minion (assoc rose-rod-minion :space-index 4)
         state (game-state/with-board-pieces
-               state
-               [rod-minion
-                (assoc rose-target-minion :space-index 5)
-                {:id :rose-landing-minion
-                 :player-id :rose
-                 :space {:kind :wasteland
-                         :row 1
-                         :col 3}
-                 :size :small
-                 :orientation :west}])
+                state
+                [rod-minion
+                 (assoc rose-target-minion :space-index 5)
+                 {:id :rose-landing-minion
+                  :player-id :rose
+                  :space {:kind :wasteland
+                          :row 1
+                          :col 3}
+                  :size :small
+                  :orientation :west}])
         command {:player-id :rose
                  :source {:kind :hand-card
                           :card-id "wands2"
@@ -581,8 +581,8 @@
                                         :board-index 5}
                                :distance 1})
         void-state (game-state/with-board-pieces
-                    state
-                    [(assoc rose-rod-minion :space-index 4)])
+                     state
+                     [(assoc rose-rod-minion :space-index 4)])
         void-result (game-state/apply-rod-move
                      void-state
                      {:player-id :rose

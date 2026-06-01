@@ -186,18 +186,6 @@
   (let [state (game-for 2)
         duplicate-id :duplicate-scout
         same-player-state (game-state/with-board-pieces
-                           state
-                           [{:id duplicate-id
-                             :player-id :rose
-                             :space-index 0
-                             :size :small
-                             :orientation :up}
-                            {:id duplicate-id
-                             :player-id :rose
-                             :space-index 1
-                             :size :small
-                             :orientation :north}])
-        cross-player-state (game-state/with-board-pieces
                             state
                             [{:id duplicate-id
                               :player-id :rose
@@ -205,10 +193,22 @@
                               :size :small
                               :orientation :up}
                              {:id duplicate-id
-                              :player-id :indigo
+                              :player-id :rose
                               :space-index 1
                               :size :small
-                              :orientation :north}])]
+                              :orientation :north}])
+        cross-player-state (game-state/with-board-pieces
+                             state
+                             [{:id duplicate-id
+                               :player-id :rose
+                               :space-index 0
+                               :size :small
+                               :orientation :up}
+                              {:id duplicate-id
+                               :player-id :indigo
+                               :space-index 1
+                               :size :small
+                               :orientation :north}])]
     (doseq [invalid-state [same-player-state cross-player-state]
             :let [explanation (game-schema/explain-game invalid-state)]]
       (is (false? (game-schema/valid-game? invalid-state)))
@@ -338,7 +338,7 @@
                           :active-piece-count 1
                           :expected-total game-state/pieces-per-size-in-stash
                           :actual-total 6}}
-                 %)
+                  %)
               (:invariants explanation)))))
 
 (deftest rejects-diverged-player-and-piece-stash-mirrors
@@ -355,7 +355,7 @@
                           :piece-stash {:small 4
                                         :medium 5
                                         :large 5}}}
-                 %)
+                  %)
               (:invariants explanation)))))
 
 (deftest assert-valid-game-throws-readable-ex-data

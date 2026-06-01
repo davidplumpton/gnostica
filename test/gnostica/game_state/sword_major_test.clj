@@ -169,9 +169,9 @@
                        player-specs
                        {:deck-order (deck-starting-with ["death"])}))
         state (game-state/with-board-pieces
-               state
-               (vec (concat [rose-sword-minion enemy-piece]
-                            indigo-small-pieces)))
+                state
+                (vec (concat [rose-sword-minion enemy-piece]
+                             indigo-small-pieces)))
         {:keys [ok? state events]} (game-state/apply-sword-move
                                     state
                                     {:player-id :rose
@@ -207,8 +207,8 @@
                                       (board-card-position 4) "cups2"
                                       (board-card-position 7) "coins2"})}))
         state (game-state/with-board-pieces
-               state
-               [rose-sword-minion second-minion])
+                state
+                [rose-sword-minion second-minion])
         {:keys [ok? state events]} (game-state/apply-sword-move
                                     state
                                     {:player-id :rose
@@ -285,8 +285,8 @@
                        player-specs
                        {:deck-order (deck-starting-with ["moon"])}))
         state (game-state/with-board-pieces
-               state
-               (vec (cons rose-sword-minion full-space-pieces)))
+                state
+                (vec (cons rose-sword-minion full-space-pieces)))
         {:keys [ok? state events]} (game-state/apply-moon-move
                                     state
                                     {:player-id :rose
@@ -334,8 +334,8 @@
                        player-specs
                        {:deck-order (deck-starting-with ["moon"])}))
         state (game-state/with-board-pieces
-               state
-               (vec (cons rose-sword-minion full-space-pieces)))
+                state
+                (vec (cons rose-sword-minion full-space-pieces)))
         result (game-state/apply-moon-move
                 state
                 {:player-id :rose

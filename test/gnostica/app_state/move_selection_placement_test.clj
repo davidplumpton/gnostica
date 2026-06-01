@@ -101,12 +101,12 @@
                         (app-state/select-move-source :place-initial-small)
                         (app-state/set-move-orientation :north))
         stale-game (game-state/with-board-pieces
-                    (app-state/game oriented-db)
-                    [{:id :indigo-blocker
-                      :player-id :indigo
-                      :space-index 0
-                      :size :small
-                      :orientation :up}])
+                     (app-state/game oriented-db)
+                     [{:id :indigo-blocker
+                       :player-id :indigo
+                       :space-index 0
+                       :size :small
+                       :orientation :up}])
         stale-db (assoc oriented-db :game stale-game)
         confirmed-db (app-state/confirm-move stale-db)]
     (is (= :confirm (:stage (app-state/move-selection stale-db))))

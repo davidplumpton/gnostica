@@ -280,7 +280,7 @@
                                         (when-let [data-transfer (.-dataTransfer event)]
                                           (set! (.-dropEffect data-transfer) "move"))
                                         (when-let [input (gesture-input/gesture-input-from-data-transfer
-                                                         (.-dataTransfer event))]
+                                                          (.-dataTransfer event))]
                                           (let [input (active-drag-input input)]
                                             (set-drag-preview!
                                              (preview-at (current-legal-targets)
@@ -301,15 +301,15 @@
                                      (dispatch-gesture! (cond-> input
                                                           target
                                                           (assoc :target target))))
-                                  (gesture-input/clear-active-gesture-input!)
-                                  (clear-drag!)))
+                                   (gesture-input/clear-active-gesture-input!)
+                                   (clear-drag!)))
         external-drag-leave-listener (fn [_]
-                                      (clear-drag!))
+                                       (clear-drag!))
         external-pointer-input (fn [event]
                                  (some-> event .-detail .-input))
         external-pointer-move-listener (fn [event]
                                          (when-let [input (and drag-enabled?
-                                                              (external-pointer-input event))]
+                                                               (external-pointer-input event))]
                                            (.preventDefault event)
                                            (.stopPropagation event)
                                            (let [input (active-drag-input input)]
@@ -321,7 +321,7 @@
                                                           event)))))
         external-pointer-drop-listener (fn [event]
                                          (when-let [input (and drag-enabled?
-                                                              (external-pointer-input event))]
+                                                               (external-pointer-input event))]
                                            (.preventDefault event)
                                            (.stopPropagation event)
                                            (let [input (active-drag-input input)

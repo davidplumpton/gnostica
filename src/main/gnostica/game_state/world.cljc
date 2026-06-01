@@ -59,18 +59,18 @@
    (resolve-world-source state command {}))
   ([state command source-opts]
    (let [source-result (major/resolve-major-source state command source-opts)]
-    (cond
-      (not (:ok? source-result))
-      source-result
+     (cond
+       (not (:ok? source-result))
+       source-result
 
-      (not (world-card? (:source-card source-result)))
-      (core/failure :world-source-required
-                    "World delegation requires World as the paid source card."
-                    {:card-id (get-in source-result [:source-card :id])
-                     :source (source-summary source-result)})
+       (not (world-card? (:source-card source-result)))
+       (core/failure :world-source-required
+                     "World delegation requires World as the paid source card."
+                     {:card-id (get-in source-result [:source-card :id])
+                      :source (source-summary source-result)})
 
-      :else
-      source-result))))
+       :else
+       source-result))))
 
 (defn- resolve-copied-cell [state command]
   (let [board-index (copied-board-index command)
@@ -333,34 +333,34 @@
   ([state command]
    (apply-world-move state command {}))
   ([state command {:keys [source-opts]}]
-  (let [source-result (resolve-world-source state command source-opts)
-        copied-result (resolve-copied-cell state command)]
-    (cond
-      (not (:ok? source-result))
-      source-result
+   (let [source-result (resolve-world-source state command source-opts)
+         copied-result (resolve-copied-cell state command)]
+     (cond
+       (not (:ok? source-result))
+       source-result
 
-      (not (:ok? copied-result))
-      copied-result
+       (not (:ok? copied-result))
+       copied-result
 
-      :else
-      (let [copied-card (:card copied-result)
-            suit-result (resolve-suit-power command copied-card)]
-        (cond
-          (and (map? suit-result) (not (:ok? suit-result)))
-          suit-result
+       :else
+       (let [copied-card (:card copied-result)
+             suit-result (resolve-suit-power command copied-card)]
+         (cond
+           (and (map? suit-result) (not (:ok? suit-result)))
+           suit-result
 
-          (and (:ok? suit-result) (:power suit-result))
-          (apply-copied-suit-power state
-                                   command
-                                   source-result
-                                   copied-card
-                                   (:power suit-result))
+           (and (:ok? suit-result) (:power suit-result))
+           (apply-copied-suit-power state
+                                    command
+                                    source-result
+                                    copied-card
+                                    (:power suit-result))
 
-          :else
-          (apply-copied-card-power state
-                                   command
-                                   source-result
-                                   copied-card)))))))
+           :else
+           (apply-copied-card-power state
+                                    command
+                                    source-result
+                                    copied-card)))))))
 
 (defmethod major-power/apply-card-power "world"
   [state command _card {:keys [source-opts]}]

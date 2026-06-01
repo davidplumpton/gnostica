@@ -50,9 +50,9 @@
                        player-specs
                        {:deck-order (deck-starting-with ["empress"])}))
         state (game-state/with-board-pieces
-               state
-               (vec (cons (assoc rose-cup-minion :orientation :north)
-                          full-target-pieces)))
+                state
+                (vec (cons (assoc rose-cup-minion :orientation :north)
+                           full-target-pieces)))
         {:keys [ok? state events]} (game-state/apply-empress-move
                                     state
                                     {:player-id :rose
@@ -94,8 +94,8 @@
                        player-specs
                        {:deck-order (deck-starting-with ["emperor"])}))
         state (game-state/with-board-pieces
-               state
-               (vec (cons emperor-minion full-target-pieces)))
+                state
+                (vec (cons emperor-minion full-target-pieces)))
         {:keys [ok? state events]} (game-state/apply-emperor-move
                                     state
                                     {:player-id :rose
@@ -129,8 +129,8 @@
                        player-specs
                        {:deck-order (deck-with-board-card 3 "lovers")}))
         state (game-state/with-board-pieces
-               state
-               [(assoc rose-rod-minion :orientation :east)])
+                state
+                [(assoc rose-rod-minion :orientation :east)])
         {:keys [ok? state events]} (game-state/apply-lovers-move
                                     state
                                     {:player-id :rose
@@ -177,8 +177,8 @@
                        player-specs
                        {:deck-order (deck-starting-with ["chariot"])}))
         state (game-state/with-board-pieces
-               state
-               (vec (cons chariot-minion full-target-pieces)))
+                state
+                (vec (cons chariot-minion full-target-pieces)))
         {:keys [ok? state events]} (game-state/apply-chariot-move
                                     state
                                     {:player-id :rose
@@ -218,9 +218,9 @@
                        player-specs
                        {:deck-order (deck-starting-with ["hangedman"])}))
         state (game-state/with-board-pieces
-               state
-               [(assoc rose-rod-minion :orientation :east)
-                enemy-piece])
+                state
+                [(assoc rose-rod-minion :orientation :east)
+                 enemy-piece])
         rose-hand-before (player-hand-ids state :rose)
         indigo-hand-before (player-hand-ids state :indigo)
         {:keys [ok? state events]} (game-state/apply-hanged-man-move
@@ -251,9 +251,9 @@
                        player-specs
                        {:deck-order (deck-starting-with ["hangedman"])}))
         state (game-state/with-board-pieces
-               state
-               [(assoc rose-rod-minion :orientation :east)
-                enemy-piece])
+                state
+                [(assoc rose-rod-minion :orientation :east)
+                 enemy-piece])
         rose-hand-before (player-hand-ids state :rose)
         indigo-hand-before (player-hand-ids state :indigo)
         {:keys [ok? state events]} (game-state/apply-hanged-man-move

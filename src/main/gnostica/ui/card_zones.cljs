@@ -93,7 +93,7 @@
     [:p.card-pile-zone__detail (str (ui/card-count-label draw-count) " remaining")]]])
 
 (defn- discard-pile-zone [discard-count top-card card-icon-mode descriptor
-                           drag-enabled?]
+                          drag-enabled?]
   (let [drag-input (when (and top-card drag-enabled?)
                      (discard-card-drag-input top-card descriptor))]
     [:button.card-pile-zone
@@ -105,7 +105,7 @@
                            (discard-card-action-event top-card descriptor)))
       :draggable (if drag-input "true" "false")
       :on-click #(when-let [event (and top-card
-                                        (discard-card-action-event top-card descriptor))]
+                                       (discard-card-action-event top-card descriptor))]
                    (rf/dispatch event))
       :on-drag-start (fn [event]
                        (when drag-input

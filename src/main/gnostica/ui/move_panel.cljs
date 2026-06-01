@@ -284,57 +284,57 @@
   ([label cells selected-index]
    (board-choice-grid label cells selected-index nil))
   ([label cells selected-index territory-descriptors]
-  [:div.move-step
-   [:div.move-step__header
-    [:span label]
-    [:strong
-     (if-let [selected-cell (some #(when (= selected-index (:index %)) %) cells)]
-       (:title (:card selected-cell))
-       "None")]]
-   [:div.move-board-choice-grid
-    (for [{:keys [cell board-index enabled?] :as descriptor}
-          (territory-choice-descriptors cells territory-descriptors)
-          :let [cell (or cell (layout/cell-by-index cells board-index))
-                selected? (= selected-index (:index cell))]]
-      ^{:key (:index cell)}
-      [:button.move-chip
-       {:type "button"
-        :class (str (when selected? "is-selected")
-                    (target-status-class descriptor))
-        :disabled (false? enabled?)
-        :title (target-reason descriptor)
-        :aria-pressed selected?
-        :on-click #(rf/dispatch [events/select-board-card (:index cell)])}
-       (board-cell-label cell)])]]))
+   [:div.move-step
+    [:div.move-step__header
+     [:span label]
+     [:strong
+      (if-let [selected-cell (some #(when (= selected-index (:index %)) %) cells)]
+        (:title (:card selected-cell))
+        "None")]]
+    [:div.move-board-choice-grid
+     (for [{:keys [cell board-index enabled?] :as descriptor}
+           (territory-choice-descriptors cells territory-descriptors)
+           :let [cell (or cell (layout/cell-by-index cells board-index))
+                 selected? (= selected-index (:index cell))]]
+       ^{:key (:index cell)}
+       [:button.move-chip
+        {:type "button"
+         :class (str (when selected? "is-selected")
+                     (target-status-class descriptor))
+         :disabled (false? enabled?)
+         :title (target-reason descriptor)
+         :aria-pressed selected?
+         :on-click #(rf/dispatch [events/select-board-card (:index cell)])}
+        (board-cell-label cell)])]]))
 
 (defn- world-copy-choices
   ([cells selected-index]
    (world-copy-choices cells selected-index nil))
   ([cells selected-index territory-descriptors]
-  [:div.move-step
-   [:div.move-step__header
-    [:span "World copy"]
-    [:strong
-     (if-let [selected-cell (some #(when (= selected-index (:index %)) %) cells)]
-       (:title (:card selected-cell))
-       "None")]]
-   (if (seq (or cells territory-descriptors))
-     [:div.move-board-choice-grid
-      (for [{:keys [cell board-index enabled?] :as descriptor}
-            (territory-choice-descriptors cells territory-descriptors)
-            :let [cell (or cell (layout/cell-by-index cells board-index))
-                  selected? (= selected-index (:index cell))]]
-        ^{:key (:index cell)}
-        [:button.move-chip
-         {:type "button"
-          :class (str (when selected? "is-selected")
-                      (target-status-class descriptor))
-          :disabled (false? enabled?)
-          :title (target-reason descriptor)
-          :aria-pressed selected?
-          :on-click #(rf/dispatch [events/select-move-world-copy (:index cell)])}
-         (board-cell-label cell)])]
-     [:p.move-step__empty "No major territories available."])]))
+   [:div.move-step
+    [:div.move-step__header
+     [:span "World copy"]
+     [:strong
+      (if-let [selected-cell (some #(when (= selected-index (:index %)) %) cells)]
+        (:title (:card selected-cell))
+        "None")]]
+    (if (seq (or cells territory-descriptors))
+      [:div.move-board-choice-grid
+       (for [{:keys [cell board-index enabled?] :as descriptor}
+             (territory-choice-descriptors cells territory-descriptors)
+             :let [cell (or cell (layout/cell-by-index cells board-index))
+                   selected? (= selected-index (:index cell))]]
+         ^{:key (:index cell)}
+         [:button.move-chip
+          {:type "button"
+           :class (str (when selected? "is-selected")
+                       (target-status-class descriptor))
+           :disabled (false? enabled?)
+           :title (target-reason descriptor)
+           :aria-pressed selected?
+           :on-click #(rf/dispatch [events/select-move-world-copy (:index cell)])}
+          (board-cell-label cell)])]
+      [:p.move-step__empty "No major territories available."])]))
 
 (defn- same-wasteland? [selected-space space]
   (and selected-space
@@ -350,41 +350,41 @@
    [:div.move-step
     [:div.move-step__header
      [:span label]
-    [:strong
-     (if-let [selected-cell (some #(when (= selected-index (:index %)) %) cells)]
-       (:title (:card selected-cell))
-       (if selected-wasteland
-         (ui/wasteland-label selected-wasteland)
-         "None"))]]
-   [:div.move-board-choice-grid
-    (for [{:keys [cell board-index enabled?] :as descriptor}
-          (territory-choice-descriptors cells (:territories legal-targets))
-          :let [cell (or cell (layout/cell-by-index cells board-index))
-                selected? (= selected-index (:index cell))]]
-      ^{:key (str "territory-" (:index cell))}
-      [:button.move-chip
-       {:type "button"
-        :class (str (when selected? "is-selected")
-                    (target-status-class descriptor))
-        :disabled (false? enabled?)
-        :title (target-reason descriptor)
-        :aria-pressed selected?
-        :on-click #(rf/dispatch [events/select-board-card (:index cell)])}
-       (str "Territory: " (board-cell-label cell))])
-    (for [{:keys [space row col enabled?] :as descriptor}
-          (wasteland-choice-descriptors wastelands (:wastelands legal-targets))
-          :let [space (or space {:row row :col col})
-                selected? (same-wasteland? selected-wasteland space)]]
-      ^{:key (:id space)}
-      [:button.move-chip
-       {:type "button"
-        :class (str (when selected? "is-selected")
-                    (target-status-class descriptor))
-        :disabled (false? enabled?)
-        :title (target-reason descriptor)
-        :aria-pressed selected?
-        :on-click #(rf/dispatch [events/select-move-wasteland-target (:row space) (:col space)])}
-       (ui/wasteland-label space)])]]))
+     [:strong
+      (if-let [selected-cell (some #(when (= selected-index (:index %)) %) cells)]
+        (:title (:card selected-cell))
+        (if selected-wasteland
+          (ui/wasteland-label selected-wasteland)
+          "None"))]]
+    [:div.move-board-choice-grid
+     (for [{:keys [cell board-index enabled?] :as descriptor}
+           (territory-choice-descriptors cells (:territories legal-targets))
+           :let [cell (or cell (layout/cell-by-index cells board-index))
+                 selected? (= selected-index (:index cell))]]
+       ^{:key (str "territory-" (:index cell))}
+       [:button.move-chip
+        {:type "button"
+         :class (str (when selected? "is-selected")
+                     (target-status-class descriptor))
+         :disabled (false? enabled?)
+         :title (target-reason descriptor)
+         :aria-pressed selected?
+         :on-click #(rf/dispatch [events/select-board-card (:index cell)])}
+        (str "Territory: " (board-cell-label cell))])
+     (for [{:keys [space row col enabled?] :as descriptor}
+           (wasteland-choice-descriptors wastelands (:wastelands legal-targets))
+           :let [space (or space {:row row :col col})
+                 selected? (same-wasteland? selected-wasteland space)]]
+       ^{:key (:id space)}
+       [:button.move-chip
+        {:type "button"
+         :class (str (when selected? "is-selected")
+                     (target-status-class descriptor))
+         :disabled (false? enabled?)
+         :title (target-reason descriptor)
+         :aria-pressed selected?
+         :on-click #(rf/dispatch [events/select-move-wasteland-target (:row space) (:col space)])}
+        (ui/wasteland-label space)])]]))
 
 (defn- hand-card-choices [cards selected-card-id]
   [:div.move-step
@@ -468,22 +468,22 @@
   ([options selected-source]
    (territory-card-source-choices "Territory card" options selected-source))
   ([label options selected-source]
-  (when (< 1 (count options))
-    [:div.move-step
-     [:div.move-step__header
-      [:span label]
-      [:strong
-       (or (:label (some #(when (= selected-source (:id %)) %) options))
-           "None")]]
-     [:div.move-choice-list.is-compact
-      (for [{:keys [id label]} options]
-        ^{:key id}
-        [:button.move-chip
-         {:type "button"
-          :class (when (= selected-source id) "is-selected")
-          :aria-pressed (= selected-source id)
-          :on-click #(rf/dispatch [events/select-move-territory-card-source id])}
-         label])]])))
+   (when (< 1 (count options))
+     [:div.move-step
+      [:div.move-step__header
+       [:span label]
+       [:strong
+        (or (:label (some #(when (= selected-source (:id %)) %) options))
+            "None")]]
+      [:div.move-choice-list.is-compact
+       (for [{:keys [id label]} options]
+         ^{:key id}
+         [:button.move-chip
+          {:type "button"
+           :class (when (= selected-source id) "is-selected")
+           :aria-pressed (= selected-source id)
+           :on-click #(rf/dispatch [events/select-move-territory-card-source id])}
+          label])]])))
 
 (defn- power-choices [options selected-power]
   (when (< 1 (count options))
@@ -518,7 +518,7 @@
         :class (when (= selected-mode id) "is-selected")
         :aria-pressed (= selected-mode id)
         :on-click #(rf/dispatch [events/select-move-rod-mode id])}
-         label])]])
+       label])]])
 
 (defn- target-kind-choices [label event-id options selected-kind]
   [:div.move-step
@@ -821,8 +821,8 @@
             {:type "checkbox"
              :checked selected?
              :on-change #(rf/dispatch [events/toggle-move-high-priestess-discard-card
-                                        pass-index
-                                        (:id card)])}]
+                                       pass-index
+                                       (:id card)])}]
            [:span (:title card)]])]
        [:p.move-step__empty "No hand cards available."])
      [:div.move-choice-list.is-compact
@@ -989,7 +989,7 @@
 
        :created-territory
        [replacement-card-choices replacement-card-options
-       (:sun-disc-replacement-card-id params)]
+        (:sun-disc-replacement-card-id params)]
 
        :piece
        [:<>

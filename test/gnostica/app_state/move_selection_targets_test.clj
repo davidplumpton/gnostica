@@ -184,7 +184,7 @@
                             (app-state/select-move-target-piece :indigo-rod-target)
                             (app-state/set-move-distance 1)
                             app-state/confirm-move)
-                      [:move-selection :last-result])))))
+                        [:move-selection :last-result])))))
   (testing "Disc"
     (let [db (app-state/initialize {:player-specs test-player-specs
                                     :game-options {:deck-order
@@ -204,7 +204,7 @@
                             (app-state/select-board-card 4)
                             (app-state/select-move-replacement-card "cupsking")
                             app-state/confirm-move)
-                      [:move-selection :last-result])))))
+                        [:move-selection :last-result])))))
   (testing "Sword"
     (let [db (app-state/initialize {:player-specs test-player-specs
                                     :game-options {:deck-order
@@ -225,7 +225,7 @@
                             (app-state/set-move-damage 1)
                             (app-state/select-move-replacement-card "cups2")
                             app-state/confirm-move)
-                      [:move-selection :last-result])))))
+                        [:move-selection :last-result])))))
   (testing "Sun"
     (let [db (app-state/initialize {:player-specs test-player-specs
                                     :game-options {:deck-order (deck-starting-with ["sun"])}
@@ -245,7 +245,7 @@
                             (app-state/select-move-target-piece :rose-striker)
                             (app-state/set-move-sun-disc-orientation :west)
                             app-state/confirm-move)
-                      [:move-selection :last-result])))))
+                        [:move-selection :last-result])))))
   (testing "Moon"
     (let [db (app-state/initialize {:player-specs test-player-specs
                                     :game-options {:deck-order (deck-starting-with ["moon"])}
@@ -266,7 +266,7 @@
                             (app-state/select-move-target-piece :indigo-rod-target)
                             (app-state/set-move-damage 1)
                             app-state/confirm-move)
-                      [:move-selection :last-result])))))
+                        [:move-selection :last-result])))))
   (testing "World copied Rod"
     (let [db (app-state/initialize {:player-specs test-player-specs
                                     :game-options {:deck-order
@@ -288,7 +288,7 @@
                             (app-state/select-move-target-piece :indigo-rod-target)
                             (app-state/set-move-distance 1)
                             app-state/confirm-move)
-                      [:move-selection :last-result]))))))
+                        [:move-selection :last-result]))))))
 (deftest move-source-options-reflect-current-game-state
   (let [db (app-state/initialize {:game-options {:shuffle-fn identity}
                                   :demo-board-pieces fixtures/demo-board-pieces})]

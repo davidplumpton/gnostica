@@ -73,14 +73,14 @@
             :piece-id :rose-striker
             :target-piece-id :indigo-rod-target}
            (app-state/move-params target-db)))
-	    (is (= {:player-id :rose
-	            :source {:kind :hand-card
-	                     :card-id "cups2"
-	                     :piece-id :rose-striker}
-	            :cup-variant :cup
-	            :target {:kind :piece
-	                     :piece-id :indigo-rod-target}}
-	           (app-state/move-command target-db)))
+    (is (= {:player-id :rose
+            :source {:kind :hand-card
+                     :card-id "cups2"
+                     :piece-id :rose-striker}
+            :cup-variant :cup
+            :target {:kind :piece
+                     :piece-id :indigo-rod-target}}
+           (app-state/move-command target-db)))
     (is (:ok? (get-in confirmed-db [:move-selection :last-result])))
     (is (= ["cups2"] (mapv :id (:discard-pile zones))))
     (is (not (some #{"cups2"} (map :id (:hand zones)))))
@@ -151,17 +151,17 @@
               (mapv :id (app-state/move-one-point-card-options wasteland-db))))
     (is (not (some #{"cups2"}
                    (mapv :id (app-state/move-one-point-card-options wasteland-db)))))
-	    (is (= {:player-id :rose
-	            :source {:kind :hand-card
-	                     :card-id "cups2"
-	                     :piece-id :rose-striker}
-	            :cup-variant :cup
-	            :target {:kind :wasteland
-	                     :row 3
-	                     :col 2}
-	            :territory-card-source :hand
-	            :one-point-card-id "coins2"}
-	           (app-state/move-command one-point-db)))
+    (is (= {:player-id :rose
+            :source {:kind :hand-card
+                     :card-id "cups2"
+                     :piece-id :rose-striker}
+            :cup-variant :cup
+            :target {:kind :wasteland
+                     :row 3
+                     :col 2}
+            :territory-card-source :hand
+            :one-point-card-id "coins2"}
+           (app-state/move-command one-point-db)))
     (is (= :confirm (:stage (app-state/move-selection one-point-db))))
     (is (:ok? (get-in confirmed-db [:move-selection :last-result])))
     (is (= ["cups2"] (mapv :id (:discard-pile zones))))

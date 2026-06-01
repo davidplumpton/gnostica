@@ -148,7 +148,7 @@
     (with-player-controller {:slot-id slot-id
                              :id player-id
                              :name name}
-                            controller)))
+      controller)))
 
 (defn- normalize-lobby-players [player-specs local-controller]
   (mapv (partial normalize-lobby-player local-controller)
@@ -614,12 +614,12 @@
                              {:missing-player-ids missing-player-ids}))
 
       :else
-	      (let [rounds (conj (:rounds starting-bid) current-bids)
-	            {:keys [ok? state resolved? winner-id bid-history bid-cards
-	                    redraw-order error]}
-	            (game-state/resolve-starting-bid-rounds
-	             (:initial-game starting-bid)
-	             {:rounds rounds})]
+      (let [rounds (conj (:rounds starting-bid) current-bids)
+            {:keys [ok? state resolved? winner-id bid-history bid-cards
+                    redraw-order error]}
+            (game-state/resolve-starting-bid-rounds
+             (:initial-game starting-bid)
+             {:rounds rounds})]
         (if-not ok?
           (assoc-in db [:lobby :error] error)
           (let [next-starting-bid
@@ -822,9 +822,9 @@
                              (starting-bid-remaining-redraw-cards starting-bid))
                        [])
        :order (mapv #(redraw-player-view players
-                                          starting-bid
-                                          %
-                                          active-player-id)
+                                         starting-bid
+                                         %
+                                         active-player-id)
                     (:redraw-order starting-bid))})))
 
 (defn- bid-history-entry-view [players round]
@@ -1033,13 +1033,13 @@
        :target-score (game-state/target-score state)
        :active-challenge-player-id active-challenge-player-id
        :players (mapv (fn [{:keys [id name eliminated? challenge]}]
-                         {:id id
-                          :name name
-                          :score (get scores id 0)
-                          :eliminated? (true? eliminated?)
-                          :challenging? (= id active-challenge-player-id)
-                          :challenge challenge})
-                       (:players state))})))
+                        {:id id
+                         :name name
+                         :score (get scores id 0)
+                         :eliminated? (true? eliminated?)
+                         :challenging? (= id active-challenge-player-id)
+                         :challenge challenge})
+                      (:players state))})))
 
 (defn can-announce-challenge? [db]
   (if-let [player-id (current-player-id db)]

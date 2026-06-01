@@ -314,8 +314,8 @@
                                      {0 "fool"
                                       draw-start "hangedman"})}))
                           (game-state/with-board-pieces
-                           [(assoc rose-rod-minion :orientation :east)
-                            enemy-piece]))
+                            [(assoc rose-rod-minion :orientation :east)
+                             enemy-piece]))
         rose-hand-before (player-hand-ids initial-state :rose)
         indigo-hand-before (player-hand-ids initial-state :indigo)
         {:keys [ok? state events]} (game-state/apply-fool-move

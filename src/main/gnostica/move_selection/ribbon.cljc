@@ -196,7 +196,7 @@
 (defn- devil-action-plan [ctx params]
   (indexed-action-plan
    (vec (repeat (or (:devil-action-count params)
-                   (call ctx :selected-devil-action-count params))
+                    (call ctx :selected-devil-action-count params))
                 {:power :orient-target}))))
 
 (defn- current-major-action [ctx db source-id params]

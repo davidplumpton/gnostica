@@ -92,43 +92,43 @@
   ([descriptor]
    (target-mesh-style nil nil false nil nil nil descriptor))
   ([selected-key key drag-active? drag-key preview-key preview-status descriptor]
-    (cond
-      (and (some? drag-key)
-           (= key drag-key))
-      (assoc (highlighted-target-style (:status descriptor))
-             :drag-target? true)
+   (cond
+     (and (some? drag-key)
+          (= key drag-key))
+     (assoc (highlighted-target-style (:status descriptor))
+            :drag-target? true)
 
-      (and (some? preview-key)
-           (= key preview-key))
-      (highlighted-target-style preview-status)
+     (and (some? preview-key)
+          (= key preview-key))
+     (highlighted-target-style preview-status)
 
-      (and (some? selected-key)
-           (= key selected-key))
-      {:visible? true
-       :color 0x9ff7e7
-       :opacity 0.82}
+     (and (some? selected-key)
+          (= key selected-key))
+     {:visible? true
+      :color 0x9ff7e7
+      :opacity 0.82}
 
-      drag-active?
-      {:visible? false
-       :color 0x9ff7e7
-       :opacity 0.82}
+     drag-active?
+     {:visible? false
+      :color 0x9ff7e7
+      :opacity 0.82}
 
-      (and (:active? descriptor)
-           (:enabled? descriptor))
-      {:visible? true
-       :color 0xffe08a
-       :opacity 0.68}
+     (and (:active? descriptor)
+          (:enabled? descriptor))
+     {:visible? true
+      :color 0xffe08a
+      :opacity 0.68}
 
-      (and (:active? descriptor)
-           (not (:enabled? descriptor)))
-      {:visible? true
-       :color 0xff8a7a
-       :opacity 0.28}
+     (and (:active? descriptor)
+          (not (:enabled? descriptor)))
+     {:visible? true
+      :color 0xff8a7a
+      :opacity 0.28}
 
-      :else
-      {:visible? false
-       :color 0x9ff7e7
-       :opacity 0.82})))
+     :else
+     {:visible? false
+      :color 0x9ff7e7
+      :opacity 0.82})))
 
 (defn- style-highlight-mesh! [mesh {:keys [visible? color opacity]}]
   (let [^js material (.-material ^js mesh)]
@@ -173,57 +173,57 @@
    (let [{:keys [active? render! selection-meshes wasteland-selection-meshes
                  piece-selection-meshes legal-targets-ref drag-preview]} (r/state this)]
      (when (and active? @active? selection-meshes)
-      (when legal-targets-ref
-        (reset! legal-targets-ref legal-targets))
-      (let [[_ _cells _board-pieces _selected-index _card-icon-mode
-             _texture-errors _legal-targets move-preview] (r/argv this)
-            territory-targets (territory-targets-by-index legal-targets)
-            wasteland-targets (wasteland-targets-by-coordinate legal-targets)
-            piece-targets (piece-targets-by-id legal-targets)
-            drag-preview* (drag-preview-with-target-status
-                           drag-preview
-                           (drag-target-descriptor territory-targets
-                                                   wasteland-targets
-                                                   piece-targets
-                                                   drag-preview))
-            board-space-drag-active? (board-space-drag-preview? drag-preview)
-            drag-territory-key (drag-target-key :territory drag-preview*)
-            drag-wasteland-key (drag-target-key :wasteland drag-preview*)
-            preview-territory-key (placement-target-key :territory move-preview)
-            preview-wasteland-key (placement-target-key :wasteland move-preview)
-            preview-status (:status move-preview)
-            drag-target-count (atom 0)]
-        (assoc-state-when-changed! this :drag-preview drag-preview*)
-        (doseq [[index mesh] selection-meshes]
-          (when (style-and-track-drag-target!
-                 mesh
-                 (target-mesh-style selected-index
-                                    index
-                                    board-space-drag-active?
-                                    drag-territory-key
-                                    preview-territory-key
-                                    preview-status
-                                    (get territory-targets index)))
-            (swap! drag-target-count inc)))
-        (doseq [[coordinate mesh] wasteland-selection-meshes]
-          (when (style-and-track-drag-target!
-                 mesh
-                 (target-mesh-style nil
-                                    coordinate
-                                    board-space-drag-active?
-                                    drag-wasteland-key
-                                    preview-wasteland-key
-                                    preview-status
-                                    (get wasteland-targets coordinate)))
-            (swap! drag-target-count inc)))
-        (doseq [[piece-id mesh] piece-selection-meshes]
-          (style-highlight-mesh! mesh
-                                 (target-mesh-style (get piece-targets piece-id))))
-        (assoc-state-when-changed! this
-                                   :drag-target-highlight-count
-                                   @drag-target-count)
-        (when render!
-          (render!)))))))
+       (when legal-targets-ref
+         (reset! legal-targets-ref legal-targets))
+       (let [[_ _cells _board-pieces _selected-index _card-icon-mode
+              _texture-errors _legal-targets move-preview] (r/argv this)
+             territory-targets (territory-targets-by-index legal-targets)
+             wasteland-targets (wasteland-targets-by-coordinate legal-targets)
+             piece-targets (piece-targets-by-id legal-targets)
+             drag-preview* (drag-preview-with-target-status
+                            drag-preview
+                            (drag-target-descriptor territory-targets
+                                                    wasteland-targets
+                                                    piece-targets
+                                                    drag-preview))
+             board-space-drag-active? (board-space-drag-preview? drag-preview)
+             drag-territory-key (drag-target-key :territory drag-preview*)
+             drag-wasteland-key (drag-target-key :wasteland drag-preview*)
+             preview-territory-key (placement-target-key :territory move-preview)
+             preview-wasteland-key (placement-target-key :wasteland move-preview)
+             preview-status (:status move-preview)
+             drag-target-count (atom 0)]
+         (assoc-state-when-changed! this :drag-preview drag-preview*)
+         (doseq [[index mesh] selection-meshes]
+           (when (style-and-track-drag-target!
+                  mesh
+                  (target-mesh-style selected-index
+                                     index
+                                     board-space-drag-active?
+                                     drag-territory-key
+                                     preview-territory-key
+                                     preview-status
+                                     (get territory-targets index)))
+             (swap! drag-target-count inc)))
+         (doseq [[coordinate mesh] wasteland-selection-meshes]
+           (when (style-and-track-drag-target!
+                  mesh
+                  (target-mesh-style nil
+                                     coordinate
+                                     board-space-drag-active?
+                                     drag-wasteland-key
+                                     preview-wasteland-key
+                                     preview-status
+                                     (get wasteland-targets coordinate)))
+             (swap! drag-target-count inc)))
+         (doseq [[piece-id mesh] piece-selection-meshes]
+           (style-highlight-mesh! mesh
+                                  (target-mesh-style (get piece-targets piece-id))))
+         (assoc-state-when-changed! this
+                                    :drag-target-highlight-count
+                                    @drag-target-count)
+         (when render!
+           (render!)))))))
 
 (defn dispose! [this]
   (resources/dispose-board! (r/state this))
@@ -267,9 +267,9 @@
                      canvas (.-domElement renderer)]
                  (controls/configure-controls! camera controls preserved-view)
                  (let [control-change-listener (controls/control-change-listener this
-                                                                                  camera
-                                                                                  controls
-                                                                                  render!)
+                                                                                 camera
+                                                                                 controls
+                                                                                 render!)
                        scene-data (scene-graph/assemble-board-scene!
                                    {:scene scene
                                     :loader loader

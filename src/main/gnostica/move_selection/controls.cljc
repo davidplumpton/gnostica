@@ -172,8 +172,8 @@
                :play-power-options (move-fool-play-power-options ctx db)
                :play-power (move-fool-play-power ctx db)
                :can-reveal? (and reveal-count
-                                  (not active-reveal)
-                                  (< (count completed) reveal-count))}
+                                 (not active-reveal)
+                                 (< (count completed) reveal-count))}
         active-card
         (assoc :active-card-id (:id active-card)
                :active-card-title (:title active-card)

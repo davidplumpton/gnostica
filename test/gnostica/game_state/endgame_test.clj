@@ -43,26 +43,26 @@
                                            1 "cupsking"
                                            2 "sun"})
                   (game-state/with-board-pieces
-                   [{:id :rose-mixed
-                     :player-id :rose
-                     :space-index 0
-                     :size :small
-                     :orientation :north}
-                    {:id :indigo-mixed
-                     :player-id :indigo
-                     :space-index 0
-                     :size :small
-                     :orientation :north}
-                    {:id :rose-royalty
-                     :player-id :rose
-                     :space-index 1
-                     :size :small
-                     :orientation :north}
-                    {:id :rose-major
-                     :player-id :rose
-                     :space-index 2
-                     :size :small
-                     :orientation :north}])
+                    [{:id :rose-mixed
+                      :player-id :rose
+                      :space-index 0
+                      :size :small
+                      :orientation :north}
+                     {:id :indigo-mixed
+                      :player-id :indigo
+                      :space-index 0
+                      :size :small
+                      :orientation :north}
+                     {:id :rose-royalty
+                      :player-id :rose
+                      :space-index 1
+                      :size :small
+                      :orientation :north}
+                     {:id :rose-major
+                      :player-id :rose
+                      :space-index 2
+                      :size :small
+                      :orientation :north}])
                   game-state/with-current-scores)]
     (is (= {:rose 5
             :indigo 0}
@@ -75,31 +75,31 @@
                                            2 "sun"
                                            3 "magician"})
                   (game-state/with-board-pieces
-                   [{:id :rose-spot
-                     :player-id :rose
-                     :space-index 0
-                     :size :small
-                     :orientation :north}
-                    {:id :rose-royalty
-                     :player-id :rose
-                     :space-index 1
-                     :size :small
-                     :orientation :north}
-                    {:id :rose-major-a
-                     :player-id :rose
-                     :space-index 2
-                     :size :small
-                     :orientation :north}
-                    {:id :rose-major-b
-                     :player-id :rose
-                     :space-index 3
-                     :size :small
-                     :orientation :north}
-                    {:id :indigo-piece
-                     :player-id :indigo
-                     :space-index 4
-                     :size :small
-                     :orientation :north}]))
+                    [{:id :rose-spot
+                      :player-id :rose
+                      :space-index 0
+                      :size :small
+                      :orientation :north}
+                     {:id :rose-royalty
+                      :player-id :rose
+                      :space-index 1
+                      :size :small
+                      :orientation :north}
+                     {:id :rose-major-a
+                      :player-id :rose
+                      :space-index 2
+                      :size :small
+                      :orientation :north}
+                     {:id :rose-major-b
+                      :player-id :rose
+                      :space-index 3
+                      :size :small
+                      :orientation :north}
+                     {:id :indigo-piece
+                      :player-id :indigo
+                      :space-index 4
+                      :size :small
+                      :orientation :north}]))
         announced (game-state/end-turn state {:player-id :rose
                                               :announce-challenge? true})
         indigo-blocked (game-state/end-turn (:state announced)
@@ -178,16 +178,16 @@
   (let [state (-> (state-with-board-cards {0 "sun"
                                            4 "magician"})
                   (game-state/with-board-pieces
-                   [{:id :rose-major
-                     :player-id :rose
-                     :space-index 0
-                     :size :small
-                     :orientation :north}
-                    {:id :indigo-piece
-                     :player-id :indigo
-                     :space-index 4
-                     :size :small
-                     :orientation :north}]))
+                    [{:id :rose-major
+                      :player-id :rose
+                      :space-index 0
+                      :size :small
+                      :orientation :north}
+                     {:id :indigo-piece
+                      :player-id :indigo
+                      :space-index 4
+                      :size :small
+                      :orientation :north}]))
         rose-hand-ids (player-hand-ids state :rose)
         announced (game-state/end-turn state {:player-id :rose
                                               :announce-challenge? true})

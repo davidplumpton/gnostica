@@ -139,9 +139,9 @@
                                   :demo-board-pieces [(assoc rose-rod-minion
                                                              :orientation :north)]})
         piece-db (-> db
-                      (app-state/select-move-source :play-hand-card)
-                      (app-state/select-move-hand-card "star")
-                      (app-state/select-move-piece :rose-rod-minion))
+                     (app-state/select-move-source :play-hand-card)
+                     (app-state/select-move-hand-card "star")
+                     (app-state/select-move-piece :rose-rod-minion))
         oriented-db (app-state/set-move-minion-orientation piece-db :east)
         kind-db (app-state/select-move-disc-target-kind oriented-db :territory)
         target-db (-> kind-db
@@ -278,8 +278,8 @@
                            (app-state/select-board-card 4)
                            (app-state/select-move-replacement-card "cupsking"))
         stale-game (game-state/with-board-pieces
-                    (app-state/game replacement-db)
-                    [rose-rod-minion indigo-rod-target])
+                     (app-state/game replacement-db)
+                     [rose-rod-minion indigo-rod-target])
         stale-db (assoc replacement-db :game stale-game)
         confirmed-db (app-state/confirm-move stale-db)]
     (is (= :confirm (:stage (app-state/move-selection stale-db))))

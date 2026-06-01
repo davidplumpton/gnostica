@@ -209,7 +209,7 @@
         first-reveal-db (app-handlers/reveal-move-fool-card-db count-db {:shuffle-seed seed})
         first-skip-db (app-state/skip-move-fool-reveal first-reveal-db)
         second-reveal-db (app-handlers/reveal-move-fool-card-db first-skip-db
-                                                                 {:shuffle-seed (inc seed)})
+                                                                {:shuffle-seed (inc seed)})
         reveal-db (app-state/skip-move-fool-reveal second-reveal-db)
         confirmed-db (app-handlers/confirm-move-db reveal-db {:shuffle-seed (+ seed 2)})
         repeated-confirmed-db (app-handlers/confirm-move-db reveal-db {:shuffle-seed (+ seed 3)})
@@ -249,8 +249,8 @@
         db (app-state/initialize
             {:player-specs test-player-specs
              :game-options {:deck-order (deck-with-cards-at {0 "fool"
-                                                              draw-start "cups2"
-                                                              (inc draw-start) "wands2"})}
+                                                             draw-start "cups2"
+                                                             (inc draw-start) "wands2"})}
              :demo-board-pieces [rose-hand-cup-territory-piece]})
         ready-db (-> db
                      (app-state/select-move-source :play-hand-card)
@@ -294,8 +294,8 @@
         db (app-state/initialize
             {:player-specs test-player-specs
              :game-options {:deck-order (deck-with-cards-at {0 "fool"
-                                                              draw-start "wands2"
-                                                              (inc draw-start) "cups2"})}
+                                                             draw-start "wands2"
+                                                             (inc draw-start) "cups2"})}
              :demo-board-pieces [rose-hand-cup-territory-piece]})
         ready-db (-> db
                      (app-state/select-move-source :play-hand-card)
@@ -329,8 +329,8 @@
         db (app-state/initialize
             {:player-specs test-player-specs
              :game-options {:deck-order (deck-with-cards-at {0 "fool"
-                                                              draw-start "cups2"
-                                                              (inc draw-start) "wands2"})}
+                                                             draw-start "cups2"
+                                                             (inc draw-start) "wands2"})}
              :demo-board-pieces [rose-hand-cup-territory-piece]})
         ready-db (-> db
                      (app-state/select-move-source :play-hand-card)
@@ -364,7 +364,7 @@
         db (app-state/initialize
             {:player-specs test-player-specs
              :game-options {:deck-order (deck-with-cards-at {0 "fool"
-                                                              draw-start "hangedman"})}
+                                                             draw-start "hangedman"})}
              :demo-board-pieces [rose-rod-minion indigo-rod-target]})
         rose-hand-before (mapv :id (get-in db [:game :players-by-id :rose :hand]))
         indigo-hand-before (mapv :id (get-in db [:game :players-by-id :indigo :hand]))
@@ -398,9 +398,9 @@
         db (app-state/initialize
             {:player-specs test-player-specs
              :game-options {:deck-order (deck-with-cards-at
-                                          {(board-card-position test-player-specs world-index) "world"
-                                           (board-card-position test-player-specs fool-index) "fool"
-                                           draw-start "cups2"})}
+                                         {(board-card-position test-player-specs world-index) "world"
+                                          (board-card-position test-player-specs fool-index) "fool"
+                                          draw-start "cups2"})}
              :demo-board-pieces [rose-source-piece]})
         ready-db (-> db
                      (app-state/select-move-source :activate-territory)

@@ -540,13 +540,13 @@
       (doseq [cell cells]
         (add-card-plane! card-context cell))
       (let [piece-edge-outline-count (add-piece-meshes! scene
-                                                         geometries
-                                                         materials
-                                                         board-spaces
-                                                         object-meshes
-                                                         target-meshes
-                                                         piece-selection-meshes
-                                                         board-pieces)
+                                                        geometries
+                                                        materials
+                                                        board-spaces
+                                                        object-meshes
+                                                        target-meshes
+                                                        piece-selection-meshes
+                                                        board-pieces)
             placement-preview (add-placement-preview-mesh! scene
                                                            geometries
                                                            materials)

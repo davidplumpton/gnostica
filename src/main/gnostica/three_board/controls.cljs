@@ -139,11 +139,11 @@
                              (+ (* right-steps right-y)
                                 (* forward-steps forward-y))))
             clamped-x (clamp-number intended-x
-                                     (:min-x keyboard-pan-bounds)
-                                     (:max-x keyboard-pan-bounds))
+                                    (:min-x keyboard-pan-bounds)
+                                    (:max-x keyboard-pan-bounds))
             clamped-y (clamp-number intended-y
-                                     (:min-y keyboard-pan-bounds)
-                                     (:max-y keyboard-pan-bounds))
+                                    (:min-y keyboard-pan-bounds)
+                                    (:max-y keyboard-pan-bounds))
             dx (- clamped-x (.-x target))
             dy (- clamped-y (.-y target))]
         (when (or (not= 0 dx) (not= 0 dy))
@@ -155,8 +155,8 @@
 
 (defn handle-board-key-down! [this event]
   (when-let [[right-steps forward-steps] (when-not (true? (get-in (r/state this)
-                                                                   [:drag-preview :active?]))
-                                          (keyboard-pan-delta event))]
+                                                                  [:drag-preview :active?]))
+                                           (keyboard-pan-delta event))]
     (.preventDefault event)
     (.stopPropagation event)
     (pan-camera-view! this right-steps forward-steps)))

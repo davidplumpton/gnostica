@@ -1,0 +1,6 @@
+{:config-paths ["imports/metosin/malli"]
+ :linters {:refer-all {:level :off}
+           :redundant-call {:level :off}
+           :unused-namespace {:level :off}
+           :unused-referred-var {:level :off}}
+ :output {:exclude-files ["src/main/resources/js/.*"]}}

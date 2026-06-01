@@ -31,10 +31,10 @@
   ([drag-hover target {:keys [active? status] :as _descriptor}]
    (when (and active?
               (gesture-input/show-target-highlight? drag-hover target))
-    (case status
-      :legal " is-legal-target"
-      :disabled " is-disabled-target"
-      ""))))
+     (case status
+       :legal " is-legal-target"
+       :disabled " is-disabled-target"
+       ""))))
 
 (defn- drop-target-class [{:keys [active?]}]
   (when active?
@@ -304,7 +304,7 @@
      "top" (css-percent top)}))
 
 (defn- board-piece-marker [slot piece-count space-orientation piece descriptor
-                            drag-enabled? drag-hover]
+                           drag-enabled? drag-hover]
   (let [pips (pieces/pips piece)
         player (pieces/player-for piece)
         drag-input (when drag-enabled?
@@ -315,13 +315,13 @@
     [:span.board-piece
      {:class (str "is-slot-" slot
                   " is-" (name (:size piece))
-	                  " is-" (name (:orientation piece))
-	                  (when draggable? " is-draggable")
-	                  (target-status-class @drag-hover
-	                                       {:kind :piece
-	                                        :piece-id (:id piece)}
-	                                       descriptor)
-	                  (when (:selected? descriptor) " is-selected-target"))
+                  " is-" (name (:orientation piece))
+                  (when draggable? " is-draggable")
+                  (target-status-class @drag-hover
+                                       {:kind :piece
+                                        :piece-id (:id piece)}
+                                       descriptor)
+                  (when (:selected? descriptor) " is-selected-target"))
       :style (board-piece-style player slot piece-count space-orientation)
       :title (target-reason descriptor)
       :data-piece-id (name (:id piece))
@@ -345,7 +345,7 @@
       :on-drag-over on-drag-over-gesture
       :on-drop #(on-drop-gesture % {:kind :piece
                                     :piece-id (:id piece)}
-                                drag-hover)}
+                                 drag-hover)}
      [:span.board-piece__body
       [:span.board-piece__pips
        (for [pip (range pips)]
@@ -382,12 +382,12 @@
         hovered? (drag-hover-target? @drag-hover target)]
     ^{:key id}
     [:div.board-wasteland
-	     {:class (str "is-" (name orientation)
-	                  (when (seq board-pieces) " has-pieces")
-	                  (drop-target-class descriptor)
-	                  (target-status-class @drag-hover target descriptor)
-	                  (drag-hover-status-class @drag-hover target descriptor)
-	                  (when (:selected? descriptor) " is-selected-target"))
+     {:class (str "is-" (name orientation)
+                  (when (seq board-pieces) " has-pieces")
+                  (drop-target-class descriptor)
+                  (target-status-class @drag-hover target descriptor)
+                  (drag-hover-status-class @drag-hover target descriptor)
+                  (when (:selected? descriptor) " is-selected-target"))
       :style (board-space-style bounds space)
       :data-piece-count (count board-pieces)
       :data-move-target-status (some-> (:status descriptor) name)
@@ -395,7 +395,7 @@
       :data-drag-hover (when hovered? "true")
       :data-drag-hover-status (when hovered?
                                 (some-> (current-drag-hover-status @drag-hover
-                                                                    descriptor)
+                                                                   descriptor)
                                         name))
       :title (target-reason descriptor)
       :role (when (seq board-pieces) "img")
@@ -425,19 +425,19 @@
      {:type "button"
       :class (str "is-" (name orientation)
                   " is-row-" row
-	                  " is-col-" col
-	                  (when selected? " is-selected")
-	                  (drop-target-class descriptor)
-	                  (target-status-class @drag-hover target descriptor)
-	                  (drag-hover-status-class @drag-hover target descriptor)
-	                  (when (:selected? descriptor) " is-selected-target"))
+                  " is-col-" col
+                  (when selected? " is-selected")
+                  (drop-target-class descriptor)
+                  (target-status-class @drag-hover target descriptor)
+                  (drag-hover-status-class @drag-hover target descriptor)
+                  (when (:selected? descriptor) " is-selected-target"))
       :style (board-space-style bounds cell)
       :data-move-target-status (some-> (:status descriptor) name)
       :data-move-target-role (some-> (:role descriptor) name)
       :data-drag-hover (when hovered? "true")
       :data-drag-hover-status (when hovered?
                                 (some-> (current-drag-hover-status @drag-hover
-                                                                    descriptor)
+                                                                   descriptor)
                                         name))
       :draggable (if drag-input "true" "false")
       :title (target-reason descriptor)
@@ -464,8 +464,8 @@
       :on-drag-end #(do
                       (gesture-input/clear-active-gesture-input!)
                       (reset! drag-hover nil))
-     :on-drag-over #(on-drag-over-target % drag-hover target descriptor)
-     :on-drop #(on-drop-gesture % target drag-hover)}
+      :on-drag-over #(on-drag-over-target % drag-hover target descriptor)
+      :on-drop #(on-drop-gesture % target drag-hover)}
      [card-ui/card-face card "board-card__face" card-icon-mode]
      (board-piece-markers orientation
                           board-pieces
@@ -531,9 +531,9 @@
             :data-table-surface-color three-board/table-surface-css-color
             :data-table-clear-color three-board/table-clear-css-color
             :data-drag-hover-kind (some-> drag-hover*
-                                           :target
-                                           :kind
-                                           name)
+                                          :target
+                                          :kind
+                                          name)
             :data-drag-active (boolean drag-hover*)
             :data-drag-hover-status (some-> drag-hover-status name)
             :style (board-stage-style space-bounds)

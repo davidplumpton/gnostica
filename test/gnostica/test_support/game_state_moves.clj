@@ -57,31 +57,31 @@
                                 4 "wheeloffortune"}
                                opts)
        (game-state/with-board-pieces
-        [{:id :rose-spot
-          :player-id :rose
-          :space-index 0
-          :size :small
-          :orientation :north}
-         {:id :rose-royalty
-          :player-id :rose
-          :space-index 1
-          :size :small
-          :orientation :north}
-         {:id :rose-major-a
-          :player-id :rose
-          :space-index 2
-          :size :small
-          :orientation :north}
-         {:id :rose-major-b
-          :player-id :rose
-          :space-index 3
-          :size :small
-          :orientation :north}
-         {:id :indigo-piece
-          :player-id :indigo
-          :space-index 4
-          :size :small
-          :orientation :north}]))))
+         [{:id :rose-spot
+           :player-id :rose
+           :space-index 0
+           :size :small
+           :orientation :north}
+          {:id :rose-royalty
+           :player-id :rose
+           :space-index 1
+           :size :small
+           :orientation :north}
+          {:id :rose-major-a
+           :player-id :rose
+           :space-index 2
+           :size :small
+           :orientation :north}
+          {:id :rose-major-b
+           :player-id :rose
+           :space-index 3
+           :size :small
+           :orientation :north}
+          {:id :indigo-piece
+           :player-id :indigo
+           :space-index 4
+           :size :small
+           :orientation :north}]))))
 
 (defn resolve-rose-challenge [state]
   (let [announced (game-state/end-turn state {:player-id :rose

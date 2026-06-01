@@ -22,21 +22,21 @@
   (cond
     (not (map? target))
     (core/failure :invalid-rod-target
-             "Rod territory targets require a target map."
-             {:target target})
+                  "Rod territory targets require a target map."
+                  {:target target})
 
     (not= :territory (:kind target))
     (core/failure :invalid-rod-target
-             "Rod territory targets must use :kind :territory."
-             {:target target})
+                  "Rod territory targets must use :kind :territory."
+                  {:target target})
 
     (some? (:board-index target))
     (if-let [cell (core/board-cell-by-index state (:board-index target))]
       {:ok? true
        :cell cell}
       (core/failure :invalid-target-territory
-               "Rod territory targets must reference an existing board cell."
-               {:target target}))
+                    "Rod territory targets must reference an existing board cell."
+                    {:target target}))
 
     (and (int? (:row target))
          (int? (:col target)))
@@ -44,13 +44,13 @@
       {:ok? true
        :cell cell}
       (core/failure :invalid-target-territory
-               "Rod territory targets must reference an existing board cell."
-               {:target target}))
+                    "Rod territory targets must reference an existing board cell."
+                    {:target target}))
 
     :else
     (core/failure :invalid-rod-target
-             "Rod territory targets require a board index or row and column."
-             {:target target})))
+                  "Rod territory targets require a board index or row and column."
+                  {:target target})))
 
 (defn- resolve-rod-variant [card requested-variant source]
   (let [variants (cards/rod-variants card)
@@ -58,9 +58,9 @@
     (cond
       (empty? variants)
       (core/failure :source-card-not-rod
-               "The source card does not provide a Rod power."
-               {:card-id (:id card)
-                :source source})
+                    "The source card does not provide a Rod power."
+                    {:card-id (:id card)
+                     :source source})
 
       (nil? requested-variant)
       {:ok? true
@@ -68,9 +68,9 @@
 
       (not (contains? cards/rod-variant-ids requested-variant))
       (core/failure :invalid-rod-variant
-               "Rod moves require a known Rod variant."
-               {:rod-variant requested-variant
-                :valid-variants cards/rod-variant-ids})
+                    "Rod moves require a known Rod variant."
+                    {:rod-variant requested-variant
+                     :valid-variants cards/rod-variant-ids})
 
       (contains? variant-set requested-variant)
       {:ok? true
@@ -78,10 +78,10 @@
 
       :else
       (core/failure :rod-variant-unavailable
-               "The source card does not provide the selected Rod variant."
-               {:card-id (:id card)
-                :rod-variant requested-variant
-                :available-variants variants}))))
+                    "The source card does not provide the selected Rod variant."
+                    {:card-id (:id card)
+                     :rod-variant requested-variant
+                     :available-variants variants}))))
 
 (defn- resolve-rod-source
   ([state player-id source rod-variant]
@@ -95,64 +95,64 @@
      (cond
        (not (map? source))
        (core/failure :invalid-rod-command
-                "Rod moves require a source map."
-                {:source source})
+                     "Rod moves require a source map."
+                     {:source source})
 
        (nil? piece)
        (core/failure :invalid-piece
-                "Rod moves require one of the player's pieces as the acting minion."
-                {:piece-id (:piece-id source)})
+                     "Rod moves require one of the player's pieces as the acting minion."
+                     {:piece-id (:piece-id source)})
 
        (not= player-id (:player-id piece))
        (core/failure :invalid-piece
-                "The acting minion must belong to the move's player."
-                {:piece-id (:piece-id source)
-                 :player-id player-id
-                 :piece-player-id (:player-id piece)})
+                     "The acting minion must belong to the move's player."
+                     {:piece-id (:piece-id source)
+                      :player-id player-id
+                      :piece-player-id (:player-id piece)})
 
        (nil? piece-coordinate)
        (core/failure :invalid-piece-space
-                "Rod moves require an acting minion with a board coordinate."
-                {:piece-id (:piece-id source)
-                 :space-index (:space-index piece)
-                 :space (:space piece)})
+                     "Rod moves require an acting minion with a board coordinate."
+                     {:piece-id (:piece-id source)
+                      :space-index (:space-index piece)
+                      :space (:space piece)})
 
        (= :up (:orientation piece))
        (core/failure :rod-minion-upright
-                "A piece standing upright may not use a Rod."
-                {:piece-id (:id piece)
-                 :orientation (:orientation piece)})
+                     "A piece standing upright may not use a Rod."
+                     {:piece-id (:id piece)
+                      :orientation (:orientation piece)})
 
        (not (contains? pieces/cardinal-orientations (:orientation piece)))
        (core/failure :invalid-rod-direction
-                "Rod moves require the acting minion to point in a cardinal direction."
-                {:piece-id (:id piece)
-                 :orientation (:orientation piece)
-                 :legal-directions pieces/cardinal-orientations})
+                     "Rod moves require the acting minion to point in a cardinal direction."
+                     {:piece-id (:id piece)
+                      :orientation (:orientation piece)
+                      :legal-directions pieces/cardinal-orientations})
 
        (= :territory (:kind source))
        (let [cell (core/board-cell-by-index state (:board-index source))]
          (cond
            (nil? cell)
            (core/failure :invalid-source-territory
-                    "Rod territory sources must reference an existing board cell."
-                    {:board-index (:board-index source)})
+                         "Rod territory sources must reference an existing board cell."
+                         {:board-index (:board-index source)})
 
            (and source-card
                 (not= (get-in cell [:card :id]) (:id source-card)))
            (core/failure :invalid-source-territory
-                    "Rod paid source cards must match the command source territory."
-                    {:board-index (:board-index source)
-                     :territory-card-id (get-in cell [:card :id])
-                     :source-card-id (:id source-card)})
+                         "Rod paid source cards must match the command source territory."
+                         {:board-index (:board-index source)
+                          :territory-card-id (get-in cell [:card :id])
+                          :source-card-id (:id source-card)})
 
            (and (not allow-major-minion?)
                 (not= (:board-index source) (:space-index piece)))
            (core/failure :source-piece-mismatch
-                    "The acting minion must occupy the source territory."
-                    {:piece-id (:piece-id source)
-                     :piece-space-index (:space-index piece)
-                     :source-board-index (:board-index source)})
+                         "The acting minion must occupy the source territory."
+                         {:piece-id (:piece-id source)
+                          :piece-space-index (:space-index piece)
+                          :source-board-index (:board-index source)})
 
            :else
            (let [paid-card (or source-card (:card cell))
@@ -179,16 +179,16 @@
          (cond
            (nil? card)
            (core/failure :invalid-hand-card
-                    "Rod hand-card sources must reference a card in the player's hand."
-                    {:card-id (:card-id source)
-                     :player-id player-id})
+                         "Rod hand-card sources must reference a card in the player's hand."
+                         {:card-id (:card-id source)
+                          :player-id player-id})
 
            (and source-card
                 (not= (:card-id source) (:id source-card)))
            (core/failure :invalid-hand-card
-                    "Rod paid source cards must match the command source card."
-                    {:card-id (:card-id source)
-                     :source-card-id (:id source-card)})
+                         "Rod paid source cards must match the command source card."
+                         {:card-id (:card-id source)
+                          :source-card-id (:id source-card)})
 
            :else
            (let [power-card (or power-card card)
@@ -207,29 +207,29 @@
 
        :else
        (core/failure :invalid-rod-command
-                "Rod move sources must be either :territory or :hand-card."
-                {:source source})))))
+                     "Rod move sources must be either :territory or :hand-card."
+                     {:source source})))))
 
 (defn- resolve-rod-distance [piece distance]
   (let [maximum (or (pieces/pips piece) 0)]
     (cond
       (not (int? distance))
       (core/failure :invalid-rod-distance
-               "Rod moves require an integer distance."
-               {:distance distance
-                :maximum maximum})
+                    "Rod moves require an integer distance."
+                    {:distance distance
+                     :maximum maximum})
 
       (not (pos? distance))
       (core/failure :invalid-rod-distance
-               "Rod moves cannot move zero spaces."
-               {:distance distance
-                :maximum maximum})
+                    "Rod moves cannot move zero spaces."
+                    {:distance distance
+                     :maximum maximum})
 
       (< maximum distance)
       (core/failure :invalid-rod-distance
-               "Rod moves cannot exceed the acting minion's pip count."
-               {:distance distance
-                :maximum maximum})
+                    "Rod moves cannot exceed the acting minion's pip count."
+                    {:distance distance
+                     :maximum maximum})
 
       :else
       {:ok? true
@@ -243,17 +243,17 @@
 
     (not= player-id (:player-id moved-piece))
     (core/failure :invalid-orientation
-             "Enemy pieces retain their original orientation when moved by a Rod."
-             {:piece-id (:id moved-piece)
-              :piece-player-id (:player-id moved-piece)
-              :orientation orientation})
+                  "Enemy pieces retain their original orientation when moved by a Rod."
+                  {:piece-id (:id moved-piece)
+                   :piece-player-id (:player-id moved-piece)
+                   :orientation orientation})
 
     (not (contains? pieces/legal-orientations orientation))
     (core/failure :invalid-orientation
-             "Rod moves can only reorient current-player pieces to a legal orientation."
-             {:piece-id (:id moved-piece)
-              :orientation orientation
-              :legal-orientations pieces/legal-orientations})
+                  "Rod moves can only reorient current-player pieces to a legal orientation."
+                  {:piece-id (:id moved-piece)
+                   :orientation orientation
+                   :legal-orientations pieces/legal-orientations})
 
     :else
     {:ok? true
@@ -267,19 +267,19 @@
     (cond
       (nil? target-coordinate)
       (core/failure :invalid-piece-space
-               "Rod piece targets must have a board coordinate."
-               {:piece-id (:id target-piece)
-                :space-index (:space-index target-piece)
-                :space (:space target-piece)})
+                    "Rod piece targets must have a board coordinate."
+                    {:piece-id (:id target-piece)
+                     :space-index (:space-index target-piece)
+                     :space (:space target-piece)})
 
       (not (rod-targetable-coordinate? source-coordinate target-coordinate direction target-self?))
       (core/failure :invalid-rod-target
-               "Rod piece targets must be the minion itself or occupy the adjacent space in the minion direction."
-               {:piece-id (:id target-piece)
-                :direction direction
-                :source-coordinate source-coordinate
-                :target-coordinate target-coordinate
-                :expected-coordinate (rod-destination-coordinate source-coordinate direction 1)})
+                    "Rod piece targets must be the minion itself or occupy the adjacent space in the minion direction."
+                    {:piece-id (:id target-piece)
+                     :direction direction
+                     :source-coordinate source-coordinate
+                     :target-coordinate target-coordinate
+                     :expected-coordinate (rod-destination-coordinate source-coordinate direction 1)})
 
       :else
       (let [orientation-result (resolve-rod-orientation player-id target-piece orientation)]
@@ -307,9 +307,9 @@
                       :piece-id (:id piece)}
                      (spatial/target-summary target)))
         (core/failure :invalid-rod-target
-                 "Move-minion Rod commands move the acting minion and do not need another target."
-                 {:target target
-                  :piece-id (:id piece)})
+                      "Move-minion Rod commands move the acting minion and do not need another target."
+                      {:target target
+                       :piece-id (:id piece)})
         (normalize-rod-piece-target state
                                     player-id
                                     source-result
@@ -321,18 +321,18 @@
     (cond
       (not (map? target))
       (core/failure :invalid-rod-target
-               "Push-piece Rod commands require a target piece map."
-               {:target target})
+                    "Push-piece Rod commands require a target piece map."
+                    {:target target})
 
       (not= :piece (:kind target))
       (core/failure :invalid-rod-target
-               "Push-piece Rod commands target :kind :piece."
-               {:target target})
+                    "Push-piece Rod commands target :kind :piece."
+                    {:target target})
 
       (nil? (:piece-id target))
       (core/failure :invalid-rod-target
-               "Push-piece Rod commands require a target piece id."
-               {:target target})
+                    "Push-piece Rod commands require a target piece id."
+                    {:target target})
 
       :else
       (if-let [target-piece (core/piece-by-id state (:piece-id target))]
@@ -343,15 +343,15 @@
                                     distance
                                     orientation)
         (core/failure :invalid-target-piece
-                 "Push-piece Rod commands must reference a piece on the board."
-                 {:target target})))
+                      "Push-piece Rod commands must reference a piece on the board."
+                      {:target target})))
 
     :push-territory
     (if (some? orientation)
       (core/failure :invalid-orientation
-               "Rod territory pushes do not take a piece orientation."
-               {:orientation orientation
-                :target target})
+                    "Rod territory pushes do not take a piece orientation."
+                    {:orientation orientation
+                     :target target})
       (let [cell-result (territory-target-cell state target)]
         (if (:ok? cell-result)
           (let [cell (:cell cell-result)
@@ -371,12 +371,12 @@
                                                                  distance)}
                :target-cell cell}
               (core/failure :invalid-rod-target
-                       "Rod territory targets must occupy the adjacent space in the minion direction."
-                       {:target target
-                        :direction direction
-                        :source-coordinate piece-coordinate
-                        :target-coordinate cell-coordinate
-                        :expected-coordinate (rod-destination-coordinate piece-coordinate direction 1)})))
+                            "Rod territory targets must occupy the adjacent space in the minion direction."
+                            {:target target
+                             :direction direction
+                             :source-coordinate piece-coordinate
+                             :target-coordinate cell-coordinate
+                             :expected-coordinate (rod-destination-coordinate piece-coordinate direction 1)})))
           cell-result)))))
 
 (defn- resolve-rod-command* [state command source-opts]
@@ -384,25 +384,25 @@
     (cond
       (not (map? command))
       (core/failure :invalid-rod-command
-               "Rod moves require a command map."
-               {:command command})
+                    "Rod moves require a command map."
+                    {:command command})
 
       (nil? (get-in state [:players-by-id player-id]))
       (core/failure :unknown-player
-               "Rod moves require a participating player."
-               {:player-id player-id})
+                    "Rod moves require a participating player."
+                    {:player-id player-id})
 
       (not (core/current-player-id? state player-id))
       (core/failure :not-current-player
-               "Only the current player can resolve a Rod move."
-               {:player-id player-id
-                :current-player-id (get-in state [:turn :current-player-id])})
+                    "Only the current player can resolve a Rod move."
+                    {:player-id player-id
+                     :current-player-id (get-in state [:turn :current-player-id])})
 
       (not (contains? rod-modes mode))
       (core/failure :invalid-rod-mode
-               "Rod moves require a supported mode."
-               {:mode mode
-                :supported-modes rod-modes})
+                    "Rod moves require a supported mode."
+                    {:mode mode
+                     :supported-modes rod-modes})
 
       :else
       (let [source-result (resolve-rod-source state player-id source rod-variant source-opts)]
@@ -413,10 +413,10 @@
               (and (some? direction)
                    (not= direction minion-direction))
               (core/failure :invalid-rod-direction
-                       "Rod command direction must match the acting minion orientation."
-                       {:direction direction
-                        :minion-direction minion-direction
-                        :piece-id (get-in source-result [:piece :id])})
+                            "Rod command direction must match the acting minion orientation."
+                            {:direction direction
+                             :minion-direction minion-direction
+                             :piece-id (get-in source-result [:piece :id])})
 
               :else
               (let [distance-result (resolve-rod-distance (:piece source-result)
@@ -462,9 +462,9 @@
   (cond
     (not (and (int? row) (int? col)))
     (core/failure :invalid-rod-destination
-             "Rod piece movement requires a destination coordinate."
-             {:piece-id (:id moved-piece)
-              :destination destination})
+                  "Rod piece movement requires a destination coordinate."
+                  {:piece-id (:id moved-piece)
+                   :destination destination})
 
     :else
     (if-let [cell (core/board-cell-at state row col)]
@@ -474,13 +474,13 @@
                  (not (rod-unbounded? rod-variant))
                  (<= pieces/max-pieces-per-space (count space-pieces)))
           (core/failure :target-territory-full
-                   "Rod piece movement requires fewer than three pieces on the destination territory."
-                   {:piece-id (:id moved-piece)
-                    :board-index (:index cell)
-                    :row row
-                    :col col
-                    :piece-ids (mapv :id space-pieces)
-                    :maximum pieces/max-pieces-per-space})
+                        "Rod piece movement requires fewer than three pieces on the destination territory."
+                        {:piece-id (:id moved-piece)
+                         :board-index (:index cell)
+                         :row row
+                         :col col
+                         :piece-ids (mapv :id space-pieces)
+                         :maximum pieces/max-pieces-per-space})
           {:ok? true
            :piece-space {:space-index (:index cell)}
            :destination {:kind :territory
@@ -495,34 +495,34 @@
            :piece-space {:space target}
            :destination target}
           (core/failure :rod-destination-void
-                   "Rod piece movement cannot end in the void."
-                   {:piece-id (:id moved-piece)
-                    :destination destination}))))))
+                        "Rod piece movement cannot end in the void."
+                        {:piece-id (:id moved-piece)
+                         :destination destination}))))))
 
 (defn- rod-territory-destination-space [state player-id {:keys [row col] :as destination}]
   (cond
     (not (and (int? row) (int? col)))
     (core/failure :invalid-rod-destination
-             "Rod territory pushing requires a destination coordinate."
-             {:destination destination})
+                  "Rod territory pushing requires a destination coordinate."
+                  {:destination destination})
 
     (some? (core/board-cell-at state row col))
     (core/failure :target-not-wasteland
-             "Rod territory pushing must land in an empty wasteland space."
-             {:destination destination})
+                  "Rod territory pushing must land in an empty wasteland space."
+                  {:destination destination})
 
     (not (core/wasteland-target? state {:kind :wasteland
-                                   :row row
-                                   :col col}))
+                                        :row row
+                                        :col col}))
     (core/failure :rod-destination-void
-             "Rod territory pushing cannot land in the void."
-             {:destination destination})
+                  "Rod territory pushing cannot land in the void."
+                  {:destination destination})
 
     (seq (core/enemy-pieces-at-coordinate state player-id row col))
     (core/failure :wasteland-occupied-by-enemy
-             "Rod territory pushing cannot land on a wasteland occupied by enemy pieces."
-             {:destination destination
-              :enemy-piece-ids (mapv :id (core/enemy-pieces-at-coordinate state player-id row col))})
+                  "Rod territory pushing cannot land on a wasteland occupied by enemy pieces."
+                  {:destination destination
+                   :enemy-piece-ids (mapv :id (core/enemy-pieces-at-coordinate state player-id row col))})
 
     :else
     {:ok? true
@@ -567,15 +567,15 @@
   (let [{:keys [source target distance direction rod-variant]} command
         {:keys [row col]} target-cell
         destination-result (rod-territory-destination-space state
-                                                           player-id
-                                                           (:destination target))
+                                                            player-id
+                                                            (:destination target))
         enemy-pieces (core/enemy-pieces-at-coordinate state player-id row col)]
     (cond
       (seq enemy-pieces)
       (core/failure :target-territory-occupied-by-enemy
-               "Rod territory pushing cannot target a territory occupied by enemy pieces."
-               {:target (select-keys target [:kind :board-index :row :col])
-                :enemy-piece-ids (mapv :id enemy-pieces)})
+                    "Rod territory pushing cannot target a territory occupied by enemy pieces."
+                    {:target (select-keys target [:kind :board-index :row :col])
+                     :enemy-piece-ids (mapv :id enemy-pieces)})
 
       (not (:ok? destination-result))
       destination-result
@@ -602,11 +602,11 @@
                            (core/apply-source-cost player-id source-cost)
                            (core/move-board-index-pieces-to-wasteland (:index target-cell) row col)
                            (core/move-territory-cell (:index target-cell)
-                                                (:row destination)
-                                                (:col destination))
+                                                     (:row destination)
+                                                     (:col destination))
                            (core/move-wasteland-pieces-to-board-index (:row destination)
-                                                                 (:col destination)
-                                                                 (:index target-cell))
+                                                                      (:col destination)
+                                                                      (:index target-cell))
                            (core/return-void-pieces-to-stash)
                            (core/append-history event))]
         (core/success next-state [event])))))

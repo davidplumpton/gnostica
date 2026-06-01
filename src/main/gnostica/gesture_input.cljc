@@ -157,23 +157,23 @@
 (defn- valid-gesture-field? [field value]
   (case field
     (:source-board-index :copied-board-index :target-board-index
-     :sun-disc-target-board-index :hermit-destination-board-index)
+                         :sun-disc-target-board-index :hermit-destination-board-index)
     (board-index? value)
 
     (:hand-card-id :one-point-card-id :replacement-card-id
-     :sun-disc-replacement-card-id)
+                   :sun-disc-replacement-card-id)
     (card-id? value)
 
     (:piece-id :target-piece-id :sun-disc-target-piece-id)
     (id? value)
 
     (:power :copied-power :rod-mode :disc-target-kind :sword-target-kind
-     :territory-card-source :replacement-card-source :sun-disc-mode)
+            :territory-card-source :replacement-card-source :sun-disc-mode)
     (keyword? value)
 
     (:disc-action-count :major-action-count :sword-action-count
-     :devil-action-count :fool-reveal-count :high-priestess-redraw-count
-     :damage :distance :draw-count)
+                        :devil-action-count :fool-reveal-count :high-priestess-redraw-count
+                        :damage :distance :draw-count)
     (and (int? value)
          (not (neg? value)))
 

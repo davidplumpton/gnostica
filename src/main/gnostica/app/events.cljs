@@ -291,9 +291,9 @@
    (app-state/select-move-one-point-card db card-id)))
 
 (rf/reg-event-db
-select-move-territory-card-source
-(fn [db [_ territory-card-source]]
-  (app-state/select-move-territory-card-source db territory-card-source)))
+ select-move-territory-card-source
+ (fn [db [_ territory-card-source]]
+   (app-state/select-move-territory-card-source db territory-card-source)))
 
 (rf/reg-event-db
  select-move-replacement-card
@@ -311,9 +311,9 @@ select-move-territory-card-source
    (app-state/select-move-world-copy db board-index)))
 
 (rf/reg-event-db
-select-move-rod-mode
-(fn [db [_ mode]]
-  (app-state/select-move-rod-mode db mode)))
+ select-move-rod-mode
+ (fn [db [_ mode]]
+   (app-state/select-move-rod-mode db mode)))
 
 (rf/reg-event-db
  select-move-disc-target-kind
@@ -443,7 +443,7 @@ select-move-rod-mode
  [(rf/inject-cofx shuffle-seed)]
  (fn [coeffects _]
    {:db (handlers/confirm-move-db (:db coeffects)
-                                   {:shuffle-seed (get coeffects shuffle-seed)})}))
+                                  {:shuffle-seed (get coeffects shuffle-seed)})}))
 
 (rf/reg-event-db
  cancel-move
@@ -734,9 +734,9 @@ select-move-rod-mode
    (app-state/move-world-copied-power db)))
 
 (rf/reg-sub
-move-rod-mode-options
-(fn [db _]
-  (app-state/move-rod-mode-options db)))
+ move-rod-mode-options
+ (fn [db _]
+   (app-state/move-rod-mode-options db)))
 
 (rf/reg-sub
  move-disc-action-count-options
@@ -834,7 +834,7 @@ move-rod-mode-options
    (app-state/move-preview db)))
 
 (rf/reg-sub
-move-target-piece-options
+ move-target-piece-options
  (fn [db _]
    (app-state/move-target-piece-options db)))
 
@@ -849,10 +849,10 @@ move-target-piece-options
    (app-state/move-damage-options db)))
 
 (rf/reg-sub
-move-rod-orientation-required?
-(fn [db _]
-  (or (app-state/move-rod-orientation-required? db)
-      (app-state/move-hermit-orientation-required? db))))
+ move-rod-orientation-required?
+ (fn [db _]
+   (or (app-state/move-rod-orientation-required? db)
+       (app-state/move-hermit-orientation-required? db))))
 
 (rf/reg-sub
  move-disc-orientation-available?

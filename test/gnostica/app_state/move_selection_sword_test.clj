@@ -425,8 +425,8 @@
                            (app-state/set-move-damage 1)
                            (app-state/select-move-replacement-card "cups2"))
         stale-game (game-state/with-board-pieces
-                    (app-state/game replacement-db)
-                    [rose-rod-minion indigo-rod-target])
+                     (app-state/game replacement-db)
+                     [rose-rod-minion indigo-rod-target])
         stale-db (assoc replacement-db :game stale-game)
         confirmed-db (app-state/confirm-move stale-db)]
     (is (= :confirm (:stage (app-state/move-selection stale-db))))

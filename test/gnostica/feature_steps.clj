@@ -409,7 +409,7 @@
    {:pattern #"^Rose replaces the targeted piece with Hierophant facing ([a-z]+)$"
     :run (fn [world orientation]
            (world/apply-hierophant-replacement world
-                                                (parse-keyword orientation)))}
+                                               (parse-keyword orientation)))}
 
    {:pattern #"^Rose moves the Hermit target piece to board index (\d+)$"
     :run (fn [world board-index]
@@ -503,7 +503,7 @@
                      "The Disc action rejection did not match the expected error code."
                      {:expected expected-code
                       :actual actual-code
-                     :result result})))}
+                      :result result})))}
 
    {:pattern #"^the Sword action succeeds$"
     :run (fn [world]

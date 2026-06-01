@@ -374,8 +374,8 @@
                                         (board-card-position 4) "cupsking"})
         state (:state (game-state/create-game player-specs {:deck-order deck-order}))
         state (game-state/with-board-pieces
-               state
-               [(assoc rose-disc-minion :orientation :north)])
+                state
+                [(assoc rose-disc-minion :orientation :north)])
         command {:player-id :rose
                  :source {:kind :hand-card
                           :card-id "star"
@@ -424,8 +424,8 @@
                        player-specs
                        {:deck-order (deck-starting-with ["strength"])}))
         state (game-state/with-board-pieces
-               state
-               (vec (cons small-minion medium-pieces)))
+                state
+                (vec (cons small-minion medium-pieces)))
         {:keys [ok? state events]} (game-state/apply-disc-move
                                     state
                                     {:player-id :rose

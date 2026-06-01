@@ -58,12 +58,12 @@
            created-piece))
     (is (= 3 (get-in state [:players-by-id :rose :stash :small])))
     (is (= 3 (get-in state [:pieces :stashes :rose :small])))
-	    (is (= [{:type :cup/small-piece-created
-	             :player-id :rose
-	             :cup-variant :cup
-	             :source {:kind :territory
-	                      :board-index 3
-	                      :piece-id :rose-cup-minion}
+    (is (= [{:type :cup/small-piece-created
+             :player-id :rose
+             :cup-variant :cup
+             :source {:kind :territory
+                      :board-index 3
+                      :piece-id :rose-cup-minion}
              :target {:kind :territory
                       :board-index 4}
              :piece created-piece}]
@@ -90,12 +90,12 @@
     (is (= 4 (get-in state [:players-by-id :rose :stash :small])))
     (is (= 4 (get-in state [:players-by-id :indigo :stash :small])))
     (is (= 4 (get-in state [:pieces :stashes :indigo :small])))
-	    (is (= [{:type :cup/enemy-small-piece-created
-	             :player-id :rose
-	             :cup-variant :cup
-	             :source {:kind :territory
-	                      :board-index 3
-	                      :piece-id :rose-cup-minion}
+    (is (= [{:type :cup/enemy-small-piece-created
+             :player-id :rose
+             :cup-variant :cup
+             :source {:kind :territory
+                      :board-index 3
+                      :piece-id :rose-cup-minion}
              :target {:kind :piece
                       :piece-id :indigo-cup-target
                       :board-index 4}
@@ -144,19 +144,19 @@
             :card (cards/card-by-id "coins2")}
            created-cell))
     (is (not (some #{"coins2"} (player-hand-ids state :rose))))
-	    (is (= [{:type :cup/territory-created
-	             :player-id :rose
-	             :cup-variant :cup
-	             :source {:kind :territory
-	                      :board-index 3
-	                      :piece-id :rose-cup-minion}
+    (is (= [{:type :cup/territory-created
+             :player-id :rose
+             :cup-variant :cup
+             :source {:kind :territory
+                      :board-index 3
+                      :piece-id :rose-cup-minion}
              :target {:kind :wasteland
                       :row 1
-	                      :col -1}
-	             :board-index 9
-	             :card-id "coins2"
-	             :territory-card-source :hand}]
-	           events))
+                      :col -1}
+             :board-index 9
+             :card-id "coins2"
+             :territory-card-source :hand}]
+           events))
     (is (= (count cards/deck) (count (all-card-ids state))))
     (is (= (count cards/deck) (count (set (all-card-ids state)))))
     (is (game-schema/valid-game? state))))
@@ -263,15 +263,15 @@
                        player-specs
                        {:deck-order (deck-with-board-card 3 "empress")}))
         state (game-state/with-board-pieces
-               state
-               [rose-cup-minion
-                rose-target-minion
-                indigo-cup-target
-                {:id :rose-target-small
-                 :player-id :rose
-                 :space-index 4
-                 :size :small
-                 :orientation :east}])
+                state
+                [rose-cup-minion
+                 rose-target-minion
+                 indigo-cup-target
+                 {:id :rose-target-small
+                  :player-id :rose
+                  :space-index 4
+                  :size :small
+                  :orientation :east}])
         command {:player-id :rose
                  :source {:kind :territory
                           :board-index 3
@@ -435,8 +435,8 @@
         result (game-state/apply-cup-move state
                                           {:player-id :rose
                                            :source {:kind :territory
-                                                   :board-index 3
-                                                   :piece-id :rose-cup-minion}
+                                                    :board-index 3
+                                                    :piece-id :rose-cup-minion}
                                            :target {:kind :wasteland
                                                     :row 1
                                                     :col -1}

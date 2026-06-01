@@ -36,9 +36,9 @@
     (cond
       (empty? variants)
       (core/failure :source-card-not-cup
-               "The source card does not provide a Cup power."
-               {:card-id (:id card)
-                :source source})
+                    "The source card does not provide a Cup power."
+                    {:card-id (:id card)
+                     :source source})
 
       (nil? requested-variant)
       {:ok? true
@@ -46,9 +46,9 @@
 
       (not (contains? cards/cup-variant-ids requested-variant))
       (core/failure :invalid-cup-variant
-               "Cup moves require a known Cup variant."
-               {:cup-variant requested-variant
-                :valid-variants cards/cup-variant-ids})
+                    "Cup moves require a known Cup variant."
+                    {:cup-variant requested-variant
+                     :valid-variants cards/cup-variant-ids})
 
       (contains? variant-set requested-variant)
       {:ok? true
@@ -56,10 +56,10 @@
 
       :else
       (core/failure :cup-variant-unavailable
-               "The source card does not provide the selected Cup variant."
-               {:card-id (:id card)
-                :cup-variant requested-variant
-                :available-variants variants}))))
+                    "The source card does not provide the selected Cup variant."
+                    {:card-id (:id card)
+                     :cup-variant requested-variant
+                     :available-variants variants}))))
 
 (defn- resolve-cup-source
   ([state player-id source cup-variant]
@@ -68,99 +68,99 @@
     {:keys [source-card power-card source-card-already-discarded?
             allow-major-minion?]}]
    (let [piece (core/piece-by-id state (:piece-id source))]
-    (cond
-      (not (map? source))
-      (core/failure :invalid-cup-command
-               "Cup moves require a source map."
-               {:source source})
+     (cond
+       (not (map? source))
+       (core/failure :invalid-cup-command
+                     "Cup moves require a source map."
+                     {:source source})
 
-      (nil? piece)
-      (core/failure :invalid-piece
-               "Cup moves require one of the player's pieces as the acting minion."
-               {:piece-id (:piece-id source)})
+       (nil? piece)
+       (core/failure :invalid-piece
+                     "Cup moves require one of the player's pieces as the acting minion."
+                     {:piece-id (:piece-id source)})
 
-      (not= player-id (:player-id piece))
-      (core/failure :invalid-piece
-               "The acting minion must belong to the move's player."
-               {:piece-id (:piece-id source)
-                :player-id player-id
-                :piece-player-id (:player-id piece)})
+       (not= player-id (:player-id piece))
+       (core/failure :invalid-piece
+                     "The acting minion must belong to the move's player."
+                     {:piece-id (:piece-id source)
+                      :player-id player-id
+                      :piece-player-id (:player-id piece)})
 
-      (= :territory (:kind source))
-      (let [cell (core/board-cell-by-index state (:board-index source))]
-        (cond
-          (nil? cell)
-          (core/failure :invalid-source-territory
-                   "Cup territory sources must reference an existing board cell."
-                   {:board-index (:board-index source)})
+       (= :territory (:kind source))
+       (let [cell (core/board-cell-by-index state (:board-index source))]
+         (cond
+           (nil? cell)
+           (core/failure :invalid-source-territory
+                         "Cup territory sources must reference an existing board cell."
+                         {:board-index (:board-index source)})
 
-          (and source-card
-               (not= (get-in cell [:card :id]) (:id source-card)))
-          (core/failure :invalid-source-territory
-                   "Cup paid source cards must match the command source territory."
-                   {:board-index (:board-index source)
-                    :territory-card-id (get-in cell [:card :id])
-                    :source-card-id (:id source-card)})
+           (and source-card
+                (not= (get-in cell [:card :id]) (:id source-card)))
+           (core/failure :invalid-source-territory
+                         "Cup paid source cards must match the command source territory."
+                         {:board-index (:board-index source)
+                          :territory-card-id (get-in cell [:card :id])
+                          :source-card-id (:id source-card)})
 
-          (and (not allow-major-minion?)
-               (not= (:board-index source) (:space-index piece)))
-          (core/failure :source-piece-mismatch
-                   "The acting minion must occupy the source territory."
-                   {:piece-id (:piece-id source)
-                    :piece-space-index (:space-index piece)
-                    :source-board-index (:board-index source)})
+           (and (not allow-major-minion?)
+                (not= (:board-index source) (:space-index piece)))
+           (core/failure :source-piece-mismatch
+                         "The acting minion must occupy the source territory."
+                         {:piece-id (:piece-id source)
+                          :piece-space-index (:space-index piece)
+                          :source-board-index (:board-index source)})
 
-          :else
-          (let [paid-card (or source-card (:card cell))
-                power-card (or power-card paid-card)
-                variant-result (resolve-cup-variant power-card
-                                                    cup-variant
-                                                    source)]
-            (if (:ok? variant-result)
-              {:ok? true
-               :source source
-               :source-card paid-card
-               :power-card power-card
-               :cup-variant (:cup-variant variant-result)
-               :piece piece}
-              variant-result))))
+           :else
+           (let [paid-card (or source-card (:card cell))
+                 power-card (or power-card paid-card)
+                 variant-result (resolve-cup-variant power-card
+                                                     cup-variant
+                                                     source)]
+             (if (:ok? variant-result)
+               {:ok? true
+                :source source
+                :source-card paid-card
+                :power-card power-card
+                :cup-variant (:cup-variant variant-result)
+                :piece piece}
+               variant-result))))
 
-      (= :hand-card (:kind source))
-      (let [card (or source-card
-                     (core/player-hand-card state player-id (:card-id source))
-                     (when source-card-already-discarded?
-                       (card-source/discard-pile-card state (:card-id source))))]
-        (cond
-          (nil? card)
-          (core/failure :invalid-hand-card
-                   "Cup hand-card sources must reference a card in the player's hand."
-                   {:card-id (:card-id source)
-                    :player-id player-id})
+       (= :hand-card (:kind source))
+       (let [card (or source-card
+                      (core/player-hand-card state player-id (:card-id source))
+                      (when source-card-already-discarded?
+                        (card-source/discard-pile-card state (:card-id source))))]
+         (cond
+           (nil? card)
+           (core/failure :invalid-hand-card
+                         "Cup hand-card sources must reference a card in the player's hand."
+                         {:card-id (:card-id source)
+                          :player-id player-id})
 
-          (and source-card
-               (not= (:card-id source) (:id source-card)))
-          (core/failure :invalid-hand-card
-                   "Cup paid source cards must match the command source card."
-                   {:card-id (:card-id source)
-                    :source-card-id (:id source-card)})
+           (and source-card
+                (not= (:card-id source) (:id source-card)))
+           (core/failure :invalid-hand-card
+                         "Cup paid source cards must match the command source card."
+                         {:card-id (:card-id source)
+                          :source-card-id (:id source-card)})
 
-          :else
-          (let [power-card (or power-card card)
-                variant-result (resolve-cup-variant power-card cup-variant source)]
-            (if (:ok? variant-result)
-              {:ok? true
-               :source source
-               :source-card card
-               :power-card power-card
-               :cup-variant (:cup-variant variant-result)
-               :discard-source-card? (not source-card-already-discarded?)
-               :piece piece}
-              variant-result))))
+           :else
+           (let [power-card (or power-card card)
+                 variant-result (resolve-cup-variant power-card cup-variant source)]
+             (if (:ok? variant-result)
+               {:ok? true
+                :source source
+                :source-card card
+                :power-card power-card
+                :cup-variant (:cup-variant variant-result)
+                :discard-source-card? (not source-card-already-discarded?)
+                :piece piece}
+               variant-result))))
 
-      :else
-      (core/failure :invalid-cup-command
-               "Cup move sources must be either :territory or :hand-card."
-               {:source source})))))
+       :else
+       (core/failure :invalid-cup-command
+                     "Cup move sources must be either :territory or :hand-card."
+                     {:source source})))))
 
 (defn- cup-unbounded? [source]
   (= :cup-unbounded (:cup-variant source)))
@@ -237,42 +237,42 @@
         target-player-id (:player-id target-piece)
         target-space-pieces (when target-cell
                               (core/pieces-at-coordinate state
-                                                    (:row target-cell)
-                                                    (:col target-cell)))]
+                                                         (:row target-cell)
+                                                         (:col target-cell)))]
     (cond
       (not (map? target))
       (core/failure :invalid-cup-target
-               "Cup enemy-piece creation targets must be piece target maps."
-               {:target target})
+                    "Cup enemy-piece creation targets must be piece target maps."
+                    {:target target})
 
       (not= :piece (:kind target))
       (core/failure :invalid-cup-target
-               "Cup enemy-piece creation targets an enemy piece."
-               {:target target})
+                    "Cup enemy-piece creation targets an enemy piece."
+                    {:target target})
 
       (some? orientation)
       (core/failure :invalid-orientation
-               "Cup enemy-piece creation preserves the target piece orientation."
-               {:orientation orientation
-                :piece-id (:piece-id target)})
+                    "Cup enemy-piece creation preserves the target piece orientation."
+                    {:orientation orientation
+                     :piece-id (:piece-id target)})
 
       (nil? target-piece)
       (core/failure :invalid-target-piece
-               "Cup enemy-piece creation must reference a piece on the board."
-               {:target target})
+                    "Cup enemy-piece creation must reference a piece on the board."
+                    {:target target})
 
       (= player-id target-player-id)
       (core/failure :target-piece-not-enemy
-               "Cup enemy-piece creation must target an enemy piece."
-               {:piece-id (:id target-piece)
-                :player-id player-id})
+                    "Cup enemy-piece creation must target an enemy piece."
+                    {:piece-id (:id target-piece)
+                     :player-id player-id})
 
       (nil? target-cell)
       (core/failure :invalid-target-piece-space
-               "Cup enemy-piece creation must target an enemy piece on an existing territory."
-               {:piece-id (:id target-piece)
-                :space-index (:space-index target-piece)
-                :space (:space target-piece)})
+                    "Cup enemy-piece creation must target an enemy piece on an existing territory."
+                    {:piece-id (:id target-piece)
+                     :space-index (:space-index target-piece)
+                     :space (:space target-piece)})
 
       (not (cup-targetable-coordinate? state
                                        source
@@ -285,16 +285,16 @@
       (and (not (cup-unbounded? source))
            (<= pieces/max-pieces-per-space (count target-space-pieces)))
       (core/failure :target-territory-full
-               "Cup enemy-piece creation requires fewer than three pieces on the target territory."
-               {:board-index (:index target-cell)
-                :piece-ids (mapv :id target-space-pieces)
-                :maximum pieces/max-pieces-per-space})
+                    "Cup enemy-piece creation requires fewer than three pieces on the target territory."
+                    {:board-index (:index target-cell)
+                     :piece-ids (mapv :id target-space-pieces)
+                     :maximum pieces/max-pieces-per-space})
 
       (not (pos? (core/small-stash-count state target-player-id)))
       (core/failure :no-small-piece-available
-               "The target piece's player has no small pieces available in stash."
-               {:player-id target-player-id
-                :target-piece-id (:id target-piece)})
+                    "The target piece's player has no small pieces available in stash."
+                    {:player-id target-player-id
+                     :target-piece-id (:id target-piece)})
 
       :else
       (let [piece {:id (core/next-piece-id state target-player-id :small)
@@ -329,66 +329,66 @@
     (cond
       (nil? normalized-target)
       (core/failure :invalid-cup-target
-               "Cup territory creation targets an explicit wasteland coordinate."
-               {:target target})
+                    "Cup territory creation targets an explicit wasteland coordinate."
+                    {:target target})
 
       (some? (core/board-cell-at state row col))
       (core/failure :target-not-wasteland
-               "Cup territory creation must target an empty wasteland space."
-               {:target normalized-target})
+                    "Cup territory creation must target an empty wasteland space."
+                    {:target normalized-target})
 
       (not (core/wasteland-target? state normalized-target))
       (core/failure :target-not-wasteland
-               "Cup territory creation cannot target the void."
-               {:target normalized-target})
+                    "Cup territory creation cannot target the void."
+                    {:target normalized-target})
 
       (not (cup-targetable-coordinate? state source normalized-target))
       (cup-target-out-of-range state source normalized-target normalized-target)
 
       (seq (core/enemy-pieces-at-coordinate state player-id row col))
       (core/failure :wasteland-occupied-by-enemy
-               "Cup territory creation cannot target a wasteland occupied by enemy pieces."
-               {:target normalized-target
-                :enemy-piece-ids (mapv :id (core/enemy-pieces-at-coordinate state player-id row col))})
+                    "Cup territory creation cannot target a wasteland occupied by enemy pieces."
+                    {:target normalized-target
+                     :enemy-piece-ids (mapv :id (core/enemy-pieces-at-coordinate state player-id row col))})
 
       (not (contains? cup-territory-card-sources territory-card-source))
       (core/failure :invalid-cup-territory-card-source
-               "Cup territory creation requires a supported card source."
-               {:territory-card-source territory-card-source
-                :valid-sources cup-territory-card-sources})
+                    "Cup territory creation requires a supported card source."
+                    {:territory-card-source territory-card-source
+                     :valid-sources cup-territory-card-sources})
 
       (and (= :draw-pile-top territory-card-source)
            (not= :wheel-cup (:cup-variant source)))
       (core/failure :cup-variant-option-unavailable
-               "Only Wheel Cup can create territory from the top draw-pile card."
-               {:cup-variant (:cup-variant source)
-                :territory-card-source territory-card-source})
+                    "Only Wheel Cup can create territory from the top draw-pile card."
+                    {:cup-variant (:cup-variant source)
+                     :territory-card-source territory-card-source})
 
       (and (= :draw-pile-top territory-card-source)
            (some? one-point-card-id))
       (core/failure :invalid-cup-territory-card-source
-               "Draw-pile territory creation does not use a selected hand card."
-               {:territory-card-source territory-card-source
-                :one-point-card-id one-point-card-id})
+                    "Draw-pile territory creation does not use a selected hand card."
+                    {:territory-card-source territory-card-source
+                     :one-point-card-id one-point-card-id})
 
       (and (= :hand territory-card-source)
            (nil? one-point-card))
       (core/failure :invalid-one-point-card
-               "Cup territory creation requires a selected card from the player's hand."
-               {:card-id one-point-card-id
-                :player-id player-id})
+                    "Cup territory creation requires a selected card from the player's hand."
+                    {:card-id one-point-card-id
+                     :player-id player-id})
 
       (and (= :hand territory-card-source)
            (= source-card-id one-point-card-id))
       (core/failure :card-already-used
-               "A played source card cannot also become the new territory."
-               {:card-id one-point-card-id})
+                    "A played source card cannot also become the new territory."
+                    {:card-id one-point-card-id})
 
       (and (= :hand territory-card-source)
            (not (cards/one-point-card? one-point-card)))
       (core/failure :invalid-one-point-card
-               "Cup territory creation requires a one-point spot card."
-               {:card-id one-point-card-id})
+                    "Cup territory creation requires a one-point spot card."
+                    {:card-id one-point-card-id})
 
       :else
       (let [board-index (core/next-board-index state)
@@ -427,13 +427,13 @@
                       :face :up
                       :card territory-card}
                 event (cond-> {:type :cup/territory-created
-                                :player-id player-id
-                                :cup-variant (:cup-variant source)
-                                :source (core/source-summary (:source source))
-                                :target normalized-target
-                                :board-index board-index
-                                :card-id (:id territory-card)
-                                :territory-card-source territory-card-source}
+                               :player-id player-id
+                               :cup-variant (:cup-variant source)
+                               :source (core/source-summary (:source source))
+                               :target normalized-target
+                               :board-index board-index
+                               :card-id (:id territory-card)
+                               :territory-card-source territory-card-source}
                         (true? (:reshuffled? card-source-result))
                         (assoc :reshuffled-discard? true))
                 next-state (-> (:state card-source-result)
@@ -447,52 +447,52 @@
    (apply-cup-move-with-opts state command {}))
   ([state command {:keys [source-opts]
                    :or {source-opts {}}}]
-  (let [{:keys [player-id source target orientation one-point-card-id
-                cup-variant territory-card-source shuffle-fn]} command]
-    (cond
-      (not (map? command))
-      (core/failure :invalid-cup-command
-               "Cup moves require a command map."
-               {:command command})
+   (let [{:keys [player-id source target orientation one-point-card-id
+                 cup-variant territory-card-source shuffle-fn]} command]
+     (cond
+       (not (map? command))
+       (core/failure :invalid-cup-command
+                     "Cup moves require a command map."
+                     {:command command})
 
-      (nil? (get-in state [:players-by-id player-id]))
-      (core/failure :unknown-player
-               "Cup moves require a participating player."
-               {:player-id player-id})
+       (nil? (get-in state [:players-by-id player-id]))
+       (core/failure :unknown-player
+                     "Cup moves require a participating player."
+                     {:player-id player-id})
 
-      (not (core/current-player-id? state player-id))
-      (core/failure :not-current-player
-               "Only the current player can apply a Cup move."
-               {:player-id player-id
-                :current-player-id (get-in state [:turn :current-player-id])})
+       (not (core/current-player-id? state player-id))
+       (core/failure :not-current-player
+                     "Only the current player can apply a Cup move."
+                     {:player-id player-id
+                      :current-player-id (get-in state [:turn :current-player-id])})
 
-      :else
-      (let [source-result (resolve-cup-source state
-                                              player-id
-                                              source
-                                              cup-variant
-                                              source-opts)]
-        (if (:ok? source-result)
-          (case (:kind target)
-            :territory
-            (place-small-piece state player-id source-result target orientation)
+       :else
+       (let [source-result (resolve-cup-source state
+                                               player-id
+                                               source
+                                               cup-variant
+                                               source-opts)]
+         (if (:ok? source-result)
+           (case (:kind target)
+             :territory
+             (place-small-piece state player-id source-result target orientation)
 
-            :piece
-            (create-enemy-small-piece state player-id source-result target orientation)
+             :piece
+             (create-enemy-small-piece state player-id source-result target orientation)
 
-            :wasteland
-            (create-wasteland-territory state
-                                        player-id
-                                        source-result
-                                        target
-                                        one-point-card-id
-                                        territory-card-source
-                                        shuffle-fn)
+             :wasteland
+             (create-wasteland-territory state
+                                         player-id
+                                         source-result
+                                         target
+                                         one-point-card-id
+                                         territory-card-source
+                                         shuffle-fn)
 
-            (core/failure :invalid-cup-target
-                     "Cup move targets must be :territory, :piece, or :wasteland."
-                     {:target target}))
-          source-result))))))
+             (core/failure :invalid-cup-target
+                           "Cup move targets must be :territory, :piece, or :wasteland."
+                           {:target target}))
+           source-result))))))
 
 (defn apply-cup-move [state command]
   (apply-cup-move-with-opts state command {}))

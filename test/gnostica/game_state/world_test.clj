@@ -66,8 +66,8 @@
                          {0 "world"
                           (board-card-position 3) "empress"})}))
         state (game-state/with-board-pieces
-               state
-               (vec (cons rose-cup-minion full-target-pieces)))
+                state
+                (vec (cons rose-cup-minion full-target-pieces)))
         {:keys [ok? state events]} (game-state/apply-world-move
                                     state
                                     {:player-id :rose

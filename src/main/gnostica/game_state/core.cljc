@@ -337,7 +337,7 @@
         players (mapv (fn [player]
                         (assoc player
                                :stash (stash-after-board-pieces piece-counts
-                                                                 (:id player))))
+                                                                (:id player))))
                       (:players state))]
     (assoc state
            :players players
@@ -1342,7 +1342,7 @@
 
       announce-challenge?
       (let [{:keys [ok? state events error]} (record-challenge state
-                                                                {:player-id player-id})]
+                                                               {:player-id player-id})]
         (if ok?
           (let [{advanced-ok? :ok?
                  advanced-state :state

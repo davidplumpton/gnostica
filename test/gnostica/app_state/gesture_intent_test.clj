@@ -224,7 +224,7 @@
         cases [{:label "Cup"
                 :db cup-db
                 :gesture {:source {:kind :hand-card
-                                    :card-id "cups2"}
+                                   :card-id "cups2"}
                           :fields {:piece-id :rose-striker
                                    :orientation :north}
                           :target {:kind :territory
@@ -238,7 +238,7 @@
                {:label "Rod"
                 :db rod-db
                 :gesture {:source {:kind :hand-card
-                                    :card-id "wands2"}
+                                   :card-id "wands2"}
                           :fields {:piece-id :rose-rod-minion
                                    :rod-mode :move-minion
                                    :distance 1
@@ -253,7 +253,7 @@
                {:label "Disc"
                 :db disc-db
                 :gesture {:source {:kind :hand-card
-                                    :card-id "coins2"}
+                                   :card-id "coins2"}
                           :fields {:piece-id :rose-rod-minion}
                           :target {:kind :piece
                                    :piece-id :indigo-rod-target}}
@@ -266,7 +266,7 @@
                {:label "Sword"
                 :db sword-db
                 :gesture {:source {:kind :hand-card
-                                    :card-id "swords2"}
+                                   :card-id "swords2"}
                           :fields {:piece-id :rose-rod-minion
                                    :damage 1}
                           :target {:kind :piece
@@ -281,7 +281,7 @@
                {:label "Orient"
                 :db orient-db
                 :gesture {:source {:kind :piece
-                                    :piece-id :rose-scout}
+                                   :piece-id :rose-scout}
                           :fields {:orientation :west}}
                 :staged #(-> %
                              (app-state/select-move-source :orient-piece)
@@ -290,8 +290,8 @@
                {:label "Initial placement"
                 :db initial-db
                 :gesture {:source {:kind :stash-piece
-                                    :player-id :rose
-                                    :size :small}
+                                   :player-id :rose
+                                   :size :small}
                           :target {:kind :wasteland
                                    :row 0
                                    :col 3}
@@ -303,7 +303,7 @@
                {:label "Major"
                 :db fool-db
                 :gesture {:source {:kind :hand-card
-                                    :card-id "fool"}
+                                   :card-id "fool"}
                           :fields {:piece-id :rose-striker
                                    :power :fool
                                    :fool-reveal-count 0}}
@@ -383,12 +383,12 @@
            (mapv :field (:alternatives tray))))
     (is (some #{"coins2"}
               (mapv :id (:options (alternative-by-field
-                                    tray
-                                    :one-point-card-id)))))
+                                   tray
+                                   :one-point-card-id)))))
     (is (not (some #{"cups2"}
                    (mapv :id (:options (alternative-by-field
-                                         tray
-                                         :one-point-card-id))))))))
+                                        tray
+                                        :one-point-card-id))))))))
 (deftest gesture-intent-maps-sun-disc-pending-requirements-to-concrete-choices
   (let [piece-db (app-state/initialize
                   {:player-specs test-player-specs
@@ -438,24 +438,24 @@
            (mapv :field (:alternatives piece-tray))))
     (is (some #{:rose-striker}
               (mapv :id (:options (alternative-by-field
-                                    piece-tray
-                                    :target-piece-id)))))
+                                   piece-tray
+                                   :target-piece-id)))))
     (is (= [:sun-disc-target-board-index :sun-disc-replacement-card-id]
            (:missing-fields territory-tray)))
     (is (= [:target-board-index]
            (mapv :field (:alternatives territory-tray))))
     (is (= [4]
            (mapv :index (:options (alternative-by-field
-                                    territory-tray
-                                    :target-board-index)))))
+                                   territory-tray
+                                   :target-board-index)))))
     (is (= [:sun-disc-replacement-card-id]
            (:missing-fields replacement-tray)))
     (is (= [:replacement-card-id]
            (mapv :field (:alternatives replacement-tray))))
     (is (= ["cupsking"]
            (mapv :id (:options (alternative-by-field
-                                 replacement-tray
-                                 :replacement-card-id)))))))
+                                replacement-tray
+                                :replacement-card-id)))))))
 (deftest gesture-intent-stages-initial-placement-from-stash-piece
   (let [db (app-state/initialize {:player-specs test-player-specs
                                   :game-options {:shuffle-fn identity}
@@ -585,16 +585,16 @@
                      (gesture-input/orientation-key-request {:key "ArrowRight"}))
         east-db (app-state/set-gesture-drag-orientation source-db east-result)
         east-input (gesture-input/with-drag-orientation
-                    input
-                    (:orientation east-result))
+                     input
+                     (:orientation east-result))
         south-result (app-state/gesture-drag-orientation-result
                       east-db
                       east-input
                       (gesture-input/orientation-key-request {:key "O"}))
         south-db (app-state/set-gesture-drag-orientation east-db south-result)
         south-input (gesture-input/with-drag-orientation
-                     east-input
-                     (:orientation south-result))
+                      east-input
+                      (:orientation south-result))
         pending-db (app-state/start-gesture-intent
                     south-db
                     (assoc south-input
@@ -717,8 +717,8 @@
                          own-drag-db
                          own-result)
         own-oriented-input (gesture-input/with-drag-orientation
-                            own-input
-                            (:orientation own-result))
+                             own-input
+                             (:orientation own-result))
         own-pending-db (app-state/start-gesture-intent
                         own-oriented-db
                         (assoc own-oriented-input

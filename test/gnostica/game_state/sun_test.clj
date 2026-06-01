@@ -68,8 +68,8 @@
                        player-specs
                        {:deck-order (deck-starting-with ["sun"])}))
         state (game-state/with-board-pieces
-               state
-               (vec (cons rose-disc-minion small-pieces)))
+                state
+                (vec (cons rose-disc-minion small-pieces)))
         {:keys [ok? state events]} (game-state/apply-sun-move
                                     state
                                     {:player-id :rose
@@ -101,10 +101,10 @@
                        player-specs
                        {:deck-order (deck-starting-with ["sun"])}))
         state (game-state/with-board-pieces
-               state
-               [(assoc rose-disc-minion
-                       :space-index 0
-                       :orientation :east)])
+                state
+                [(assoc rose-disc-minion
+                        :space-index 0
+                        :orientation :east)])
         result (game-state/apply-sun-move
                 state
                 {:player-id :rose
@@ -133,8 +133,8 @@
                        player-specs
                        {:deck-order (deck-starting-with ["sun" "cupsking"])}))
         state (game-state/with-board-pieces
-               state
-               [(assoc rose-disc-minion :orientation :west)])
+                state
+                [(assoc rose-disc-minion :orientation :west)])
         {:keys [ok? state events]} (game-state/apply-sun-move
                                     state
                                     {:player-id :rose
@@ -162,10 +162,10 @@
                        player-specs
                        {:deck-order (deck-starting-with ["sun" "cupsking"])}))
         state (game-state/with-board-pieces
-               state
-               [(assoc rose-disc-minion
-                       :space-index 0
-                       :orientation :east)])
+                state
+                [(assoc rose-disc-minion
+                        :space-index 0
+                        :orientation :east)])
         result (game-state/apply-sun-move
                 state
                 {:player-id :rose

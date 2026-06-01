@@ -454,10 +454,10 @@
                                     (or (nil? selected-source)
                                         (= :discard-pile selected-source))
                                     (contains? (set (call ctx
-                                                         :replacement-card-source-option-ids
-                                                         db
-                                                         source
-                                                         params))
+                                                          :replacement-card-source-option-ids
+                                                          db
+                                                          source
+                                                          params))
                                                :discard-pile))
         just-discarded-hand-options (when discard-source-active?
                                       (filterv #(contains? hand-card-ids (:id %))

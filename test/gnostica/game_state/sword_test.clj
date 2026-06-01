@@ -106,7 +106,7 @@
     (is (= 4 (get-in result [:target-cell :index])))))
 (deftest sword-command-allows-upright_current_space_and_minion_self_targeting
   (let [upright-state (-> (state-with-pieces [(assoc rose-sword-minion
-                                                      :orientation :up)])
+                                                     :orientation :up)])
                           (state-with-board-card 3 "swords2"))
         territory-result (game-state/resolve-sword-command
                           upright-state
@@ -236,7 +236,7 @@
                   (state-with-board-card 3 "swords2")
                   (state-with-board-card 4 "cupsking"))
         over-target-state (-> (state-with-pieces [(assoc rose-sword-minion
-                                                          :size :large)])
+                                                         :size :large)])
                               (state-with-board-card 3 "swords2")
                               (state-with-board-card 4 "cupsking"))
         invalid-source-state (-> (state-with-pieces [(assoc rose-sword-minion
@@ -613,7 +613,7 @@
                                 player-specs
                                 {:deck-order (deck-with-board-card 3 "swords2")}))
         no-small-state (game-state/with-board-pieces no-small-state
-                                                     no-small-pieces)
+                         no-small-pieces)
         no-small-result (game-state/apply-sword-move
                          no-small-state
                          {:player-id :rose
@@ -632,8 +632,8 @@
                                   player-specs
                                   {:deck-order (deck-with-board-card 3 "swords2")}))
         overdamage-state (game-state/with-board-pieces
-                          overdamage-state
-                          [rose-sword-minion small-target])
+                           overdamage-state
+                           [rose-sword-minion small-target])
         overdamage-result (game-state/apply-sword-move
                            overdamage-state
                            {:player-id :rose

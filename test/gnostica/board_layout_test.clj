@@ -123,14 +123,14 @@
                 positions (mapv :position markers)
                 normals (mapv :normal markers)
                 surface-positions (mapv (fn [position normal]
-                                           (mapv (fn [value normal-component]
-                                                   (- value
-                                                      (* layout/piece-pip-marker-surface-lift
-                                                         normal-component)))
-                                                 position
-                                                 normal))
-                                         positions
-                                         normals)
+                                          (mapv (fn [value normal-component]
+                                                  (- value
+                                                     (* layout/piece-pip-marker-surface-lift
+                                                        normal-component)))
+                                                position
+                                                normal))
+                                        positions
+                                        normals)
                 distances (map distance positions (rest positions))]]
     (is (= (:pips piece-size) (count markers))
         (str "Expected " size " marker count to match pip count"))

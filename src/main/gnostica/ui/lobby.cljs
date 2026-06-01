@@ -19,8 +19,8 @@
      {:value (name (:id player))
       :disabled locked?
       :on-change #(rf/dispatch [events/set-lobby-player-colour
-                                 slot-id
-                                 (event-value %)])}
+                                slot-id
+                                (event-value %)])}
      (for [{:keys [id disabled?] option-name :name} (:colour-options player)]
        ^{:key id}
        [:option
@@ -44,7 +44,7 @@
      :disabled locked?
      :aria-label "Target score"
      :on-change #(rf/dispatch [events/set-lobby-target-score
-                                (event-value %)])}
+                               (event-value %)])}
     (for [score options]
       ^{:key score}
       [:option
@@ -66,8 +66,8 @@
       :disabled locked?
       :aria-label "Player display name"
       :on-change #(rf/dispatch [events/set-lobby-player-name
-                                 slot-id
-                                 (event-value %)])}]]
+                                slot-id
+                                (event-value %)])}]]
    [colour-select slot-id player locked?]
    [control-field player]
    [:button.lobby-remove
@@ -97,8 +97,8 @@
       {:value (or bid-card-id "")
        :aria-label (str name " bid card")
        :on-change #(rf/dispatch [events/select-lobby-bid-card
-                                  id
-                                  (event-value %)])}
+                                 id
+                                 (event-value %)])}
       [:option {:value ""} "Choose bid"]
       (for [{card-id :id title :title} bid-card-options]
         ^{:key card-id}
@@ -118,8 +118,8 @@
     (if winner-name
       (str "Winner: " winner-name)
       (str "Tie: " (apply str
-                           (interpose ", " (map :player-name
-                                                 tied-players)))))]])
+                          (interpose ", " (map :player-name
+                                               tied-players)))))]])
 
 (defn- redraw-order-row [{:keys [player-id player-name cards active? complete?
                                  selected-count needed-count can-clear?]}]
@@ -142,8 +142,8 @@
        {:type "button"
         :aria-label (str "Clear " player-name " redraw cards")
         :on-click #(rf/dispatch [events/select-lobby-redraw-card
-                                  player-id
-                                  ""])}
+                                 player-id
+                                 ""])}
        "Clear"])]
    [:span.starting-bid__redraw-count
     (str selected-count "/" needed-count)]])
@@ -165,8 +165,8 @@
         [:button.starting-bid__redraw-card
          {:type "button"
           :on-click #(rf/dispatch [events/select-lobby-redraw-card
-                                    active-player-id
-                                    card-id])}
+                                   active-player-id
+                                   card-id])}
          title])])
    (when (seq order)
      [:ol.starting-bid__redraw-order
