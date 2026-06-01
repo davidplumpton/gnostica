@@ -2,6 +2,7 @@
   (:require [clojure.string :as str]
             [gnostica.board :as board]
             [gnostica.board-layout :as board-layout]
+            [gnostica.cards :as cards]
             [gnostica.game-state :as game-state]
             [gnostica.pieces :as pieces]
             [malli.core :as m]
@@ -50,8 +51,15 @@
    (:draw-pile state)
    (:discard-pile state)))
 
+(defn- card-zone-count [state]
+  (count (card-zones state)))
+
 (defn- card-ids [state]
   (keep :id (card-zones state)))
+
+(defn- expected-deck-card-ids [state]
+  (or (seq (get-in state [:setup :deck-card-ids]))
+      (map :id cards/deck)))
 
 (defn- active-piece-ids [state]
   (keep :id (get-in state [:pieces :on-board])))
@@ -190,6 +198,32 @@
         :message "Cards must appear only once across hands, board, draw pile, and discard pile."
         :data {:card-ids duplicates}}])))
 
+(defn- deck-accounting-errors [state]
+  (let [expected-ids (vec (expected-deck-card-ids state))
+        expected-id-set (set expected-ids)
+        actual-ids (vec (card-ids state))
+        actual-id-set (set actual-ids)
+        expected-count (count expected-ids)
+        actual-count (card-zone-count state)
+        missing-ids (vec (sort (remove actual-id-set expected-id-set)))
+        unknown-ids (vec (sort (remove expected-id-set actual-id-set)))]
+    (cond-> []
+      (not= expected-count actual-count)
+      (conj {:code :card-count-mismatch
+             :message "Hands, board, draw pile, and discard pile must contain exactly the expected deck card count."
+             :data {:expected-count expected-count
+                    :actual-count actual-count}})
+
+      (seq missing-ids)
+      (conj {:code :missing-card-ids
+             :message "Every expected deck card must appear in a hand, on the board, in the draw pile, or in the discard pile."
+             :data {:card-ids missing-ids}})
+
+      (seq unknown-ids)
+      (conj {:code :unknown-card-ids
+             :message "Game zones must not contain cards outside the expected deck."
+             :data {:card-ids unknown-ids}}))))
+
 (defn- duplicate-active-piece-errors [state]
   (let [duplicates (duplicate-values (active-piece-ids state))]
     (when (seq duplicates)
@@ -302,6 +336,7 @@
     (player-count-errors state)
     (hand-limit-errors state)
     (duplicate-card-errors state)
+    (deck-accounting-errors state)
     (duplicate-active-piece-errors state)
     (piece-owner-errors state)
     (piece-location-errors state)
@@ -328,6 +363,9 @@
   (and (player-stashes-match-piece-stashes? state)
        (empty? (stash-piece-count-errors state))))
 
+(defn- deck-accounting-complete? [state]
+  (empty? (deck-accounting-errors state)))
+
 (def PlayerId
   (enum-schema (map :id pieces/players)))
 
@@ -348,6 +386,12 @@
 
 (def TargetScore
   (enum-schema (sort game-state/allowed-target-scores)))
+
+(def ExpectedDeckCardIds
+  [:and
+   [:vector NonBlankString]
+   [:fn {:error/message "expected deck card ids must be unique"}
+    #(distinct-by? identity %)]])
 
 (def CardReference
   [:map
@@ -452,6 +496,7 @@
    [:bid-history [:vector :any]]
    [:bid-redraw-order {:optional true} [:vector PlayerId]]
    [:bid-redraws {:optional true} [:vector :any]]
+   [:deck-card-ids {:optional true} ExpectedDeckCardIds]
    [:starting-player-id [:maybe PlayerId]]
    [:target-score TargetScore]])
 
@@ -495,7 +540,8 @@
    [:fn {:error/message "target score must be one of the official scores"} setup-target-score-allowed?]
    [:fn {:error/message "piece stashes must match participating players"} stashes-match-players?]
    [:fn {:error/message "player stashes must match piece stash mirrors and active piece counts"} piece-stashes-consistent?]
-   [:fn {:error/message "card ids must be unique across all game zones"} all-card-ids-unique?]])
+   [:fn {:error/message "card ids must be unique across all game zones"} all-card-ids-unique?]
+   [:fn {:error/message "all expected deck cards must be accounted for exactly once"} deck-accounting-complete?]])
 
 (defn valid-game? [state]
   (m/validate GameState state))

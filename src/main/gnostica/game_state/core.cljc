@@ -1218,6 +1218,7 @@
                           :discard-pile []
                           :setup {:bids {}
                                   :bid-history []
+                                  :deck-card-ids (mapv :id deck)
                                   :starting-player-id nil
                                   :target-score target-score}
                           :winner nil

@@ -25,11 +25,17 @@
                   cells))))
 
 (defn with-board-cells-at [state index-coordinates]
-  (assoc state
-         :board
-         (mapv (fn [[board-index {:keys [row col]}]]
-                 (assoc (board-cell-by-index state board-index)
-                        :row row
-                        :col col
-                        :orientation (board/orientation-for row col)))
-               index-coordinates)))
+  (let [kept-indexes (set (map first index-coordinates))
+        removed-cards (keep (fn [cell]
+                              (when-not (contains? kept-indexes (:index cell))
+                                (:card cell)))
+                            (:board state))]
+    (-> state
+        (assoc :board
+               (mapv (fn [[board-index {:keys [row col]}]]
+                       (assoc (board-cell-by-index state board-index)
+                              :row row
+                              :col col
+                              :orientation (board/orientation-for row col)))
+                     index-coordinates))
+        (update :draw-pile into removed-cards))))

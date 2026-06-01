@@ -26,6 +26,17 @@
 (defn- first-player-id [state]
   (get-in state [:players 0 :id]))
 
+(defn- synthetic-deck [card-count]
+  (mapv (fn [index]
+          {:id (str "custom-card-" index)
+           :title (str "Custom Card " index)
+           :image (str "/images/custom-card-" index ".png")})
+        (range card-count)))
+
+(defn- invariant-with-code [explanation code]
+  (some #(when (= code (:code %)) %)
+        (:invariants explanation)))
+
 (deftest validates-generated-setup-state-for-two-through-six-players
   (doseq [player-count (range game-state/min-players (inc game-state/max-players))
           :let [state (game-for player-count)]]
@@ -72,26 +83,104 @@
                                       #(update % :hand conj overflow-card))
         explanation (game-schema/explain-game overfull-hand)]
     (is (false? (game-schema/valid-game? overfull-hand)))
-    (is (= [{:code :hand-too-large
-             :message "Player hands must contain no more than six cards."
-             :data {:player-id player-id
-                    :count 7
-                    :maximum game-state/starting-hand-size}}]
-           (:invariants explanation)))
+    (is (= {:code :hand-too-large
+            :message "Player hands must contain no more than six cards."
+            :data {:player-id player-id
+                   :count 7
+                   :maximum game-state/starting-hand-size}}
+           (invariant-with-code explanation :hand-too-large)))
     (is (re-find #"six cards" (pr-str explanation)))))
 
 (deftest rejects-duplicate-cards-across-game-zones
   (let [state (game-for 2)
         duplicate-card (get-in state [:players 0 :hand 0])
+        replaced-card (get-in state [:draw-pile 0])
         duplicated-state (assoc-in state [:draw-pile 0] duplicate-card)
         explanation (game-schema/explain-game duplicated-state)]
     (is (false? (game-schema/valid-game? duplicated-state)))
     (is (= [{:code :duplicate-card-ids
              :message "Cards must appear only once across hands, board, draw pile, and discard pile."
-             :data {:card-ids [(:id duplicate-card)]}}]
+             :data {:card-ids [(:id duplicate-card)]}}
+            {:code :missing-card-ids
+             :message "Every expected deck card must appear in a hand, on the board, in the draw pile, or in the discard pile."
+             :data {:card-ids [(:id replaced-card)]}}]
            (:invariants explanation)))
     (is (re-find (re-pattern (:id duplicate-card))
                  (pr-str explanation)))))
+
+(deftest rejects-missing-cards-from-official-deck-accounting
+  (let [state (game-for 2)
+        missing-card (first (:draw-pile state))
+        invalid-state (update state :draw-pile subvec 1)
+        explanation (game-schema/explain-game invalid-state)]
+    (is (false? (game-schema/valid-game? invalid-state)))
+    (is (= {:code :card-count-mismatch
+            :message "Hands, board, draw pile, and discard pile must contain exactly the expected deck card count."
+            :data {:expected-count (count cards/deck)
+                   :actual-count (dec (count cards/deck))}}
+           (invariant-with-code explanation :card-count-mismatch)))
+    (is (= {:code :missing-card-ids
+            :message "Every expected deck card must appear in a hand, on the board, in the draw pile, or in the discard pile."
+            :data {:card-ids [(:id missing-card)]}}
+           (invariant-with-code explanation :missing-card-ids)))))
+
+(deftest rejects-unknown-cards-in-official-deck-accounting
+  (let [state (game-for 2)
+        replaced-card (get-in state [:draw-pile 0])
+        unknown-card-id "synthetic-card"
+        invalid-state (assoc-in state [:draw-pile 0 :id] unknown-card-id)
+        explanation (game-schema/explain-game invalid-state)]
+    (is (false? (game-schema/valid-game? invalid-state)))
+    (is (= {:code :missing-card-ids
+            :message "Every expected deck card must appear in a hand, on the board, in the draw pile, or in the discard pile."
+            :data {:card-ids [(:id replaced-card)]}}
+           (invariant-with-code explanation :missing-card-ids)))
+    (is (= {:code :unknown-card-ids
+            :message "Game zones must not contain cards outside the expected deck."
+            :data {:card-ids [unknown-card-id]}}
+           (invariant-with-code explanation :unknown-card-ids)))))
+
+(deftest rejects-extra-cards-from-official-deck-accounting
+  (let [state (game-for 2)
+        extra-card {:id "synthetic-extra-card"
+                    :title "Synthetic Extra Card"
+                    :image "/images/synthetic-extra-card.png"}
+        invalid-state (update state :discard-pile conj extra-card)
+        explanation (game-schema/explain-game invalid-state)]
+    (is (false? (game-schema/valid-game? invalid-state)))
+    (is (= {:code :card-count-mismatch
+            :message "Hands, board, draw pile, and discard pile must contain exactly the expected deck card count."
+            :data {:expected-count (count cards/deck)
+                   :actual-count (inc (count cards/deck))}}
+           (invariant-with-code explanation :card-count-mismatch)))
+    (is (= {:code :unknown-card-ids
+            :message "Game zones must not contain cards outside the expected deck."
+            :data {:card-ids [(:id extra-card)]}}
+           (invariant-with-code explanation :unknown-card-ids)))))
+
+(deftest injected-decks-carry-their-own-accounting-contract
+  (let [custom-deck (synthetic-deck 24)
+        player-specs (mapv #(select-keys % [:id])
+                           (take 2 pieces/players))
+        {:keys [state]} (game-state/create-game player-specs
+                                                {:deck custom-deck
+                                                 :shuffle-fn identity})
+        replaced-card (get-in state [:draw-pile 0])
+        unknown-card-id "custom-card-outside-contract"
+        invalid-state (assoc-in state [:draw-pile 0 :id] unknown-card-id)
+        explanation (game-schema/explain-game invalid-state)]
+    (is (= (mapv :id custom-deck)
+           (get-in state [:setup :deck-card-ids])))
+    (is (game-schema/valid-game? state))
+    (is (false? (game-schema/valid-game? invalid-state)))
+    (is (= {:code :missing-card-ids
+            :message "Every expected deck card must appear in a hand, on the board, in the draw pile, or in the discard pile."
+            :data {:card-ids [(:id replaced-card)]}}
+           (invariant-with-code explanation :missing-card-ids)))
+    (is (= {:code :unknown-card-ids
+            :message "Game zones must not contain cards outside the expected deck."
+            :data {:card-ids [unknown-card-id]}}
+           (invariant-with-code explanation :unknown-card-ids)))))
 
 (deftest rejects-duplicate-active-piece-ids
   (let [state (game-for 2)
