@@ -1,0 +1,107 @@
+(ns gnostica.app-state.gestures
+  (:require [gnostica.app-state.view-models :as views]
+            [gnostica.gesture-input :as gesture-input]
+            [gnostica.gesture-intent :as gesture-intent]
+            [gnostica.move-selection :as move-selection]))
+
+(defn gesture-intent [app-db]
+  (gesture-intent/gesture-intent app-db))
+
+(defn cancel-gesture-intent [app-db]
+  (-> app-db
+      move-selection/cancel-move
+      gesture-intent/cancel-gesture-intent))
+
+(defn open-gesture-detailed-entry [app-db]
+  (if (:detailed-entry-available? (views/direct-manipulation app-db))
+    (-> app-db
+        gesture-intent/open-detailed-entry
+        (views/set-panel-open :move true))
+    app-db))
+
+(defn start-gesture-intent [app-db input]
+  (let [gesture-db (gesture-intent/start-gesture-intent app-db input)
+        {:keys [detailed-entry-available? detailed-entry-default?]}
+        (views/direct-manipulation gesture-db)]
+    (if (and detailed-entry-available? detailed-entry-default?)
+      (open-gesture-detailed-entry gesture-db)
+      gesture-db)))
+
+(defn pending-move-tray-view [app-db]
+  (assoc (gesture-intent/pending-move-tray-view app-db)
+         :action-ribbon (move-selection/move-action-ribbon app-db)
+         :detailed-entry-available? (:detailed-entry-available?
+                                     (views/direct-manipulation app-db))))
+
+(defn cancel-move [app-db]
+  (cancel-gesture-intent app-db))
+
+(defn select-board-card [app-db index]
+  (if (views/board-cell-by-index app-db index)
+    (move-selection/select-board-for-active-move
+     (-> app-db
+         (assoc :selected-board-index index)
+         (views/set-panel-open :territory true))
+     index)
+    app-db))
+
+(defn- gesture-drag-orientation-error [input]
+  {:code :drag-orientation-unavailable
+   :message "This drag cannot choose a piece orientation."
+   :data {:source (:source input)
+          :fields (:fields input)}})
+
+(defn- current-player-piece-id? [app-db piece-id]
+  (move-selection/current-player-piece?
+   app-db
+   (move-selection/piece-by-id app-db piece-id)))
+
+(defn- hermit-drag-orientation-available? [app-db params]
+  (and (= :hermit (:power params))
+       (current-player-piece-id? app-db (:target-piece-id params))))
+
+(defn- gesture-drag-orientation-available? [app-db input]
+  (let [{:keys [source params]} (move-selection/move-selection app-db)]
+    (and (:active? (gesture-intent app-db))
+         (gesture-input/orientation-drag-input? input)
+         (or (= :place-initial-small source)
+             (= :orient-piece source)
+             (move-selection/move-rod-orientation-required? app-db)
+             (move-selection/move-hermit-orientation-required? app-db)
+             (hermit-drag-orientation-available? app-db params)
+             (move-selection/move-disc-orientation-available? app-db)
+             (move-selection/move-sun-disc-orientation-available? app-db)
+             (move-selection/move-sword-orientation-available? app-db)))))
+
+(defn gesture-drag-orientation-result [app-db input request]
+  (when (and request
+             (:active? (gesture-intent app-db))
+             (gesture-input/orientation-drag-input? input))
+    (if (gesture-drag-orientation-available? app-db input)
+      (if-let [orientation (gesture-input/orientation-request->orientation
+                            (or (get-in app-db
+                                        [:move-selection :params :orientation])
+                                (gesture-input/drag-orientation input))
+                            request)]
+        {:handled? true
+         :accepted? true
+         :orientation orientation}
+        {:handled? true
+         :accepted? false
+         :error (gesture-drag-orientation-error input)})
+      {:handled? true
+       :accepted? false
+       :error (gesture-drag-orientation-error input)})))
+
+(defn set-gesture-drag-orientation [app-db {:keys [orientation error]}]
+  (cond
+    orientation
+    (-> app-db
+        (move-selection/set-move-orientation orientation)
+        gesture-intent/refresh-gesture-intent)
+
+    error
+    (assoc-in app-db [:gesture-intent :error] error)
+
+    :else
+    app-db))
