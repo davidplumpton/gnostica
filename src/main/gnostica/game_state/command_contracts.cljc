@@ -212,11 +212,24 @@
 (def DiscAction
   (apply closed-map disc-action-entries))
 
+(defn- star-disc-command? [command]
+  (if (contains? command :disc-variant)
+    (= :disc-from-discard (:disc-variant command))
+    (= "star" (get-in command [:source :card-id]))))
+
 (def SingleDiscCommand
   (apply closed-map (concat acting-source-command-entries
                             disc-action-entries
-                            [[:disc-variant {:optional true} :keyword]
-                             [:minion-orientation {:optional true} Orientation]])))
+                            [[:disc-variant {:optional true} :keyword]])))
+
+(def StarDiscCommand
+  [:and
+   (apply closed-map (concat acting-source-command-entries
+                             disc-action-entries
+                             [[:disc-variant {:optional true} :keyword]
+                              [:minion-orientation Orientation]]))
+   [:fn {:error/message "minion orientation requires a Star Disc command"}
+    star-disc-command?]])
 
 (def StrengthDiscCommand
   (apply closed-map (concat acting-source-command-entries
@@ -224,7 +237,7 @@
                              [:disc-actions [:vector {:min 1 :max 2} DiscAction]]])))
 
 (def DiscCommand
-  [:or SingleDiscCommand StrengthDiscCommand])
+  [:or SingleDiscCommand StarDiscCommand StrengthDiscCommand])
 
 (def ^:private sun-cup-action-entries
   [[:target CupTarget]
@@ -288,11 +301,24 @@
   (or (contains? command :rod)
       (contains? command :sword)))
 
+(defn- tower-sword-command? [command]
+  (if (contains? command :sword-variant)
+    (= :sword-from-discard (:sword-variant command))
+    (= "tower" (get-in command [:source :card-id]))))
+
 (def SingleSwordCommand
   (apply closed-map (concat acting-source-command-entries
                             sword-action-entries
-                            [[:sword-variant {:optional true} :keyword]
-                             [:minion-orientation {:optional true} Orientation]])))
+                            [[:sword-variant {:optional true} :keyword]])))
+
+(def TowerSwordCommand
+  [:and
+   (apply closed-map (concat acting-source-command-entries
+                             sword-action-entries
+                             [[:sword-variant {:optional true} :keyword]
+                              [:minion-orientation Orientation]]))
+   [:fn {:error/message "minion orientation requires a Tower Sword command"}
+    tower-sword-command?]])
 
 (def DeathSwordCommand
   (apply closed-map (concat acting-source-command-entries
@@ -324,7 +350,11 @@
    [:fn {:error/message "must include :rod or :sword"} moon-command-action?]])
 
 (def SwordCommand
-  [:or SingleSwordCommand DeathSwordCommand JusticeSwordCommand MoonCommand])
+  [:or SingleSwordCommand
+   TowerSwordCommand
+   DeathSwordCommand
+   JusticeSwordCommand
+   MoonCommand])
 
 (def RedrawPass
   (closed-map
@@ -559,7 +589,7 @@
       :judgement (m/validate JudgementCommand payload)
       :justice (m/validate JusticeSwordCommand payload)
       :death (m/validate DeathSwordCommand payload)
-      :tower (m/validate SingleSwordCommand payload)
+      :tower (m/validate TowerSwordCommand payload)
       false)))
 
 (defn- valid-delegated-command? [command]

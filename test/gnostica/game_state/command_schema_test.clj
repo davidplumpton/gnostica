@@ -296,6 +296,68 @@
                  (get-in result [:error :code])))
           (is (game-state/valid-result? result)))))))
 
+(deftest star-and-tower-minion-orientation-command-contracts-are-specific
+  (let [plain-disc {:player-id :rose
+                    :source (assoc hand-source :card-id "coins2")
+                    :target {:kind :piece
+                             :piece-id :rose-minion}
+                    :minion-orientation :east}
+        star-disc {:player-id :rose
+                   :source (assoc hand-source :card-id "star")
+                   :disc-variant :disc-from-discard
+                   :minion-orientation :east
+                   :target {:kind :piece
+                            :piece-id :rose-minion}}
+        star-disc-without-variant (dissoc star-disc :disc-variant)
+        plain-sword {:player-id :rose
+                     :source (assoc hand-source :card-id "swords2")
+                     :target {:kind :piece
+                              :piece-id :indigo-target}
+                     :damage 1
+                     :minion-orientation :east}
+        tower-sword {:player-id :rose
+                     :source (assoc hand-source :card-id "tower")
+                     :sword-variant :sword-from-discard
+                     :minion-orientation :east
+                     :target {:kind :piece
+                              :piece-id :indigo-target}
+                     :damage 1}
+        tower-sword-without-variant (dissoc tower-sword :sword-variant)]
+    (doseq [[label command-kind command]
+            [["plain Disc with minion orientation"
+              :disc
+              plain-disc]
+             ["plain Disc variant with minion orientation"
+              :disc
+              (assoc plain-disc :disc-variant :disc)]
+             ["plain Sword with minion orientation"
+              :sword
+              plain-sword]
+             ["plain Sword variant with minion orientation"
+              :sword
+              (assoc plain-sword :sword-variant :sword)]]]
+      (testing label
+        (is (false? (game-state/valid-command? command-kind command)))
+        (is (= :invalid-command-contract
+               (get-in (game-state/validate-command command-kind command)
+                       [:error :code])))))
+    (doseq [[label command-kind command]
+            [["Star Disc with variant"
+              :disc
+              star-disc]
+             ["Star Disc inferred from hand source"
+              :disc
+              star-disc-without-variant]
+             ["Tower Sword with variant"
+              :sword
+              tower-sword]
+             ["Tower Sword inferred from hand source"
+              :sword
+              tower-sword-without-variant]]]
+      (testing label
+        (is (game-state/valid-command? command-kind command))
+        (is (nil? (game-state/explain-command command-kind command)))))))
+
 (deftest command-contract-validation-distinguishes-shape-from-rule-semantics
   (let [structurally-valid {:player-id :rose
                             :source territory-source
