@@ -559,6 +559,7 @@
        cssCards: document.querySelectorAll('.board-fallback .board-card').length,
        cssWastelands: document.querySelectorAll('.board-fallback .board-wasteland').length,
        pieceCount: document.querySelectorAll('.board-fallback .board-piece').length,
+       wastelandPieceCount: document.querySelectorAll('.board-fallback .board-wasteland.has-pieces .board-piece').length,
        northPieceCount: document.querySelectorAll('.board-fallback .board-piece.is-north').length,
        eastPieceCount: document.querySelectorAll('.board-fallback .board-piece.is-east').length,
        smallPieceCount: document.querySelectorAll('.board-fallback .board-piece.is-small').length,
@@ -812,10 +813,58 @@
 	           sourceText: text(source),
 	           targetText: text(target),
 	           payload: dataTransfer.getData('application/gnostica-gesture')
-	         }, beforeDrop));
-	       }));
-	     }));
-	   }))()")
+		         }, beforeDrop));
+		       }));
+		     }));
+		   }))()")
+
+(def initial-placement-click-wasteland-js
+  "(() => new Promise((resolve) => {
+     const text = (node) => node ? node.textContent.trim() : '';
+     const clickNode = (node) => {
+       if (!node) return false;
+       node.click();
+       return true;
+     };
+     const sourceButtons = Array.from(document.querySelectorAll('.move-source-option'));
+     const source = sourceButtons.find((button) => text(button).includes('Place first piece'));
+     if (!source) {
+       resolve({
+         clicked: false,
+         reason: 'No Place first piece source found.',
+         sourceCount: sourceButtons.length
+       });
+       return;
+     }
+     const sourceClicked = clickNode(source);
+     requestAnimationFrame(() => requestAnimationFrame(() => {
+       const target = document.querySelector('.board-fallback .board-wasteland[data-move-target-status=\"legal\"]');
+       const targetClicked = clickNode(target);
+       requestAnimationFrame(() => requestAnimationFrame(() => {
+         const orientationButtons = Array.from(document.querySelectorAll('.move-chip'));
+         const east = orientationButtons.find((button) => text(button) === 'East');
+         const eastClicked = clickNode(east);
+         requestAnimationFrame(() => requestAnimationFrame(() => {
+           const actions = Array.from(document.querySelectorAll('.move-panel .move-actions button'));
+           const confirm = actions.find((button) => text(button) === 'Confirm');
+           const canConfirm = Boolean(confirm && !confirm.disabled);
+           if (canConfirm) confirm.click();
+           resolve({
+             clicked: Boolean(sourceClicked && targetClicked && eastClicked && canConfirm),
+             sourceClicked,
+             targetClicked,
+             eastClicked,
+             confirmClicked: canConfirm,
+             targetRole: target ? target.getAttribute('role') : null,
+             targetStatus: target ? target.dataset.moveTargetStatus : null,
+             targetTabIndex: target ? target.getAttribute('tabindex') : null,
+             targetCount: document.querySelectorAll('.board-fallback .board-wasteland').length,
+             legalTargetCount: document.querySelectorAll('.board-fallback .board-wasteland[data-move-target-status=\"legal\"]').length
+           });
+         }));
+       }));
+     }));
+   }))()")
 
 (def confirm-pending-move-js
   "(() => {
@@ -1281,6 +1330,10 @@
        (= 1 (long (or (get stats "rosePieceCount") -1)))
        (false? (get stats "pendingActive"))
        (true? (get stats "firstPieceSourceDisabled"))))
+
+(defn wasteland-click-confirmed? [stats]
+  (and (direct-drop-confirmed? stats)
+       (= 1 (long (or (get stats "wastelandPieceCount") -1)))))
 
 (defn direct-drop-three-confirmed? [stats]
   (and (false? (get stats "fallback"))

@@ -255,6 +255,16 @@
           (str summary ": " message)
           summary)])]))
 
+(defn- activation-key? [event]
+  (contains? #{"Enter" " "} (.-key event)))
+
+(defn- dispatch-on-activation-key [event dispatch-value]
+  (when (and dispatch-value
+             (activation-key? event))
+    (.preventDefault event)
+    (.stopPropagation event)
+    (rf/dispatch dispatch-value)))
+
 (defn- piece-action-event [piece descriptor]
   (case (:role descriptor)
     :minion [events/select-move-piece (:id piece)]
@@ -353,7 +363,12 @@
   (let [target {:kind :wasteland
                 :row (:row space)
                 :col (:col space)}
-        hovered? (drag-hover-target? @drag-hover target)]
+        hovered? (drag-hover-target? @drag-hover target)
+        action-event (when (legal-targets/active? descriptor)
+                       [events/select-move-wasteland-target (:row space) (:col space)])
+        label (str (ui/wasteland-label space)
+                   (when (seq board-pieces)
+                     (str ", pieces: " (pieces-label board-pieces))))]
     ^{:key id}
     [:div.board-wasteland
      {:class (str "is-" (name orientation)
@@ -372,12 +387,22 @@
                                                                    descriptor)
                                         name))
       :title (legal-targets/reason descriptor)
-      :role (when (seq board-pieces) "img")
-      :aria-label (when (seq board-pieces)
-                    (str (ui/wasteland-label space)
-                         ", pieces: "
-                         (pieces-label board-pieces)))
-      :aria-hidden (when-not (seq board-pieces) "true")
+      :role (cond
+              action-event "button"
+              (seq board-pieces) "img")
+      :tabIndex (when action-event 0)
+      :aria-label (when (or action-event (seq board-pieces))
+                    label)
+      :aria-disabled (when (and action-event
+                                (not (legal-targets/enabled? descriptor)))
+                       "true")
+      :aria-hidden (when-not (or action-event (seq board-pieces)) "true")
+      :on-click (fn [event]
+                  (when action-event
+                    (.preventDefault event)
+                    (.stopPropagation event)
+                    (rf/dispatch action-event)))
+      :on-key-down #(dispatch-on-activation-key % action-event)
       :on-drag-over #(on-drag-over-target % drag-hover target descriptor)
       :on-drop #(on-drop-gesture % target drag-hover)}
      (board-piece-markers orientation
@@ -471,6 +496,9 @@
         move-preview
         direct-manipulation
         {:on-card-select #(rf/dispatch [events/select-board-card %])
+         :on-wasteland-select #(rf/dispatch [events/select-move-wasteland-target
+                                             %1
+                                             %2])
          :on-gesture-intent #(rf/dispatch [events/start-gesture-intent %])
          :on-orientation-select #(rf/dispatch [events/set-move-orientation %])
          :on-minion-orientation-select #(rf/dispatch [events/set-move-minion-orientation %])

@@ -140,6 +140,23 @@
         select-card-at! (fn [event]
                           (when-let [picked-index (board-index-at! event)]
                             (resources/invoke-callback callbacks :on-card-select picked-index)))
+        selectable-wasteland-target-at! (fn [event]
+                                          (when-let [target (target-for-object
+                                                             (target-object-at! event))]
+                                            (let [descriptor (descriptor-for-object
+                                                              (current-legal-targets)
+                                                              target)]
+                                              (when (and (= :wasteland (:kind target))
+                                                         (legal-targets/active? descriptor))
+                                                target))))
+        select-board-target-at! (fn [event]
+                                  (if-let [{:keys [row col]} (selectable-wasteland-target-at!
+                                                              event)]
+                                    (resources/invoke-callback callbacks
+                                                               :on-wasteland-select
+                                                               row
+                                                               col)
+                                    (select-card-at! event)))
         dispatch-gesture! (fn [input]
                             (resources/invoke-callback callbacks :on-gesture-intent input))
         last-drag-preview (atom nil)
@@ -222,7 +239,7 @@
                                     (and same-pointer?
                                          selection-only?
                                          (<= distance click-threshold))
-                                    (select-card-at! event)
+                                    (select-board-target-at! event)
 
                                     (and same-pointer? dragging?)
                                     (let [target-object (target-object-at! event)
@@ -234,7 +251,7 @@
                                     (and same-pointer?
                                          (<= distance click-threshold)
                                          (= :territory (:kind source-object)))
-                                    (select-card-at! event)
+                                    (select-board-target-at! event)
 
                                     (and same-pointer?
                                          (<= distance click-threshold)

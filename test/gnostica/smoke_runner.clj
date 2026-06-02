@@ -406,6 +406,37 @@
       (finally
         (browser/close-cdp! client)))))
 
+(defn- run-confirmed-fallback-wasteland-click! [http-client chrome url]
+  (println "Smoke checking confirmed CSS wasteland click placement.")
+  (let [client (open-gnostica-page! http-client
+                                    chrome
+                                    (first stats/viewports)
+                                    (stats/direct-drop-smoke-url url)
+                                    ["*cdn.jsdelivr.net/npm/three@0.128.0*"])]
+    (try
+      (browser/wait-for! client
+                         "wasteland-click CSS fallback setup"
+                         stats/direct-drop-fallback-stats-js
+                         stats/direct-drop-fallback-ready?)
+      (let [click-result (browser/evaluate! client
+                                            stats/initial-placement-click-wasteland-js)]
+        (assert-clicked! "CSS initial-placement wasteland target" click-result)
+        (let [confirmed (browser/wait-for! client
+                                           "CSS wasteland-click confirmed board state"
+                                           stats/direct-drop-fallback-stats-js
+                                           stats/wasteland-click-confirmed?)]
+          {:click-result click-result
+           :confirmed confirmed}))
+      (catch Exception error
+        (throw (ex-info "Confirmed CSS wasteland click smoke failed."
+                        {:url url
+                         :browser-diagnostics (browser/browser-diagnostics client)
+                         :cause (ex-message error)
+                         :data (ex-data error)}
+                        error)))
+      (finally
+        (browser/close-cdp! client)))))
+
 (defn- run-confirmed-keyboard-placement!
   [http-client chrome url {:keys [description blocked-urls setup-js setup-ready?
                                   confirmed-js confirmed-ready?]}]
@@ -639,6 +670,7 @@
           (run-confirmed-three-direct-drop! http-client chrome (:url target))
           (run-missing-three-fallback! http-client chrome (:url target))
           (run-confirmed-fallback-keyboard-placement! http-client chrome (:url target))
+          (run-confirmed-fallback-wasteland-click! http-client chrome (:url target))
           (run-confirmed-fallback-direct-drop! http-client chrome (:url target))
           (run-mismatched-three-fallback! http-client chrome (:url target))
           (println "3D board smoke passed.")

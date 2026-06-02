@@ -1724,6 +1724,7 @@ img {
 .board-wasteland.is-disabled-target,
 .board-wasteland.is-drop-target {
   pointer-events: auto;
+  cursor: pointer;
 }
 
 .board-piece.is-legal-target .board-piece__body {
@@ -1736,7 +1737,8 @@ img {
   box-shadow: 0 0 0 2px rgba(255, 138, 122, 0.24);
 }
 
-.board-card:focus-visible {
+.board-card:focus-visible,
+.board-wasteland:focus-visible {
   outline: 3px solid var(--accent);
   outline-offset: 3px;
 }
