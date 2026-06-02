@@ -78,7 +78,7 @@
     (is failure)
     (is (= 3 (get-in failure [:failure :data :line])))
     (is (= "Scenario Missing colon" (get-in failure [:failure :data :text])))
-    (is (str/includes? formatted (str (str feature-file) ":3")))))
+    (is (str/includes? formatted (str feature-file ":3")))))
 
 (deftest malformed-feature-step-text-produces-a-failing-result
   (let [feature-file (temp-feature-file
@@ -97,7 +97,7 @@
     (is (= 4 (get-in failure [:failure :data :line])))
     (is (= "Givne a passing step" (get-in failure [:failure :data :text])))
     (is (str/includes? formatted "Scenario: Typoed step"))
-    (is (str/includes? formatted (str (str feature-file) ":4")))))
+    (is (str/includes? formatted (str feature-file ":4")))))
 
 (deftest step-before-background-or-scenario-produces-a-failing-result
   (let [feature-file (temp-feature-file
