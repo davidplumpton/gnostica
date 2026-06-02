@@ -694,8 +694,7 @@
             :selected-orientation :east}
            (select-keys (:orientation-compass east-preview)
                         [:field :selected-orientation])))
-    (is (= [{:type :target-space}
-            {:type :orientation}]
+    (is (= [{:type :orientation}]
            (move-control-group-summary east-detailed-db)))
     (is (= :east
            (get-in (app-state/move-panel-view east-detailed-db)

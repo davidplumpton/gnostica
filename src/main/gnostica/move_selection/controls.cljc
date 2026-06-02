@@ -385,7 +385,6 @@
       :place-initial-small
       (vec
        (concat
-        [(control-group :target-space)]
         (when (or (some? (:target-board-index params))
                   (:target-wasteland params))
           [(control-group :orientation)])))

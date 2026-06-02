@@ -65,6 +65,8 @@
     (is (:enabled? (source-option db :place-initial-small)))
     (is (= 9 (count (app-state/move-target-board-options source-db))))
     (is (= 12 (count (app-state/move-target-wasteland-options source-db))))
+    (is (= [{:type :orientation}]
+           (move-control-group-summary source-db)))
     (is (= :orientation (:stage (app-state/move-selection source-db))))
     (is (= {:target-board-index 4}
            (app-state/move-params source-db)))
