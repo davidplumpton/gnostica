@@ -23,6 +23,28 @@
     "tower"
     "star"})
 
+(def full-card-powers
+  {"fool" :fool
+   "high-priestess" :high-priestess
+   "empress" :empress
+   "emperor" :emperor
+   "hierophant" :hierophant
+   "lovers" :lovers
+   "chariot" :chariot
+   "hermit" :hermit
+   "hangedman" :hanged-man
+   "temperance" :temperance
+   "devil" :devil
+   "moon" :moon
+   "sun" :sun
+   "judgement" :judgement
+   "justice" :justice
+   "death" :death
+   "tower" :tower})
+
+(def full-card-power-set
+  (set (vals full-card-powers)))
+
 (defn- major-card? [card]
   (= :major (:arcana card)))
 
@@ -113,7 +135,8 @@
           :copied-territory-board-index
           :copied-territory
           :copy
-          :copied-power))
+          :copied-power
+          :power))
 
 (defn- clean-suit-command [command]
   (dissoc (clean-command command) :power))
@@ -129,25 +152,29 @@
     (cards/disc-card? card) (conj :disc)
     (cards/sword-card? card) (conj :sword)))
 
+(defn- full-card-power [card]
+  (get full-card-powers (:id card)))
+
+(defn- powers-for-card [card]
+  (cond-> (suit-powers-for-card card)
+    (full-card-power card)
+    (conj (full-card-power card))))
+
 (defn- resolve-suit-power [command copied-card]
   (let [requested (copied-power command)
         powers (suit-powers-for-card copied-card)
         power-set (set powers)]
     (cond
-      (and requested (not (contains? suit-powers requested)))
-      (core/failure :invalid-world-copied-power
-                    "World copied powers must name a supported power keyword."
-                    {:power requested
-                     :supported-powers suit-powers})
-
-      (and requested (not (contains? power-set requested)))
+      (and requested
+           (contains? suit-powers requested)
+           (not (contains? power-set requested)))
       (core/failure :world-copied-power-unavailable
                     "The copied major territory does not provide the selected suit power."
                     {:card-id (:id copied-card)
                      :power requested
-                     :available-powers powers})
+                     :available-powers (powers-for-card copied-card)})
 
-      requested
+      (and requested (contains? suit-powers requested))
       {:ok? true
        :power requested}
 
@@ -158,6 +185,31 @@
 
       :else
       nil)))
+
+(defn- resolve-full-card-power [command copied-card]
+  (let [requested (copied-power command)
+        copied-power (full-card-power copied-card)]
+    (cond
+      (or (nil? requested)
+          (contains? suit-powers requested))
+      nil
+
+      (not (contains? full-card-power-set requested))
+      (core/failure :invalid-world-copied-power
+                    "World copied powers must name a supported power keyword."
+                    {:power requested
+                     :supported-powers (powers-for-card copied-card)})
+
+      (not= copied-power requested)
+      (core/failure :world-copied-power-unavailable
+                    "The copied major territory does not provide the selected full-card power."
+                    {:card-id (:id copied-card)
+                     :power requested
+                     :available-powers (powers-for-card copied-card)})
+
+      :else
+      {:ok? true
+       :power requested})))
 
 (defn- source-opts [source-result copied-card]
   {:source-card (:source-card source-result)
@@ -344,10 +396,14 @@
 
        :else
        (let [copied-card (:card copied-result)
-             suit-result (resolve-suit-power command copied-card)]
+             suit-result (resolve-suit-power command copied-card)
+             full-card-result (resolve-full-card-power command copied-card)]
          (cond
            (and (map? suit-result) (not (:ok? suit-result)))
            suit-result
+
+           (and (map? full-card-result) (not (:ok? full-card-result)))
+           full-card-result
 
            (and (:ok? suit-result) (:power suit-result))
            (apply-copied-suit-power state

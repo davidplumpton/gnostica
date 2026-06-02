@@ -130,6 +130,28 @@
         invalid-world-missing-minion (assoc world-cup
                                             :source {:kind :hand-card
                                                      :card-id "world"})
+        world-empress {:player-id :rose
+                       :source (assoc hand-source :card-id "world")
+                       :copied-board-index 4
+                       :copied-power :empress
+                       :actions [{:power :orient-minion
+                                  :piece-id :rose-minion
+                                  :orientation :east}
+                                 {:power :cup
+                                  :piece-id :rose-minion
+                                  :target {:kind :territory
+                                           :board-index 5}
+                                  :orientation :south}]}
+        world-death {:player-id :rose
+                     :source (assoc hand-source :card-id "world")
+                     :copied-board-index 4
+                     :copied-power :death
+                     :sword-actions [{:target {:kind :piece
+                                               :piece-id :indigo-target}
+                                      :damage 1
+                                      :piece-id :rose-minion}]}
+        invalid-world-empress-sword (assoc (dissoc world-death :copied-power)
+                                           :copied-power :empress)
         fool-cup {:player-id :rose
                   :source major-hand-source
                   :reveals [{:power :cup
@@ -145,9 +167,18 @@
                                                dissoc
                                                :piece-id)]
     (is (game-state/valid-command? :world world-cup))
+    (is (game-state/valid-command? :world world-empress))
+    (is (game-state/valid-command? :world
+                                   (-> world-empress
+                                       (dissoc :copied-power)
+                                       (assoc :power :empress))))
+    (is (game-state/valid-command? :world world-death))
     (is (false? (game-state/valid-command? :world invalid-world-target)))
     (is (false? (game-state/valid-command? :world invalid-world-extra-target)))
     (is (false? (game-state/valid-command? :world invalid-world-missing-minion)))
+    (is (false? (game-state/valid-command? :world invalid-world-empress-sword)))
+    (is (false? (game-state/valid-command? :world
+                                           (assoc world-empress :power :death))))
     (is (game-state/valid-command? :fool fool-cup))
     (is (false? (game-state/valid-command? :fool invalid-fool-target)))
     (is (false? (game-state/valid-command? :fool invalid-fool-missing-minion)))))

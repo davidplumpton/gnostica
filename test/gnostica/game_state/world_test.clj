@@ -74,6 +74,7 @@
                                      :source {:kind :hand-card
                                               :card-id "world"}
                                      :copied-board-index 3
+                                     :copied-power :empress
                                      :actions [{:power :cup
                                                 :piece-id :rose-cup-minion
                                                 :target {:kind :territory
@@ -97,6 +98,31 @@
     (is (= ["world"] (mapv :id (:discard-pile state))))
     (is (= "empress" (get-in (board-cell-by-index state 3) [:card :id])))
     (is (game-schema/valid-game? state))))
+
+(deftest world-rejects-full-card-power-selector-that-copied-card-does-not-provide
+  (let [state (:state (game-state/create-game
+                       player-specs
+                       {:deck-order
+                        (deck-with-cards-at
+                         {0 "world"
+                          (board-card-position 3) "empress"})}))
+        state (game-state/with-board-pieces state [rose-cup-minion])
+        result (game-state/apply-world-move
+                state
+                {:player-id :rose
+                 :source {:kind :hand-card
+                          :card-id "world"}
+                 :copied-board-index 3
+                 :copied-power :death
+                 :sword-actions [{:target {:kind :piece
+                                           :piece-id :indigo-target}
+                                  :damage 1
+                                  :piece-id :rose-cup-minion}]})]
+    (is (= :world-copied-power-unavailable
+           (get-in result [:error :code])))
+    (is (= [:cup :empress]
+           (get-in result [:error :data :available-powers])))
+    (is (not (contains? result :state)))))
 (deftest world-territory-source-copies-magician-wild-suit
   (let [state (:state (game-state/create-game
                        player-specs

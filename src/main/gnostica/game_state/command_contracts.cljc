@@ -54,6 +54,34 @@
 (def SuitPower
   (enum-schema suit-power-values))
 
+(def ^:private full-major-power-values
+  [:fool
+   :high-priestess
+   :empress
+   :emperor
+   :hierophant
+   :lovers
+   :chariot
+   :hermit
+   :hanged-man
+   :temperance
+   :devil
+   :moon
+   :sun
+   :judgement
+   :justice
+   :death
+   :tower])
+
+(def ^:private full-major-power-set
+  (set full-major-power-values))
+
+(def ^:private world-copied-power-values
+  (vec (concat suit-power-values full-major-power-values)))
+
+(def WorldCopiedPower
+  (enum-schema world-copied-power-values))
+
 (def TerritorySource
   (closed-map
    [:kind [:enum :territory]]
@@ -424,8 +452,8 @@
 
 (def ^:private world-command-entries
   [[:copied-board-index BoardIndex]
-   [:copied-power {:optional true} SuitPower]
-   [:power {:optional true} SuitPower]
+   [:copied-power {:optional true} WorldCopiedPower]
+   [:power {:optional true} WorldCopiedPower]
    [:actions {:optional true} [:vector MajorAction]]
    [:card-ids {:optional true} [:vector CardId]]
    [:cup {:optional true} [:or SunCupAction MajorCupAction]]
@@ -486,11 +514,11 @@
 (defn- delegated-command-payload [command]
   (apply dissoc command delegated-selector-keys))
 
-(defn- selected-suit-power [command]
+(defn- selected-world-power [command]
   (or (:copied-power command)
       (:power command)))
 
-(defn- matching-selected-suit-powers? [command]
+(defn- matching-selected-world-powers? [command]
   (or (not (and (contains? command :copied-power)
                 (contains? command :power)))
       (= (:copied-power command) (:power command))))
@@ -512,6 +540,28 @@
   (and (contains-any? command composite-major-payload-keys)
        (m/validate CompositeMajorCommand command)))
 
+(defn- valid-full-major-command? [power command]
+  (let [payload (delegated-command-payload command)]
+    (case power
+      :fool (m/validate FoolCommand payload)
+      :high-priestess (m/validate HighPriestessCommand payload)
+      :empress (m/validate CompositeMajorCommand payload)
+      :emperor (m/validate CompositeMajorCommand payload)
+      :hierophant (m/validate HierophantCommand payload)
+      :lovers (m/validate CompositeMajorCommand payload)
+      :chariot (m/validate CompositeMajorCommand payload)
+      :hermit (m/validate HermitCommand payload)
+      :hanged-man (m/validate CompositeMajorCommand payload)
+      :temperance (m/validate CompositeMajorCommand payload)
+      :devil (m/validate DevilCommand payload)
+      :moon (m/validate MoonCommand payload)
+      :sun (m/validate SunCommand payload)
+      :judgement (m/validate JudgementCommand payload)
+      :justice (m/validate JusticeSwordCommand payload)
+      :death (m/validate DeathSwordCommand payload)
+      :tower (m/validate SingleSwordCommand payload)
+      false)))
+
 (defn- valid-delegated-command? [command]
   (let [payload (delegated-command-payload command)]
     (or (some #(valid-suit-command? % command) suit-power-values)
@@ -526,11 +576,14 @@
         (m/validate DevilCommand payload))))
 
 (defn- valid-world-command? [command]
-  (let [power (selected-suit-power command)]
-    (and (matching-selected-suit-powers? command)
+  (let [power (selected-world-power command)]
+    (and (matching-selected-world-powers? command)
          (cond
            (contains? suit-power-set power)
            (valid-suit-command? power command)
+
+           (contains? full-major-power-set power)
+           (valid-full-major-command? power command)
 
            (not (contains-any? command delegated-payload-keys))
            true

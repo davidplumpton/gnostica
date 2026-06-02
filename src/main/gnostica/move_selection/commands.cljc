@@ -7,7 +7,6 @@
     :active-power
     :completed-major-actions
     :composite-current-action
-    :copied-suit-powers
     :current-player-id
     :devil-current-action
     :fool-command-map
@@ -301,7 +300,7 @@
                   (call ctx :selected-world-copied-power db source params))
         command (gameplay-power-command-for-power ctx db source params power)]
     (cond-> (assoc command :copied-board-index (:copied-board-index params))
-      (contains? (value ctx :copied-suit-powers) power)
+      power
       (assoc :copied-power power))))
 
 (defn- world-command [ctx db source params]

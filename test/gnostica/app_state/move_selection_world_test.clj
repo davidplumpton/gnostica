@@ -66,6 +66,7 @@
                      :card-id "world"
                      :piece-id :rose-scout}
             :copied-board-index 3
+            :copied-power :empress
             :actions [{:power :orient-minion
                        :piece-id :rose-scout
                        :orientation :east}
@@ -134,6 +135,7 @@
                      :card-id "world"
                      :piece-id :rose-rod-minion}
             :copied-board-index 5
+            :copied-power :death
             :sword-actions [{:target {:kind :piece
                                       :piece-id :indigo-world-death-target}
                              :damage 1
