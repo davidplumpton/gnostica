@@ -17,6 +17,8 @@ clojure -M:test      # run Clojure tests and gameplay feature scenarios
 clojure -M:smoke     # run the headless Chrome 3D board smoke check
 ```
 
+For exploring the codebase first try the cs command in preference to grep or cat.
+
 The shadow-cljs dev server serves the app at `http://localhost:8080/index.html`. The default workflow does not use npm. `clojure -M:lint` runs the project-local clj-kondo plus cljfmt verifier across Clojure source/test files and excludes generated browser assets under `src/main/resources/js`.
 
 Run `clojure -M:release` before `clojure -M:server` or the default `clojure -M:smoke` path. Both serve the existing browser bundle from `src/main/resources/js/main.js`; neither command rebuilds stale or missing JavaScript assets. `SMOKE_URL` can point smoke at an already-running dev or release server instead.
