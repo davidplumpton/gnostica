@@ -490,6 +490,16 @@
                          :code "Enter"
                          :key-code 13}))
 
+(defn dispatch-tab-key!
+  ([client]
+   (dispatch-tab-key! client false))
+  ([client shift?]
+   (dispatch-key! client (cond-> {:key "Tab"
+                                  :code "Tab"
+                                  :key-code 9}
+                           shift?
+                           (assoc :modifiers 8)))))
+
 (defn dispatch-question-mark-key! [client]
   (dispatch-key! client {:key "?"
                          :code "Slash"
@@ -497,6 +507,11 @@
                          :modifiers 8}))
 
 (defn dispatch-escape-key! [client]
-  (dispatch-key! client {:key "Escape"
-                         :code "Escape"
-                         :key-code 27}))
+  (doseq [event-type ["rawKeyDown" "keyUp"]]
+    (cdp-command! client
+                  "Input.dispatchKeyEvent"
+                  {"type" event-type
+                   "key" "Escape"
+                   "code" "Escape"
+                   "windowsVirtualKeyCode" 27
+                   "nativeVirtualKeyCode" 27})))

@@ -40,6 +40,8 @@
 (defn- event-info [event]
   {:key (.-key event)
    :code (.-code event)
+   :key-code (.-keyCode event)
+   :which (.-which event)
    :shift? (.-shiftKey event)
    :alt? (.-altKey event)
    :ctrl? (.-ctrlKey event)
@@ -101,7 +103,24 @@
   (and (not (or (:alt? event-info)
                 (:ctrl? event-info)
                 (:meta? event-info)))
-       (= "escape" (some-> (:key event-info) str/lower-case))))
+       (or (= "escape" (some-> (:key event-info) str/lower-case))
+           (= "escape" (some-> (:code event-info) str/lower-case))
+           (= 27 (:key-code event-info))
+           (= 27 (:which event-info)))))
+
+(defn- help-dialog-open? [db]
+  (or (app-state/hotkey-help-open? db)
+      (app-state/icon-help-open? db)))
+
+(defn- handle-help-dialog-key! [event]
+  (let [info (event-info event)]
+    (when (cancel-key? info)
+      (.preventDefault event)
+      (when-let [close-button (.querySelector
+                               js/document
+                               ".hotkey-help-dialog__close, .icon-help-dialog__close")]
+        (.click close-button)))
+    true))
 
 (defn- handle-keyboard-placement-key! [event]
   (let [db @rf-db/app-db]
@@ -164,14 +183,16 @@
 (defn install! []
   (uninstall!)
   (let [listener (fn [event]
-                   (when-not (editable-target? (.-target event))
-                     (or (handle-keyboard-placement-key! event)
-                         (handle-drag-orientation-key! event)
-                         (handle-pending-placement-orientation-key! event)
-                         (when-let [shortcut-event (shortcuts/global-shortcut-event
-                                                    (event-info event))]
-                           (.preventDefault event)
-                           (rf/dispatch [shortcut-event])))))]
+                   (if (help-dialog-open? @rf-db/app-db)
+                     (handle-help-dialog-key! event)
+                     (when-not (editable-target? (.-target event))
+                       (or (handle-keyboard-placement-key! event)
+                           (handle-drag-orientation-key! event)
+                           (handle-pending-placement-orientation-key! event)
+                           (when-let [shortcut-event (shortcuts/global-shortcut-event
+                                                      (event-info event))]
+                             (.preventDefault event)
+                             (rf/dispatch [shortcut-event]))))))]
     (reset! global-shortcut-listener listener)
     (.addEventListener js/window
                        "keydown"

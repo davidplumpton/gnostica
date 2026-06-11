@@ -23,30 +23,37 @@
 
 (defn app []
   (let [{:keys [setup-error card-icon-mode open-panels lobby?]} @(rf/subscribe [events/app-view])
+        {:keys [hotkey-help-open? icon-help-open?]} @(rf/subscribe [events/help-dialogs-view])
         {:keys [active?]} @(rf/subscribe [events/pending-move-tray-view])
+        help-open? (or hotkey-help-open? icon-help-open?)
         panel-open? #(contains? open-panels %)]
     [:<>
-     [header-ui/app-header]
-     (if setup-error
-       [setup-error-panel setup-error]
-       (if lobby?
-         [lobby-ui/local-lobby]
-         [:main.app-shell
-          {:data-card-icon-mode (name card-icon-mode)}
-          [:div.play-stack
-           [board-ui/board-stage]]
-          (when (panel-open? :cards)
-            [card-zones-ui/card-zones])
-          (when (or active?
-                    (panel-open? :move)
-                    (panel-open? :territory))
-            [:div.side-stack
-             (when active?
-               [move-panel-ui/pending-move-tray])
-             (when (panel-open? :move)
-               [move-panel-ui/move-panel])
-             (when (panel-open? :territory)
-               [territory-ui/territory-panel])])]))
+     [:div.app-modal-scope
+      (cond-> {:data-help-modal-open (str (boolean help-open?))}
+        help-open?
+        (assoc :aria-hidden "true"
+               :inert ""))
+      [header-ui/app-header]
+      (if setup-error
+        [setup-error-panel setup-error]
+        (if lobby?
+          [lobby-ui/local-lobby]
+          [:main.app-shell
+           {:data-card-icon-mode (name card-icon-mode)}
+           [:div.play-stack
+            [board-ui/board-stage]]
+           (when (panel-open? :cards)
+             [card-zones-ui/card-zones])
+           (when (or active?
+                     (panel-open? :move)
+                     (panel-open? :territory))
+             [:div.side-stack
+              (when active?
+                [move-panel-ui/pending-move-tray])
+              (when (panel-open? :move)
+                [move-panel-ui/move-panel])
+              (when (panel-open? :territory)
+                [territory-ui/territory-panel])])]))]
      [help-ui/help-dialogs]]))
 
 (defn mount! []

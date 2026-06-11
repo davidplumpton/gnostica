@@ -265,6 +265,9 @@
      };
      const dialog = document.querySelector('.hotkey-help-dialog');
      const overlay = document.querySelector('.hotkey-help-overlay');
+     const close = document.querySelector('.hotkey-help-dialog__close');
+     const background = document.querySelector('.app-modal-scope');
+     const active = document.activeElement;
      const keyLabels = Array.from(document.querySelectorAll('.hotkey-command kbd'))
        .map((node) => node.textContent.trim());
      return {
@@ -272,6 +275,17 @@
        dialogVisible: visible(dialog),
        role: dialog ? dialog.getAttribute('role') : null,
        ariaModal: dialog ? dialog.getAttribute('aria-modal') : null,
+       backgroundInert: background ? Boolean(background.inert || background.hasAttribute('inert')) : false,
+       backgroundAriaHidden: background ? background.getAttribute('aria-hidden') : null,
+       appCardIconMode: (document.querySelector('.app-shell') || {}).dataset.cardIconMode || null,
+       activeTag: active ? active.tagName : null,
+       activeClass: active && active.className ? String(active.className) : '',
+       activeText: active ? active.textContent.trim() : '',
+       activeInDialog: Boolean(dialog && active && dialog.contains(active)),
+       closeFocused: Boolean(close && active === close),
+       boardFocused: Boolean(active && active.classList && active.classList.contains('board-three')),
+       hotkeyToggleFocused: Boolean(active && active.classList && active.classList.contains('hotkey-help-toggle')),
+       lastEscape: window.__gnosticaLastHelpEscape || null,
        title: (document.querySelector('#hotkey-help-title') || {}).textContent || '',
        commandCount: document.querySelectorAll('.hotkey-command').length,
        keyLabels,
@@ -293,15 +307,66 @@
      };
      const dialog = document.querySelector('.icon-help-dialog');
      const overlay = document.querySelector('.icon-help-overlay');
+     const close = document.querySelector('.icon-help-dialog__close');
+     const background = document.querySelector('.app-modal-scope');
+     const active = document.activeElement;
      return {
        overlayVisible: visible(overlay),
        dialogVisible: visible(dialog),
        role: dialog ? dialog.getAttribute('role') : null,
        ariaModal: dialog ? dialog.getAttribute('aria-modal') : null,
+       backgroundInert: background ? Boolean(background.inert || background.hasAttribute('inert')) : false,
+       backgroundAriaHidden: background ? background.getAttribute('aria-hidden') : null,
+       appCardIconMode: (document.querySelector('.app-shell') || {}).dataset.cardIconMode || null,
+       activeTag: active ? active.tagName : null,
+       activeClass: active && active.className ? String(active.className) : '',
+       activeText: active ? active.textContent.trim() : '',
+       activeInDialog: Boolean(dialog && active && dialog.contains(active)),
+       closeFocused: Boolean(close && active === close),
+       boardFocused: Boolean(active && active.classList && active.classList.contains('board-three')),
+       iconToggleFocused: Boolean(active && active.classList && active.classList.contains('icon-help-toggle')),
+       lastEscape: window.__gnosticaLastHelpEscape || null,
        title: (document.querySelector('#icon-help-title') || {}).textContent || '',
        itemCount: document.querySelectorAll('.icon-help-item').length,
        iconCount: document.querySelectorAll('.icon-help-item .gnostica-icon').length,
        text: dialog ? dialog.textContent : ''
+     };
+   })()")
+
+(def help-dialog-escape-keydown-js
+  "(() => {
+     const target = document.activeElement || document.body;
+     const event = new KeyboardEvent('keydown', {
+       key: 'Escape',
+       code: 'Escape',
+       bubbles: true,
+       cancelable: true
+     });
+     const dispatched = target.dispatchEvent(event);
+     const close = document.querySelector('.hotkey-help-dialog__close, .icon-help-dialog__close');
+     const closeRect = close ? close.getBoundingClientRect() : null;
+     const result = {
+       targetTag: target ? target.tagName : null,
+       targetClass: target && target.className ? String(target.className) : '',
+       canceled: !dispatched,
+       closeClicked: false,
+       closeRect: closeRect ? {
+         centerX: closeRect.left + (closeRect.width / 2),
+         centerY: closeRect.top + (closeRect.height / 2)
+       } : null
+     };
+     window.__gnosticaLastHelpEscape = result;
+     return result;
+   })()")
+
+(def icon-help-toggle-rect-js
+  "(() => {
+     const button = document.querySelector('.icon-help-toggle');
+     if (!button) return null;
+     const rect = button.getBoundingClientRect();
+     return {
+       centerX: rect.left + (rect.width / 2),
+       centerY: rect.top + (rect.height / 2)
      };
    })()")
 
@@ -1202,6 +1267,10 @@
          (true? (get stats "dialogVisible"))
          (= "dialog" (get stats "role"))
          (= "true" (get stats "ariaModal"))
+         (true? (get stats "backgroundInert"))
+         (= "true" (get stats "backgroundAriaHidden"))
+         (true? (get stats "activeInDialog"))
+         (true? (get stats "closeFocused"))
          (str/includes? (get stats "title") "Keyboard Commands")
          (= (count shortcuts/hotkey-commands)
             (long (or (get stats "commandCount") -1)))
@@ -1213,6 +1282,10 @@
        (true? (get stats "dialogVisible"))
        (= "dialog" (get stats "role"))
        (= "true" (get stats "ariaModal"))
+       (true? (get stats "backgroundInert"))
+       (= "true" (get stats "backgroundAriaHidden"))
+       (true? (get stats "activeInDialog"))
+       (true? (get stats "closeFocused"))
        (str/includes? (get stats "title") "Special Move Icons")
        (= (count icons/icon-ids) (long (or (get stats "itemCount") -1)))
        (= (count icons/icon-ids) (long (or (get stats "iconCount") -1)))
@@ -1222,12 +1295,28 @@
 (defn icon-help-closed-ready? [stats]
   (and (false? (get stats "overlayVisible"))
        (false? (get stats "dialogVisible"))
+       (false? (get stats "backgroundInert"))
+       (nil? (get stats "backgroundAriaHidden"))
        (zero? (long (or (get stats "itemCount") -1)))))
 
 (defn hotkey-help-closed-ready? [stats]
   (and (false? (get stats "overlayVisible"))
        (false? (get stats "dialogVisible"))
+       (false? (get stats "backgroundInert"))
+       (nil? (get stats "backgroundAriaHidden"))
        (zero? (long (or (get stats "commandCount") -1)))))
+
+(defn hotkey-help-closed-board-restored? [stats]
+  (and (hotkey-help-closed-ready? stats)
+       (true? (get stats "boardFocused"))))
+
+(defn icon-help-closed-board-restored? [stats]
+  (and (icon-help-closed-ready? stats)
+       (true? (get stats "boardFocused"))))
+
+(defn icon-help-closed-toggle-restored? [stats]
+  (and (icon-help-closed-ready? stats)
+       (true? (get stats "iconToggleFocused"))))
 
 (defn center-card-selected? [selection]
   (str/includes? (or (get selection "panelText") "") "Row 2, Column 2"))
