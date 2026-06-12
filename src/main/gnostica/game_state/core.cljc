@@ -398,6 +398,93 @@
 (defn discard-cards [state cards]
   (update state :discard-pile into (vec cards)))
 
+(defn- valid-shuffle-card-id [card]
+  (when (and (map? card)
+             (string? (:id card)))
+    (:id card)))
+
+(defn- invalid-shuffle-cards [cards]
+  (->> cards
+       (map-indexed
+        (fn [index card]
+          (let [invalid-fields (invalid-card-fields card)]
+            (when (seq invalid-fields)
+              {:index index
+               :card-id (valid-shuffle-card-id card)
+               :invalid-fields invalid-fields}))))
+       (remove nil?)
+       vec))
+
+(defn- missing-shuffle-card-ids [expected-card-ids actual-card-ids]
+  (let [actual-counts (frequencies actual-card-ids)]
+    (->> (frequencies expected-card-ids)
+         (keep (fn [[card-id expected-count]]
+                 (when (< (get actual-counts card-id 0) expected-count)
+                   card-id)))
+         vec)))
+
+(defn- unknown-shuffle-card-ids [expected-card-ids actual-card-ids]
+  (let [expected-card-id-set (set expected-card-ids)]
+    (->> actual-card-ids
+         (remove expected-card-id-set)
+         distinct
+         vec)))
+
+(defn- duplicate-shuffle-card-ids [card-ids]
+  (->> card-ids
+       frequencies
+       (filter (fn [[_ occurrences]]
+                 (> occurrences 1)))
+       (map first)
+       vec))
+
+(defn- changed-shuffle-card-ids [expected-cards actual-cards]
+  (let [expected-cards-by-id (into {} (map (juxt :id identity)) expected-cards)]
+    (->> actual-cards
+         (keep (fn [card]
+                 (let [card-id (valid-shuffle-card-id card)]
+                   (when (and (contains? expected-cards-by-id card-id)
+                              (not= card (get expected-cards-by-id card-id)))
+                     card-id))))
+         distinct
+         vec)))
+
+(defn- validate-shuffled-discard-cards [discard-cards shuffled-cards]
+  (let [expected-card-ids (mapv :id discard-cards)
+        actual-card-ids (mapv valid-shuffle-card-id shuffled-cards)
+        valid-actual-card-ids (keep valid-shuffle-card-id shuffled-cards)
+        invalid-cards (invalid-shuffle-cards shuffled-cards)
+        duplicate-card-ids (duplicate-shuffle-card-ids valid-actual-card-ids)
+        missing-card-ids (missing-shuffle-card-ids expected-card-ids actual-card-ids)
+        unknown-card-ids (unknown-shuffle-card-ids expected-card-ids valid-actual-card-ids)
+        changed-card-ids (changed-shuffle-card-ids discard-cards shuffled-cards)]
+    (when (or (not= (count discard-cards) (count shuffled-cards))
+              (seq invalid-cards)
+              (seq duplicate-card-ids)
+              (seq missing-card-ids)
+              (seq unknown-card-ids)
+              (seq changed-card-ids))
+      (failure :invalid-shuffle-result
+               "The draw-pile shuffle function must return a one-for-one permutation of the discard pile."
+               (cond-> {:expected-count (count discard-cards)
+                        :actual-count (count shuffled-cards)
+                        :expected-card-ids expected-card-ids
+                        :actual-card-ids actual-card-ids}
+                 (seq invalid-cards)
+                 (assoc :invalid-cards invalid-cards)
+
+                 (seq duplicate-card-ids)
+                 (assoc :duplicate-card-ids duplicate-card-ids)
+
+                 (seq missing-card-ids)
+                 (assoc :missing-card-ids missing-card-ids)
+
+                 (seq unknown-card-ids)
+                 (assoc :unknown-card-ids unknown-card-ids)
+
+                 (seq changed-card-ids)
+                 (assoc :changed-card-ids changed-card-ids))))))
+
 (defn refresh-draw-pile [state shuffle-fn]
   (cond
     (not (ifn? shuffle-fn))
@@ -408,15 +495,22 @@
     (and (empty? (:draw-pile state))
          (seq (:discard-pile state)))
     (let [shuffled-cards (shuffle-fn (:discard-pile state))]
-      (if (sequential? shuffled-cards)
-        {:ok? true
-         :state (-> state
-                    (assoc :draw-pile (vec shuffled-cards))
-                    (assoc :discard-pile []))
-         :reshuffled? true}
+      (cond
+        (not (sequential? shuffled-cards))
         (failure :invalid-shuffle-result
                  "The draw-pile shuffle function must return a sequential collection of cards."
-                 {:result shuffled-cards})))
+                 {:result shuffled-cards})
+
+        :else
+        (if-let [validation-error (validate-shuffled-discard-cards
+                                   (:discard-pile state)
+                                   shuffled-cards)]
+          validation-error
+          {:ok? true
+           :state (-> state
+                      (assoc :draw-pile (vec shuffled-cards))
+                      (assoc :discard-pile []))
+           :reshuffled? true})))
 
     :else
     {:ok? true

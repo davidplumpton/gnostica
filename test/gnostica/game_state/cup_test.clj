@@ -408,6 +408,39 @@
     (is (= (count cards/deck) (count (all-card-ids state))))
     (is (= (count cards/deck) (count (set (all-card-ids state)))))
     (is (game-schema/valid-game? state))))
+(deftest wheel-cup-rejects-invalid-discard-reshuffle-results
+  (let [draw-start (+ (hand-card-count (count player-specs)) board/board-card-count)
+        initial-state (:state (game-state/create-game
+                               player-specs
+                               {:deck-order (deck-with-cards-at
+                                             {0 "wheeloffortune"
+                                              draw-start "world"})}))
+        prepared-discard (:draw-pile initial-state)
+        state (-> initial-state
+                  (game-state/with-board-pieces [rose-cup-wasteland-minion])
+                  (assoc :draw-pile []
+                         :discard-pile prepared-discard))
+        first-discard-id (:id (first prepared-discard))
+        result (game-state/apply-cup-move
+                state
+                {:player-id :rose
+                 :source {:kind :hand-card
+                          :card-id "wheeloffortune"
+                          :piece-id :rose-cup-minion}
+                 :cup-variant :wheel-cup
+                 :target {:kind :wasteland
+                          :row 1
+                          :col -1}
+                 :territory-card-source :draw-pile-top
+                 :shuffle-fn (fn [discard-pile]
+                               (assoc (vec discard-pile) 1 (first discard-pile)))})]
+    (is (= :invalid-shuffle-result
+           (get-in result [:error :code])))
+    (is (= [first-discard-id]
+           (get-in result [:error :data :duplicate-card-ids])))
+    (is (false? (:ok? result)))
+    (is (not (contains? result :state)))
+    (is (game-schema/valid-game? state))))
 (deftest non-wheel-cups-reject-draw-pile-territory-source
   (let [state (state-with-pieces [rose-cup-wasteland-minion])
         result (game-state/apply-cup-move

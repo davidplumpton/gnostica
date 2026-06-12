@@ -1,5 +1,5 @@
 (ns gnostica.game-state.draw-test
-  (:require [clojure.test :refer [deftest is]]
+  (:require [clojure.test :refer [deftest is testing]]
             [gnostica.board :as board]
             [gnostica.cards :as cards]
             [gnostica.game-schema :as game-schema]
@@ -101,6 +101,58 @@
     (is (= (count cards/deck) (count (all-card-ids state))))
     (is (= (count cards/deck) (count (set (all-card-ids state)))))
     (is (game-schema/valid-game? state))))
+(deftest draw-move-rejects-reshuffles-that-change-discard-card-identity
+  (let [base-state (state-with-pieces [rose-target-minion])
+        original-hand (get-in base-state [:players-by-id :rose :hand])
+        discarded-hand-cards (take 2 original-hand)
+        shortened-hand (vec (drop 2 original-hand))
+        first-draw-card (first (:draw-pile base-state))
+        prepared-discard (vec (concat discarded-hand-cards
+                                      (rest (:draw-pile base-state))))
+        state (-> base-state
+                  (replace-player-hand :rose shortened-hand)
+                  (assoc :draw-pile [first-draw-card]
+                         :discard-pile prepared-discard))
+        base-command {:player-id :rose
+                      :draw-count 2}
+        first-discard-id (:id (first prepared-discard))
+        second-discard-id (:id (second prepared-discard))]
+    (doseq [{:keys [description shuffle-fn expected-data]}
+            [{:description "duplicate discard card"
+              :shuffle-fn (fn [discard-pile]
+                            (assoc (vec discard-pile) 1 (first discard-pile)))
+              :expected-data {:duplicate-card-ids [first-discard-id]
+                              :missing-card-ids [second-discard-id]}}
+             {:description "dropped discard card"
+              :shuffle-fn (fn [discard-pile]
+                            (vec (rest discard-pile)))
+              :expected-data {:actual-count (dec (count prepared-discard))
+                              :missing-card-ids [first-discard-id]}}
+             {:description "non-card output"
+              :shuffle-fn (fn [discard-pile]
+                            (assoc (vec discard-pile) 0 "not-a-card"))
+              :expected-data {:invalid-cards [{:index 0
+                                               :card-id nil
+                                               :invalid-fields [:id :title :image]}]
+                              :missing-card-ids [first-discard-id]}}
+             {:description "changed discard card"
+              :shuffle-fn (fn [discard-pile]
+                            (assoc-in (vec discard-pile) [0 :title] "Counterfeit"))
+              :expected-data {:changed-card-ids [first-discard-id]}}]]
+      (testing description
+        (let [result (game-state/apply-draw-move
+                      state
+                      (assoc base-command :shuffle-fn shuffle-fn))]
+          (is (= :invalid-shuffle-result
+                 (get-in result [:error :code])))
+          (is (false? (:ok? result)))
+          (is (not (contains? result :state)))
+          (doseq [[data-key expected-value] expected-data]
+            (is (= expected-value
+                   (get-in result [:error :data data-key]))))
+          (is (= (count prepared-discard)
+                 (get-in result [:error :data :expected-count])))
+          (is (game-schema/valid-game? state)))))))
 (deftest draw-move-rejects-invalid-counts-and-discard-cards
   (let [state (state-with-pieces [rose-target-minion])
         first-card-id (first (player-hand-ids state :rose))
@@ -298,6 +350,32 @@
     (is (not (some #{"fool"} (player-hand-ids state :rose))))
     (is (= (count cards/deck) (count (all-card-ids state))))
     (is (= (count cards/deck) (count (set (all-card-ids state)))))
+    (is (game-schema/valid-game? state))))
+(deftest fool-reveals-reject-invalid-discard-reshuffle-results
+  (let [initial-state (-> (:state (game-state/create-game
+                                   player-specs
+                                   {:deck-order
+                                    (deck-starting-with
+                                     ["fool" "cups2" "wands2"
+                                      "coins2" "swords2" "cups3"])}))
+                          (game-state/with-board-pieces [rose-cup-minion]))
+        discard-cards (:draw-pile initial-state)
+        state (assoc initial-state
+                     :draw-pile []
+                     :discard-pile discard-cards)
+        result (game-state/apply-fool-move
+                state
+                {:player-id :rose
+                 :source {:kind :hand-card
+                          :card-id "fool"}
+                 :reveals [{}]
+                 :shuffle-fn (fn [discard-pile]
+                               (vec (rest discard-pile)))})]
+    (is (= :invalid-shuffle-result
+           (get-in result [:error :code])))
+    (is (false? (:ok? result)))
+    (is (not (contains? result :state)))
+    (is (seq (get-in result [:error :data :missing-card-ids])))
     (is (game-schema/valid-game? state))))
 (deftest fool-revealed-card_can_play_a_full_composite_major_power
   (let [draw-start (+ (hand-card-count (count player-specs))
