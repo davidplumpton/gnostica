@@ -23,7 +23,7 @@ clojure -M:test      # run Clojure tests and gameplay feature scenarios
 clojure -M:smoke     # run the headless Chrome 3D board smoke check
 ```
 
-For exploring the codebase first try the cs command in preference to grep or cat.
+For search-oriented codebase exploration, first try the code-spelunker `cs` command in preference to grep. For example, use `cs "move-legal-targets" path:src/main/gnostica` to find subsystem code or `cs "apply-world-move" OR "world-major-territories"` to follow related public APIs. `cs` is a search tool, not a file reader; when you need exact surrounding context, line numbers, or a complete file section, use normal line-numbered reads such as `nl -ba AGENTS.md | sed -n '1,80p'`.
 
 The shadow-cljs dev server serves the app at `http://localhost:8080/index.html`. The default workflow does not use npm. `clojure -M:lint` first runs the br tracker guard, then the project-local clj-kondo plus cljfmt verifier across Clojure source/test files and excludes generated browser assets under `src/main/resources/js`. The guard fails when `.beads/embeddeddolt` is missing, is a directory left by legacy `bd`, is not a regular file, or when `.beads/issues.jsonl` is absent.
 
