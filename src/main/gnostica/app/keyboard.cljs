@@ -140,8 +140,8 @@
           (do
             (.preventDefault event)
             (.stopPropagation event)
-            (rf/dispatch [move-keyboard-placement-target-event
-                          (keyboard-placement-direction info)])
+            (rf/dispatch-sync [move-keyboard-placement-target-event
+                               (keyboard-placement-direction info)])
             true)
 
           (and (= :target mode)
@@ -149,7 +149,7 @@
           (do
             (.preventDefault event)
             (.stopPropagation event)
-            (rf/dispatch [accept-keyboard-placement-target-event])
+            (rf/dispatch-sync [accept-keyboard-placement-target-event])
             true)
 
           (= :orientation mode)
@@ -160,7 +160,7 @@
                   (.preventDefault event)
                   (.stopPropagation event)
                   (dispatch-orientation-change!)
-                  (rf/dispatch [set-pending-placement-orientation-event result])
+                  (rf/dispatch-sync [set-pending-placement-orientation-event result])
                   true))
               (when (accept-key? info)
                 (.preventDefault event)
