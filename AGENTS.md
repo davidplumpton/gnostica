@@ -6,6 +6,12 @@ Gnostica is a Clojure and ClojureScript tarot app using re-frame and shadow-cljs
 
 Use `docs/rules.txt` as the local implementation rules reference. The upstream Gnostica PDF remains the provenance source: https://www.looneylabs.com/sites/default/files/pyramid_rules/Gnostica.pdf. If the local text and upstream PDF differ, treat `docs/rules.txt` as authoritative for current repo behavior until the local copy is deliberately reconciled.
 
+## Mind Map Workflow
+
+Use `MIND_MAP.md` as the compact project knowledge index before substantial work. Start at the Gnostica project anchors [6-10], then follow inline node references for the subsystem you are touching. Nodes [1-5] are preserved generic format notes; consult them only for mind-map syntax and do not change them.
+
+When you encounter bugs, record useful attempts or findings in the relevant node. When a code or docs change makes an existing node stale, update that node in the same change. Add new nodes only for genuinely new concepts, keep the map compact, and reference node IDs when using map context in notes or handoffs.
+
 ## Development Commands
 
 ```sh
