@@ -13,6 +13,10 @@
        (filter #(.isFile %))
        (filter #(str/ends-with? (.getName %) ".cljs"))))
 
+(defn- cljs-registration-files [root-file child-dir]
+  (cons (source-file root-file)
+        (cljs-files-under child-dir)))
+
 (defn- id-names [ids]
   (set (map name ids)))
 
@@ -27,10 +31,32 @@
        (map second)
        set))
 
+(defn- ids-referenced-by [files]
+  (->> files
+       (mapcat #(re-seq #"ids/([A-Za-z0-9*+!_\-?]+)" (slurp %)))
+       (map second)
+       set))
+
 (deftest events-namespace-exports-only-public-ids
   (let [expected (set/union (id-names app-ids/event-ids)
                             (id-names app-ids/public-subscription-ids))]
     (is (= expected (public-event-defs)))))
+
+(deftest registration-load-points-reference-all-event-ids
+  (let [expected (id-names app-ids/event-ids)
+        referenced (ids-referenced-by
+                    (cljs-registration-files
+                     "src/main/gnostica/app/registrations/events.cljs"
+                     "src/main/gnostica/app/registrations/events"))]
+    (is (empty? (set/difference expected referenced)))))
+
+(deftest registration-load-points-reference-all-subscription-ids
+  (let [expected (id-names app-ids/subscription-ids)
+        referenced (ids-referenced-by
+                    (cljs-registration-files
+                     "src/main/gnostica/app/registrations/subscriptions.cljs"
+                     "src/main/gnostica/app/registrations/subscriptions"))]
+    (is (empty? (set/difference expected referenced)))))
 
 (deftest ui-subscriptions-use-composed-view-boundary
   (let [public-subscriptions (id-names app-ids/public-subscription-ids)
