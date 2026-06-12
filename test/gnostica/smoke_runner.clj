@@ -393,6 +393,40 @@
         (finally
           (browser/close-cdp! client))))))
 
+(defn- run-short-mobile-gameplay-smoke! [http-client chrome url]
+  (let [viewport stats/short-mobile-viewport]
+    (println (format "Smoke checking %s gameplay reachability at %dx%d."
+                     (:name viewport)
+                     (:width viewport)
+                     (:height viewport)))
+    (let [client (open-gnostica-page! http-client
+                                      chrome
+                                      viewport
+                                      (stats/major-icons-smoke-url url)
+                                      nil)]
+      (try
+        (let [initial-stats (browser/wait-for! client
+                                               "short mobile Three.js board render"
+                                               stats/happy-stats-js
+                                               stats/happy-ready?)
+              reachability (browser/wait-for! client
+                                              "short mobile gameplay reachability"
+                                              stats/short-mobile-gameplay-reachability-js
+                                              stats/short-mobile-gameplay-reachable?)]
+          {:viewport (:name viewport)
+           :stats initial-stats
+           :reachability reachability})
+        (catch Exception error
+          (throw (ex-info "Short mobile gameplay smoke failed."
+                          {:viewport viewport
+                           :url url
+                           :browser-diagnostics (browser/browser-diagnostics client)
+                           :cause (ex-message error)
+                           :data (ex-data error)}
+                          error)))
+        (finally
+          (browser/close-cdp! client))))))
+
 (defn- run-icon-help-modal-smoke! [http-client chrome url]
   (println "Smoke checking icon help modal.")
   (let [client (open-gnostica-page! http-client
@@ -777,6 +811,7 @@
           (doseq [viewport stats/viewports]
             (run-happy-viewport! http-client chrome (:url target) viewport))
           (run-narrow-mobile-header-smoke! http-client chrome (:url target))
+          (run-short-mobile-gameplay-smoke! http-client chrome (:url target))
           (run-icon-help-modal-smoke! http-client chrome (:url target))
           (run-confirmed-three-keyboard-placement! http-client chrome (:url target))
           (run-confirmed-three-direct-drop! http-client chrome (:url target))

@@ -24,7 +24,8 @@ body {
   min-width: 320px;
   min-height: 100vh;
   margin: 0;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
   color: var(--ink);
   background:
     linear-gradient(180deg, rgba(77, 154, 135, 0.42), rgba(255, 224, 138, 0.08) 28rem, transparent 42rem),

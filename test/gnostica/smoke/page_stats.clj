@@ -21,6 +21,9 @@
 (def narrow-mobile-viewport
   {:name "narrow-mobile" :width 320 :height 844 :mobile true})
 
+(def short-mobile-viewport
+  {:name "short-mobile" :width 390 :height 360 :mobile true})
+
 (def app-ready-js
   "Boolean(document.querySelector('.app-shell') || document.querySelector('.setup-error'))")
 
@@ -422,6 +425,74 @@
        stepLabels,
        handCardStep: Boolean(handStep),
        handCardChoiceCount: handStep ? handStep.querySelectorAll('.move-chip').length : 0
+     };
+   })()")
+
+(def short-mobile-gameplay-reachability-js
+  "(() => {
+     const visibleInViewport = (node) => {
+       const rect = node ? node.getBoundingClientRect() : null;
+       const style = node ? getComputedStyle(node) : null;
+       const opacity = style ? Number.parseFloat(style.opacity || '1') : 0;
+       return Boolean(rect
+         && rect.width > 0
+         && rect.height > 0
+         && rect.right > 0
+         && rect.left < window.innerWidth
+         && rect.bottom > 0
+         && rect.top < window.innerHeight
+         && style.display !== 'none'
+         && style.visibility !== 'hidden'
+         && opacity > 0);
+     };
+     const scrollRoot = document.scrollingElement || document.documentElement;
+     const moveToggle = document.querySelector('.panel-toggle[aria-controls=\"move-panel\"]');
+     const cardsToggle = document.querySelector('.panel-toggle[aria-controls=\"cards-panel\"]');
+     if (!document.querySelector('.move-panel') && moveToggle) {
+       moveToggle.click();
+     }
+     if (!document.querySelector('.card-zones') && cardsToggle) {
+       cardsToggle.click();
+     }
+     window.scrollTo(0, 0);
+     const header = document.querySelector('.app-header');
+     const board = document.querySelector('.board-three');
+     const shell = document.querySelector('.app-shell');
+     const topHeaderVisible = visibleInViewport(header);
+     const topBoardVisible = visibleInViewport(board);
+     const requestedScrollY = Math.max(0, scrollRoot.scrollHeight - scrollRoot.clientHeight);
+     window.scrollTo(0, requestedScrollY);
+     const sideStack = document.querySelector('.side-stack');
+     if (sideStack) {
+       sideStack.scrollTop = 0;
+     }
+     const cardZones = document.querySelector('.card-zones');
+     const movePanel = document.querySelector('.move-panel');
+     const moveSource = document.querySelector('.move-source-option');
+     const sideStackStyle = sideStack ? getComputedStyle(sideStack) : null;
+     const bodyStyle = getComputedStyle(document.body);
+     const rootStyle = getComputedStyle(document.documentElement);
+     return {
+       viewportWidth: window.innerWidth,
+       viewportHeight: window.innerHeight,
+       bodyOverflowY: bodyStyle.overflowY,
+       rootOverflowY: rootStyle.overflowY,
+       scrollHeight: scrollRoot.scrollHeight,
+       clientHeight: scrollRoot.clientHeight,
+       requestedScrollY,
+       scrollYAfter: Math.round(window.scrollY || scrollRoot.scrollTop || 0),
+       shellHeight: shell ? Math.round(shell.getBoundingClientRect().height) : 0,
+       moveToggle: Boolean(moveToggle),
+       cardsToggle: Boolean(cardsToggle),
+       topHeaderVisible,
+       topBoardVisible,
+       cardsPanelReachable: visibleInViewport(cardZones),
+       movePanelReachable: visibleInViewport(movePanel),
+       moveSourceReachable: visibleInViewport(moveSource),
+       sideStackVisible: visibleInViewport(sideStack),
+       sideStackOverflowY: sideStackStyle ? sideStackStyle.overflowY : null,
+       sideStackClientHeight: sideStack ? sideStack.clientHeight : 0,
+       sideStackScrollHeight: sideStack ? sideStack.scrollHeight : 0
      };
    })()")
 
@@ -1133,6 +1204,28 @@
   (if (<= (long (or (get stats "viewportWidth") 0)) 520)
     (mobile-header-context-ready? stats)
     (desktop-header-context-ready? stats)))
+
+(defn short-mobile-gameplay-reachable? [stats]
+  (let [scroll-height (long (or (get stats "scrollHeight") 0))
+        client-height (long (or (get stats "clientHeight") 0))
+        requested-scroll-y (long (or (get stats "requestedScrollY") 0))
+        scroll-y-after (long (or (get stats "scrollYAfter") 0))
+        blocked-overflows #{"hidden" "clip"}]
+    (and (not (contains? blocked-overflows (get stats "bodyOverflowY")))
+         (pos? scroll-height)
+         (pos? client-height)
+         (> scroll-height client-height)
+         (pos? requested-scroll-y)
+         (<= (- requested-scroll-y 2) scroll-y-after)
+         (true? (get stats "moveToggle"))
+         (true? (get stats "cardsToggle"))
+         (true? (get stats "topHeaderVisible"))
+         (true? (get stats "topBoardVisible"))
+         (true? (get stats "cardsPanelReachable"))
+         (true? (get stats "movePanelReachable"))
+         (true? (get stats "moveSourceReachable"))
+         (true? (get stats "sideStackVisible"))
+         (not (contains? blocked-overflows (get stats "sideStackOverflowY"))))))
 
 (defn three-icon-layout-ready? [stats]
   (and (= icon-layout/card-icon-scale
