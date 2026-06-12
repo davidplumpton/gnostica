@@ -118,6 +118,12 @@
 (defn append-history [state event]
   (core/append-history state event))
 
+(defn validate-board-pieces [state board-pieces]
+  (core/validate-board-pieces state board-pieces))
+
+(defn with-board-pieces-result [state board-pieces]
+  (core/with-board-pieces-result state board-pieces))
+
 (defn with-board-pieces [state board-pieces]
   (core/with-board-pieces state board-pieces))
 

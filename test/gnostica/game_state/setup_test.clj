@@ -38,6 +38,10 @@
             [gnostica.test-support.game-state-moves :refer :all]
             [gnostica.test-support.pieces :refer [piece-by-id]]))
 
+(defn- seeding-error [result code]
+  (some #(when (= code (:code %)) %)
+        (get-in result [:error :data :errors])))
+
 (deftest creates-deterministic-initial-state
   (let [hand-count (hand-card-count (count player-specs))
         board-deck (drop hand-count cards/deck)
@@ -63,6 +67,111 @@
             :medium 5
             :large 5}
            (get-in state [:pieces :stashes :rose])))))
+(deftest validates-seeded-board-pieces-before-rebuilding-stashes
+  (let [state (deterministic-game)
+        piece {:id :rose-seeded-small
+               :player-id :rose
+               :space-index 0
+               :size :small
+               :orientation :north}
+        result (game-state/with-board-pieces-result state [piece])]
+    (is (nil? (game-state/validate-board-pieces state [piece])))
+    (is (:ok? result))
+    (is (= [piece] (get-in result [:state :pieces :on-board])))
+    (is (= {:small 4
+            :medium 5
+            :large 5}
+           (get-in result [:state :pieces :stashes :rose])))
+    (is (= (get-in result [:state :players-by-id :rose :stash])
+           (get-in result [:state :pieces :stashes :rose])))))
+(deftest rejects-impossible-seeded-board-pieces-with-structured-errors
+  (let [state (deterministic-game)
+        duplicate-id :duplicate-scout
+        duplicate-result (game-state/with-board-pieces-result
+                           state
+                           [{:id duplicate-id
+                             :player-id :rose
+                             :space-index 0
+                             :size :small
+                             :orientation :up}
+                            {:id duplicate-id
+                             :player-id :rose
+                             :space-index 1
+                             :size :small
+                             :orientation :north}])
+        unknown-result (game-state/with-board-pieces-result
+                         state
+                         [{:id :obsidian-scout
+                           :player-id :obsidian
+                           :space-index 0
+                           :size :small
+                           :orientation :north}])
+        location-result (game-state/with-board-pieces-result
+                          state
+                          [{:id :rose-missing-space
+                            :player-id :rose
+                            :space-index 99
+                            :size :small
+                            :orientation :up}
+                           {:id :rose-ambiguous-location
+                            :player-id :rose
+                            :space-index 0
+                            :space {:kind :wasteland
+                                    :row 0
+                                    :col 3}
+                            :size :small
+                            :orientation :up}
+                           {:id :rose-missing-location
+                            :player-id :rose
+                            :size :small
+                            :orientation :up}
+                           {:id :rose-lost-wasteland
+                            :player-id :rose
+                            :space {:kind :wasteland
+                                    :row 99
+                                    :col 99}
+                            :size :small
+                            :orientation :up}])
+        overflow-pieces (mapv (fn [index]
+                                {:id (keyword (str "rose-extra-small-" index))
+                                 :player-id :rose
+                                 :space-index (mod index board/board-card-count)
+                                 :size :small
+                                 :orientation :up})
+                              (range 6))
+        overflow-result (game-state/with-board-pieces-result state overflow-pieces)
+        location-error-codes (set (map :code (get-in location-result
+                                                     [:error :data :errors])))]
+    (is (false? (:ok? duplicate-result)))
+    (is (= {:code :duplicate-active-piece-ids
+            :message "Active pieces must have unique ids."
+            :data {:piece-ids [duplicate-id]}}
+           (seeding-error duplicate-result :duplicate-active-piece-ids)))
+    (is (= {:code :unknown-piece-player
+            :message "Pieces on the board must belong to a player in the game."
+            :data {:piece-id :obsidian-scout
+                   :player-id :obsidian
+                   :player-ids [:rose :indigo]}}
+           (seeding-error unknown-result :unknown-piece-player)))
+    (is (every? location-error-codes
+                [:piece-space-missing
+                 :ambiguous-piece-location
+                 :missing-piece-location
+                 :piece-wasteland-missing]))
+    (is (= {:code :piece-count-exceeds-stash
+            :message "Seeded board pieces cannot use more pieces than a player's starting stash."
+            :data {:player-id :rose
+                   :size :small
+                   :active-piece-count 6
+                   :available-count game-state/pieces-per-size-in-stash}}
+           (seeding-error overflow-result :piece-count-exceeds-stash)))
+    (try
+      (game-state/with-board-pieces state overflow-pieces)
+      (is false "with-board-pieces should reject invalid seeds")
+      (catch clojure.lang.ExceptionInfo ex
+        (is (= :invalid-board-pieces (:code (ex-data ex))))
+        (is (= :piece-count-exceeds-stash
+               (-> ex ex-data :data :errors first :code)))))))
 (deftest explicit-deck-order-controls-hands-board-and-draw-pile
   (let [deck-order (vec (reverse cards/deck))
         {:keys [state]} (game-state/create-game player-specs {:deck-order deck-order})

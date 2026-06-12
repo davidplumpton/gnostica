@@ -37,6 +37,36 @@
   (some #(when (= code (:code %)) %)
         (:invariants explanation)))
 
+(defn- board-piece-counts [board-pieces]
+  (reduce (fn [counts {:keys [player-id size]}]
+            (if (and player-id size)
+              (update-in counts [player-id size] (fnil inc 0))
+              counts))
+          {}
+          board-pieces))
+
+(defn- stash-after-board-pieces [piece-counts player-id]
+  (into {}
+        (map (fn [size]
+               [size (- game-state/pieces-per-size-in-stash
+                        (get-in piece-counts [player-id size] 0))]))
+        (keys pieces/piece-sizes)))
+
+(defn- state-with-unchecked-board-pieces [state board-pieces]
+  (let [board-pieces (vec board-pieces)
+        piece-counts (board-piece-counts board-pieces)
+        players (mapv (fn [player]
+                        (assoc player
+                               :stash (stash-after-board-pieces piece-counts
+                                                                (:id player))))
+                      (:players state))]
+    (assoc state
+           :players players
+           :players-by-id (into {} (map (juxt :id identity) players))
+           :pieces (assoc (:pieces state)
+                          :on-board board-pieces
+                          :stashes (into {} (map (juxt :id :stash) players))))))
+
 (deftest validates-generated-setup-state-for-two-through-six-players
   (doseq [player-count (range game-state/min-players (inc game-state/max-players))
           :let [state (game-for player-count)]]
@@ -185,7 +215,19 @@
 (deftest rejects-duplicate-active-piece-ids
   (let [state (game-for 2)
         duplicate-id :duplicate-scout
-        same-player-state (game-state/with-board-pieces
+        same-player-state (state-with-unchecked-board-pieces
+                           state
+                           [{:id duplicate-id
+                             :player-id :rose
+                             :space-index 0
+                             :size :small
+                             :orientation :up}
+                            {:id duplicate-id
+                             :player-id :rose
+                             :space-index 1
+                             :size :small
+                             :orientation :north}])
+        cross-player-state (state-with-unchecked-board-pieces
                             state
                             [{:id duplicate-id
                               :player-id :rose
@@ -193,22 +235,10 @@
                               :size :small
                               :orientation :up}
                              {:id duplicate-id
-                              :player-id :rose
+                              :player-id :indigo
                               :space-index 1
                               :size :small
-                              :orientation :north}])
-        cross-player-state (game-state/with-board-pieces
-                             state
-                             [{:id duplicate-id
-                               :player-id :rose
-                               :space-index 0
-                               :size :small
-                               :orientation :up}
-                              {:id duplicate-id
-                               :player-id :indigo
-                               :space-index 1
-                               :size :small
-                               :orientation :north}])]
+                              :orientation :north}])]
     (doseq [invalid-state [same-player-state cross-player-state]
             :let [explanation (game-schema/explain-game invalid-state)]]
       (is (false? (game-schema/valid-game? invalid-state)))
@@ -243,7 +273,7 @@
                              :space-index 99
                              :size :small
                              :orientation :up}
-        invalid-state (game-state/with-board-pieces state [missing-space-piece])
+        invalid-state (state-with-unchecked-board-pieces state [missing-space-piece])
         explanation (game-schema/explain-game invalid-state)]
     (is (false? (game-schema/valid-game? invalid-state)))
     (is (= [{:code :piece-space-missing
@@ -267,8 +297,8 @@
                                 :player-id :rose
                                 :size :small
                                 :orientation :up}
-        ambiguous-state (game-state/with-board-pieces state [ambiguous-piece])
-        missing-state (game-state/with-board-pieces state [missing-location-piece])]
+        ambiguous-state (state-with-unchecked-board-pieces state [ambiguous-piece])
+        missing-state (state-with-unchecked-board-pieces state [missing-location-piece])]
     (is (false? (game-schema/valid-game? ambiguous-state)))
     (is (= [{:code :ambiguous-piece-location
              :message "Pieces must use either :space-index or :space, not both."
@@ -293,7 +323,7 @@
                                :col 99}
                        :size :small
                        :orientation :up}
-        invalid-state (game-state/with-board-pieces state [invalid-piece])
+        invalid-state (state-with-unchecked-board-pieces state [invalid-piece])
         expected-wastelands (->> (board-layout/wasteland-spaces (:board state))
                                  (map #(select-keys % [:kind :row :col]))
                                  (sort-by (juxt :row :col))
