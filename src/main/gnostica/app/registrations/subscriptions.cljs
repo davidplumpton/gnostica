@@ -446,9 +446,5 @@
 
 (rf/reg-sub
  help-dialogs-view
- :<- [hotkey-help-open?]
- :<- [icon-help-open?]
- (fn [[hotkey-help-open? icon-help-open?] _]
-   (app-state/help-dialogs-view-model
-    {:hotkey-help-open? hotkey-help-open?
-     :icon-help-open? icon-help-open?})))
+ (fn [db _]
+   (app-state/help-dialogs-view db)))

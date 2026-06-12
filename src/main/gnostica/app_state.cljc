@@ -11,6 +11,7 @@
 (def default-card-icon-mode db/default-card-icon-mode)
 (def default-hotkey-help-open? db/default-hotkey-help-open?)
 (def default-icon-help-open? db/default-icon-help-open?)
+(def default-dev-demo-hotkeys? db/default-dev-demo-hotkeys?)
 (def target-score-options db/target-score-options)
 (def panel-ids db/panel-ids)
 (def default-open-panels db/default-open-panels)
@@ -22,6 +23,8 @@
 (def normalize-card-icon-mode db/normalize-card-icon-mode)
 (def normalize-three-runtime-status db/normalize-three-runtime-status)
 (def normalize-direct-manipulation db/normalize-direct-manipulation)
+(def normalize-dev-demo-hotkeys db/normalize-dev-demo-hotkeys)
+(def dev-demo-hotkeys? db/dev-demo-hotkeys?)
 
 (defn initialize
   ([] (initialize {}))
@@ -37,6 +40,8 @@
 
 (def game db/game)
 (def setup-error db/setup-error)
+(def layout-shuffled-deck-as-territories
+  db/layout-shuffled-deck-as-territories)
 
 #?(:clj
    (def lobby lobby/lobby))

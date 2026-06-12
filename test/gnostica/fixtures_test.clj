@@ -83,3 +83,8 @@
                           :name "Indigo"}]
           :local-controller fixtures/shared-local-controller}
          (fixtures/shared-local-control-init-options true))))
+
+(deftest dev-demo-hotkeys-init-options-are-dev-scoped
+  (is (nil? (fixtures/dev-demo-hotkeys-init-options false)))
+  (is (= {:dev-demo-hotkeys? true}
+         (fixtures/dev-demo-hotkeys-init-options true))))

@@ -3,6 +3,7 @@
             [gnostica.app-state.lobby :as lobby]
             [gnostica.board-layout :as layout]
             [gnostica.game-state :as game-state]
+            [gnostica.keyboard-shortcuts :as shortcuts]
             [gnostica.move-selection :as move-selection]
             [gnostica.pieces :as pieces]))
 
@@ -430,14 +431,17 @@
   (lobby/lobby-view app-db))
 
 (defn help-dialogs-view-model
-  [{:keys [hotkey-help-open? icon-help-open?]}]
+  [{:keys [hotkey-help-open? icon-help-open? hotkey-commands]}]
   {:hotkey-help-open? (true? hotkey-help-open?)
-   :icon-help-open? (true? icon-help-open?)})
+   :icon-help-open? (true? icon-help-open?)
+   :hotkey-commands (vec hotkey-commands)})
 
 (defn help-dialogs-view [app-db]
   (help-dialogs-view-model
    {:hotkey-help-open? (hotkey-help-open? app-db)
-    :icon-help-open? (icon-help-open? app-db)}))
+    :icon-help-open? (icon-help-open? app-db)
+    :hotkey-commands (shortcuts/hotkey-commands-for
+                      {:dev-demo-hotkeys? (db/dev-demo-hotkeys? app-db)})}))
 
 (defn app-view-model
   [{:keys [setup-error card-icon-mode open-panels lobby?]}]

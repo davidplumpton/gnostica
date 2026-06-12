@@ -11,6 +11,7 @@
             [gnostica.game-schema :as game-schema]
             [gnostica.game-state :as game-state]
             [gnostica.gesture-input :as gesture-input]
+            [gnostica.keyboard-shortcuts :as shortcuts]
             [gnostica.move-selection.registry :as move-registry]
             [gnostica.pieces :as pieces]
             [gnostica.test-support.app-db :refer [board-cell-by-index
@@ -245,6 +246,7 @@
     (is (contains? (:controls move-view) :piece-options))
     (is (true? (:hotkey-help-open? help-view)))
     (is (false? (:icon-help-open? help-view)))
+    (is (= shortcuts/hotkey-commands (:hotkey-commands help-view)))
     (is (= :always (:card-icon-mode app-view)))
     (is (= app-state/default-open-panels (:open-panels app-view)))
     (is (nil? (:setup-error app-view)))))

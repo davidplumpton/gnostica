@@ -183,16 +183,20 @@
 (defn install! []
   (uninstall!)
   (let [listener (fn [event]
-                   (if (help-dialog-open? @rf-db/app-db)
-                     (handle-help-dialog-key! event)
-                     (when-not (editable-target? (.-target event))
-                       (or (handle-keyboard-placement-key! event)
-                           (handle-drag-orientation-key! event)
-                           (handle-pending-placement-orientation-key! event)
-                           (when-let [shortcut-event (shortcuts/global-shortcut-event
-                                                      (event-info event))]
-                             (.preventDefault event)
-                             (rf/dispatch [shortcut-event]))))))]
+                   (let [db @rf-db/app-db]
+                     (if (help-dialog-open? db)
+                       (handle-help-dialog-key! event)
+                       (when-not (editable-target? (.-target event))
+                         (or (handle-keyboard-placement-key! event)
+                             (handle-drag-orientation-key! event)
+                             (handle-pending-placement-orientation-key! event)
+                             (when-let [shortcut-event (shortcuts/global-shortcut-event
+                                                        (event-info event)
+                                                        {:dev-demo-hotkeys?
+                                                         (app-state/dev-demo-hotkeys?
+                                                          db)})]
+                               (.preventDefault event)
+                               (rf/dispatch [shortcut-event])))))))]
     (reset! global-shortcut-listener listener)
     (.addEventListener js/window
                        "keydown"

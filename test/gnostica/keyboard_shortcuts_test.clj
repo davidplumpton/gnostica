@@ -18,6 +18,17 @@
           :close-help-dialogs]
          (mapv :id shortcuts/hotkey-commands))))
 
+(deftest dev-demo-hotkey-is-only-in-dev-catalog
+  (is (nil? (shortcuts/command-by-id :layout-shuffled-deck-territories)))
+  (is (= "Lay out shuffled deck as territories"
+         (:command (shortcuts/command-by-id
+                    :layout-shuffled-deck-territories
+                    {:dev-demo-hotkeys? true}))))
+  (is (= ["?" "G" "I" "O" "Enter" "Arrow keys" "Esc" "W/A/S/D"
+          "Arrow keys" "Esc" "D"]
+         (vec (shortcuts/hotkey-command-labels
+               {:dev-demo-hotkeys? true})))))
+
 (deftest global-shortcut-events-are-derived-from-the-catalog
   (is (= :gnostica.app/open-hotkey-help
          (shortcuts/global-shortcut-event {:key "?"})))
@@ -27,6 +38,10 @@
          (shortcuts/global-shortcut-event {:key "G"})))
   (is (= :gnostica.app/toggle-card-icon-mode
          (shortcuts/global-shortcut-event {:key "i"})))
+  (is (nil? (shortcuts/global-shortcut-event {:key "D"})))
+  (is (= :gnostica.app/layout-shuffled-deck-territories
+         (shortcuts/global-shortcut-event {:key "D"}
+                                          {:dev-demo-hotkeys? true})))
   (is (= :gnostica.app/close-help-dialogs
          (shortcuts/global-shortcut-event {:key "Escape"})))
   (is (nil? (shortcuts/global-shortcut-event {:key "i" :ctrl? true})))

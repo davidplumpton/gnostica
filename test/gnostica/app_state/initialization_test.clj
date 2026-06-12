@@ -53,6 +53,12 @@
     (is (false? (app-state/icon-help-open? db)))
     (is (= app-state/default-three-runtime-status
            (app-state/three-runtime-status db)))))
+
+(deftest dev-demo-hotkeys-are-disabled-by-default
+  (let [db (app-state/initialize {:game-options {:shuffle-fn identity}})]
+    (is (false? (app-state/dev-demo-hotkeys? db)))
+    (is (= db (app-state/layout-shuffled-deck-as-territories db)))))
+
 (deftest initialize-event-handler-is-deterministic-with-injected-seed
   (let [opts {:player-specs test-player-specs}
         first-db (app-handlers/initialize-db opts {:shuffle-seed 8675309})
@@ -87,6 +93,31 @@
     (is (= #{:rose :indigo}
            (set (map :player-id (app-state/board-pieces db)))))
     (is (game-schema/valid-game? (app-state/game db)))))
+
+(deftest dev-demo-layout-places-configured-deck-order-on-board
+  (let [deck-order (vec (reverse cards/deck))
+        db (app-state/initialize {:dev-demo-hotkeys? true
+                                  :player-specs test-player-specs
+                                  :game-options {:deck-order deck-order}})
+        layout-db (app-state/layout-shuffled-deck-as-territories db)
+        game (app-state/game layout-db)
+        board (app-state/board layout-db)]
+    (is (true? (app-state/dev-demo-hotkeys? db)))
+    (is (= (mapv :id deck-order)
+           (mapv (comp :id :card) board)))
+    (is (= (range (count deck-order))
+           (map :index board)))
+    (is (empty? (:draw-pile game)))
+    (is (empty? (:discard-pile game)))
+    (is (every? empty? (map :hand (:players game))))
+    (is (= (count deck-order) (count board)))
+    (is (= (count deck-order)
+           (count (set (map (comp :id :card) board)))))
+    (is (some? (app-state/board-cell-by-index layout-db
+                                              (dec (count deck-order)))))
+    (is (= :demo/deck-laid-out-as-territories
+           (:type (peek (:history game)))))
+    (is (game-schema/valid-game? game))))
 (deftest card-icon-mode-can-be-initialized-and-toggled
   (let [db (app-state/initialize {:game-options {:shuffle-fn identity}
                                   :card-icon-mode :popup})]

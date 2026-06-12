@@ -11,6 +11,8 @@
 
 (def dev-shared-control-query-param "gnostica-dev-shared-control")
 
+(def dev-demo-hotkeys-query-param "gnostica-dev-demo-hotkeys")
+
 (def shared-local-controller
   {:id "local-dev"
    :name "Local dev"})
@@ -86,6 +88,10 @@
      :player-specs default-browser-lobby-player-specs
      :local-controller shared-local-controller}))
 
+(defn dev-demo-hotkeys-init-options [enabled?]
+  (when enabled?
+    {:dev-demo-hotkeys? true}))
+
 (defn major-icon-smoke-deck-order []
   (let [major-hand-card (cards/card-by-id "magician")
         major-board-cards [(cards/card-by-id "chariot")
@@ -155,10 +161,17 @@
        (truthy-query-param? params dev-shared-control-query-param))))
 
 #?(:cljs
+   (defn- dev-demo-hotkeys-from-search [search]
+     (let [params (js/URLSearchParams. (or search ""))]
+       (truthy-query-param? params dev-demo-hotkeys-query-param))))
+
+#?(:cljs
    (defn browser-init-options
      ([] (browser-init-options (.. js/window -location -search)))
      ([search]
       (merge-init-options (lobby-init-options)
                           (shared-local-control-init-options
                            (shared-local-control-from-search search))
+                          (dev-demo-hotkeys-init-options
+                           (dev-demo-hotkeys-from-search search))
                           (smoke-init-options (smoke-mode-from-search search))))))

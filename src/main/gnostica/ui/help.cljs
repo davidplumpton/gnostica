@@ -4,7 +4,6 @@
             [gnostica.cards :as cards]
             [gnostica.icon-view :as icon-view]
             [gnostica.icons :as icons]
-            [gnostica.keyboard-shortcuts :as shortcuts]
             [re-frame.core :as rf]
             [reagent.core :as r]))
 
@@ -154,7 +153,7 @@
 (def ^:private icon-modal-dialog
   (make-modal-dialog "IconHelpDialog"))
 
-(defn hotkey-help-dialog [open?]
+(defn hotkey-help-dialog [open? hotkey-commands]
   (when open?
     [hotkey-modal-dialog
      {:overlay-class "hotkey-help-overlay"
@@ -170,7 +169,7 @@
         :on-click #(dispatch-close! events/close-hotkey-help)}
        "Close"]]
      [:dl.hotkey-command-list
-      (for [{:keys [keys command]} shortcuts/hotkey-commands]
+      (for [{:keys [keys command]} hotkey-commands]
         ^{:key command}
         [:div.hotkey-command
          [:dt
@@ -216,7 +215,8 @@
                (str " " (str/join ", " card-titles))])]]))]]))
 
 (defn help-dialogs []
-  (let [{:keys [hotkey-help-open? icon-help-open?]} @(rf/subscribe [events/help-dialogs-view])]
+  (let [{:keys [hotkey-help-open? icon-help-open? hotkey-commands]}
+        @(rf/subscribe [events/help-dialogs-view])]
     [:<>
-     [hotkey-help-dialog hotkey-help-open?]
+     [hotkey-help-dialog hotkey-help-open? hotkey-commands]
      [icon-help-dialog icon-help-open?]]))

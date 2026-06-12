@@ -67,6 +67,7 @@
 (def end-turn ids/end-turn)
 (def announce-challenge ids/announce-challenge)
 (def toggle-card-icon-mode ids/toggle-card-icon-mode)
+(def layout-shuffled-deck-territories ids/layout-shuffled-deck-territories)
 (def toggle-panel ids/toggle-panel)
 (def set-panel-open ids/set-panel-open)
 (def open-hotkey-help ids/open-hotkey-help)

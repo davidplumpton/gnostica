@@ -68,6 +68,8 @@
 (def end-turn :gnostica.app/end-turn)
 (def announce-challenge :gnostica.app/announce-challenge)
 (def toggle-card-icon-mode :gnostica.app/toggle-card-icon-mode)
+(def layout-shuffled-deck-territories
+  :gnostica.app/layout-shuffled-deck-territories)
 (def toggle-panel :gnostica.app/toggle-panel)
 (def set-panel-open :gnostica.app/set-panel-open)
 (def open-hotkey-help :gnostica.app/open-hotkey-help)
@@ -224,6 +226,7 @@
    end-turn
    announce-challenge
    toggle-card-icon-mode
+   layout-shuffled-deck-territories
    toggle-panel
    set-panel-open
    open-hotkey-help

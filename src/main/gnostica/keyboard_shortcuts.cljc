@@ -40,15 +40,40 @@
     :event :gnostica.app/close-help-dialogs
     :matches [{:key "escape"}]}])
 
+(def dev-demo-hotkey-commands
+  [{:id :layout-shuffled-deck-territories
+    :scope :global
+    :keys ["D"]
+    :command "Lay out shuffled deck as territories"
+    :event :gnostica.app/layout-shuffled-deck-territories
+    :matches [{:key "d"}]}])
+
+(defn hotkey-commands-for
+  ([] hotkey-commands)
+  ([opts]
+   (cond-> hotkey-commands
+     (true? (:dev-demo-hotkeys? opts))
+     (into dev-demo-hotkey-commands))))
+
 (def global-shortcuts
   (filterv #(= :global (:scope %)) hotkey-commands))
 
-(defn command-by-id [id]
-  (some #(when (= id (:id %)) %)
-        hotkey-commands))
+(defn global-shortcuts-for
+  ([] global-shortcuts)
+  ([opts]
+   (filterv #(= :global (:scope %))
+            (hotkey-commands-for opts))))
 
-(defn hotkey-command-labels []
-  (mapcat :keys hotkey-commands))
+(defn command-by-id
+  ([id] (command-by-id id nil))
+  ([id opts]
+   (some #(when (= id (:id %)) %)
+         (hotkey-commands-for opts))))
+
+(defn hotkey-command-labels
+  ([] (hotkey-command-labels nil))
+  ([opts]
+   (mapcat :keys (hotkey-commands-for opts))))
 
 (defn- normalize-key [key]
   (some-> key str/lower-case))
@@ -78,11 +103,15 @@
   (some #(event-match? event-info %)
         (:matches shortcut)))
 
-(defn global-shortcut-for-event [event-info]
-  (let [event-info (normalize-event event-info)]
-    (when-not (modified-shortcut? event-info)
-      (some #(when (shortcut-match? event-info %) %)
-            global-shortcuts))))
+(defn global-shortcut-for-event
+  ([event-info] (global-shortcut-for-event event-info nil))
+  ([event-info opts]
+   (let [event-info (normalize-event event-info)]
+     (when-not (modified-shortcut? event-info)
+       (some #(when (shortcut-match? event-info %) %)
+             (global-shortcuts-for opts))))))
 
-(defn global-shortcut-event [event-info]
-  (:event (global-shortcut-for-event event-info)))
+(defn global-shortcut-event
+  ([event-info] (global-shortcut-event event-info nil))
+  ([event-info opts]
+   (:event (global-shortcut-for-event event-info opts))))
