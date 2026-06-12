@@ -316,6 +316,13 @@
              text
              values))
 
+(def ^:private outline-placeholder-pattern #"<([^<>]+)>")
+
+(defn- outline-placeholders [text]
+  (->> (re-seq outline-placeholder-pattern text)
+       (map second)
+       vec))
+
 (defn- expand-outline-step [values step]
   (update step :text replace-placeholders values))
 
@@ -399,6 +406,28 @@
       :header (:header row)
       :row (:cells row)})))
 
+(defn- unresolved-outline-placeholder-failures [feature scenario]
+  (let [columns (get-in scenario [:example-header :cells])
+        available-columns (set columns)
+        steps (into (:background feature) (:steps scenario))]
+    (vec
+     (mapcat
+      (fn [step]
+        (map (fn [placeholder]
+               (outline-validation-failure
+                feature
+                scenario
+                :unresolved-outline-placeholder
+                "Scenario Outline steps must not contain unresolved placeholders."
+                {:line (:line step)
+                 :step-text (:text step)
+                 :placeholder placeholder
+                 :available-columns columns}))
+             (->> (outline-placeholders (:text step))
+                  distinct
+                  (remove available-columns))))
+      steps))))
+
 (defn- outline-validation-failures [feature scenario]
   (if-not (:outline? scenario)
     []
@@ -431,8 +460,9 @@
 
       :else
       (vec (keep identity
-                 (cons (outline-header-failure feature scenario (:example-header scenario))
-                       (map #(outline-row-failure feature scenario %) (:examples scenario))))))))
+                 (concat [(outline-header-failure feature scenario (:example-header scenario))]
+                         (map #(outline-row-failure feature scenario %) (:examples scenario))
+                         (unresolved-outline-placeholder-failures feature scenario)))))))
 
 (defn feature-scenarios [feature]
   (mapcat (fn [scenario]

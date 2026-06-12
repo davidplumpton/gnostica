@@ -202,6 +202,28 @@
     (is (= 1 (get-in failure [:failure :data :actual-columns])))
     (is (= 8 (get-in failure [:failure :data :line])))))
 
+(deftest scenario-outline-with-unresolved-placeholder-produces-a-failing-result
+  (let [feature-file (temp-feature-file
+                      (str "Feature: Outline validation\n"
+                           "\n"
+                           "Scenario Outline: Unresolved placeholder\n"
+                           "  Given the outline value is <valu>\n"
+                           "\n"
+                           "  Examples:\n"
+                           "    | value |\n"
+                           "    | one   |\n"))
+        results (feature-runner/run-feature-file (str feature-file) passing-steps)
+        failure (result-with-code results :unresolved-outline-placeholder)
+        formatted (feature-runner/format-result failure)]
+    (is (= 1 (count results)))
+    (is failure)
+    (is (= "Unresolved placeholder" (get-in failure [:scenario :name])))
+    (is (= 4 (get-in failure [:failure :data :line])))
+    (is (= "valu" (get-in failure [:failure :data :placeholder])))
+    (is (= ["value"] (get-in failure [:failure :data :available-columns])))
+    (is (str/includes? formatted "Scenario: Unresolved placeholder"))
+    (is (str/includes? formatted (str feature-file ":4")))))
+
 (deftest valid-scenario-outline-examples-still-pass
   (let [feature-file (temp-feature-file
                       (str "Feature: Outline validation\n"
