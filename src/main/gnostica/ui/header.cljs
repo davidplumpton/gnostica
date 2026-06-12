@@ -62,6 +62,30 @@
        ^{:key (:id player)}
        [score-pill player])]))
 
+(defn- player-score [game-status player-id]
+  (some (fn [{:keys [id score]}]
+          (when (= id player-id)
+            score))
+        (:players game-status)))
+
+(defn- mobile-game-context [current-player game-status]
+  (when (and current-player game-status)
+    (let [score (or (player-score game-status (:id current-player)) 0)
+          target-score (:target-score game-status)
+          label (str "Current player "
+                     (:name current-player)
+                     ", score "
+                     score
+                     " of "
+                     target-score
+                     " target")]
+      [:div.mobile-game-context
+       {:aria-label label}
+       [:span.mobile-game-context__turn (:name current-player)]
+       [:span.mobile-game-context__score
+        [:strong score]
+        [:span (str "/" target-score)]]])))
+
 (defn- turn-actions [show-turn-actions? can-end-turn? can-announce-challenge?]
   (when show-turn-actions?
     [:div.turn-actions
@@ -103,9 +127,12 @@
                 show-turn-actions? can-end-turn? can-announce-challenge?]}
         @(rf/subscribe [events/header-view])]
     [:header.app-header
+     {:class (when-not lobby? "is-game")}
      [:div.brand
       [:span.brand__mark "G"]
       [:span.brand__name "Gnostica"]]
+     (when-not lobby?
+       [mobile-game-context current-player game-status])
      [:div.app-header__actions
       (when-not lobby?
         [:div.panel-toggles

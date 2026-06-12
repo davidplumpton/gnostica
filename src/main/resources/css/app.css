@@ -359,6 +359,30 @@ img {
   overflow-wrap: anywhere;
 }
 
+.mobile-game-context {
+  display: none;
+}
+
+.mobile-game-context__turn {
+  min-width: 0;
+  max-width: 8rem;
+  overflow: hidden;
+  color: var(--ink);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mobile-game-context__score {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.1rem;
+  color: var(--muted);
+}
+
+.mobile-game-context__score strong {
+  color: var(--accent);
+}
+
 .app-scores {
   display: flex;
   align-items: center;
@@ -2739,6 +2763,28 @@ h1 {
 
   .app-status {
     display: none;
+  }
+
+  .app-header.is-game .mobile-game-context {
+    position: absolute;
+    top: calc(100% + 0.42rem);
+    left: 0.7rem;
+    z-index: 1;
+    display: inline-flex;
+    align-items: baseline;
+    gap: 0.38rem;
+    max-width: min(13rem, calc(100vw - 1.4rem));
+    min-height: 1.9rem;
+    padding: 0.18rem 0.52rem;
+    border: 1px solid rgba(255, 224, 138, 0.58);
+    border-radius: 6px;
+    background: rgba(18, 7, 15, 0.82);
+    box-shadow: 0 0.4rem 1.2rem rgba(0, 0, 0, 0.28);
+    color: var(--muted);
+    font-size: 0.78rem;
+    font-weight: 800;
+    line-height: 1.1;
+    pointer-events: none;
   }
 
   .app-scores {

@@ -18,6 +18,9 @@
   [{:name "desktop" :width 1280 :height 900 :mobile false}
    {:name "mobile" :width 390 :height 844 :mobile true}])
 
+(def narrow-mobile-viewport
+  {:name "narrow-mobile" :width 320 :height 844 :mobile true})
+
 (def app-ready-js
   "Boolean(document.querySelector('.app-shell') || document.querySelector('.setup-error'))")
 
@@ -39,8 +42,23 @@
        const attributes = context && context.getContextAttributes ? context.getContextAttributes() : null;
        return Boolean(attributes && attributes.antialias);
      })();
+     const visible = (node) => {
+       const rect = node ? node.getBoundingClientRect() : null;
+       const style = node ? getComputedStyle(node) : null;
+       const opacity = style ? Number.parseFloat(style.opacity || '1') : 0;
+       return Boolean(rect
+         && rect.width > 0
+         && rect.height > 0
+         && style.display !== 'none'
+         && style.visibility !== 'hidden'
+         && opacity > 0);
+     };
+     const text = (node) => node ? node.textContent.trim().replace(/\\s+/g, ' ') : '';
      const cardZones = document.querySelector('.card-zones');
      const cardZonesRect = cardZones ? cardZones.getBoundingClientRect() : null;
+     const appStatus = document.querySelector('.app-status');
+     const appScores = document.querySelector('.app-scores');
+     const mobileGameContext = document.querySelector('.mobile-game-context');
      const status = Array.from(document.querySelectorAll('.board-3d-status.is-error')).map((node) => node.textContent.trim());
      const imageResourceCount = performance.getEntriesByType('resource')
        .filter((entry) => /\\/images\\/.*\\.png(?:$|\\?)/.test(entry.name)).length;
@@ -105,6 +123,14 @@
        cameraTargetX: board ? Number(board.dataset.cameraTargetX || -999) : -999,
        cameraTargetY: board ? Number(board.dataset.cameraTargetY || -999) : -999,
        reset: Boolean(document.querySelector('.board-three__reset')),
+       appStatusVisible: visible(appStatus),
+       appStatusText: text(appStatus),
+       appScoresVisible: visible(appScores),
+       appScoresText: text(appScores),
+       mobileGameContext: Boolean(mobileGameContext),
+       mobileGameContextVisible: visible(mobileGameContext),
+       mobileGameContextText: text(mobileGameContext),
+       mobileGameContextAriaLabel: mobileGameContext ? mobileGameContext.getAttribute('aria-label') : '',
        cardZones: Boolean(cardZones),
        cardZonesVisible: Boolean(cardZonesRect && cardZonesRect.width > 0 && cardZonesRect.height > 0),
        handCardCount: document.querySelectorAll('.hand-card').length,
@@ -1085,6 +1111,29 @@
          (roughly= icon-layout/dom-card-icon-gap-px gap 1.0)
          (pos? icon-width))))
 
+(defn mobile-header-context-ready? [stats]
+  (let [text (str (or (get stats "mobileGameContextText") "")
+                  " "
+                  (or (get stats "mobileGameContextAriaLabel") ""))]
+    (and (true? (get stats "mobileGameContext"))
+         (true? (get stats "mobileGameContextVisible"))
+         (str/includes? text "Current player")
+         (str/includes? text "Rose")
+         (str/includes? text "score")
+         (str/includes? text "/9"))))
+
+(defn- desktop-header-context-ready? [stats]
+  (and (true? (get stats "appStatusVisible"))
+       (true? (get stats "appScoresVisible"))
+       (str/includes? (or (get stats "appStatusText") "") "Current player")
+       (str/includes? (or (get stats "appStatusText") "") "Rose")
+       (str/includes? (or (get stats "appScoresText") "") "target")))
+
+(defn- header-context-ready? [stats]
+  (if (<= (long (or (get stats "viewportWidth") 0)) 520)
+    (mobile-header-context-ready? stats)
+    (desktop-header-context-ready? stats)))
+
 (defn three-icon-layout-ready? [stats]
   (and (= icon-layout/card-icon-scale
           (long (or (get stats "cardIconScale") -1)))
@@ -1140,6 +1189,7 @@
          (number? (get stats "cameraTargetX"))
          (number? (get stats "cameraTargetY"))
          (true? (get stats "reset"))
+         (header-context-ready? stats)
          (true? (get stats "cardZones"))
          (true? (get stats "cardZonesVisible"))
          (= 6 (long (or (get stats "handCardCount") -1)))

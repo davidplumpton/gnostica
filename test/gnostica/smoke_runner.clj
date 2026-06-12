@@ -363,6 +363,36 @@
       (finally
         (browser/close-cdp! client)))))
 
+(defn- run-narrow-mobile-header-smoke! [http-client chrome url]
+  (let [viewport stats/narrow-mobile-viewport]
+    (println (format "Smoke checking %s header context at %dx%d."
+                     (:name viewport)
+                     (:width viewport)
+                     (:height viewport)))
+    (let [client (open-gnostica-page! http-client
+                                      chrome
+                                      viewport
+                                      (stats/major-icons-smoke-url url)
+                                      nil)]
+      (try
+        (let [header-stats (browser/wait-for! client
+                                              "narrow mobile header context"
+                                              stats/happy-stats-js
+                                              #(and (stats/happy-ready? %)
+                                                    (stats/mobile-header-context-ready? %)))]
+          {:viewport (:name viewport)
+           :stats header-stats})
+        (catch Exception error
+          (throw (ex-info "Narrow mobile header smoke failed."
+                          {:viewport viewport
+                           :url url
+                           :browser-diagnostics (browser/browser-diagnostics client)
+                           :cause (ex-message error)
+                           :data (ex-data error)}
+                          error)))
+        (finally
+          (browser/close-cdp! client))))))
+
 (defn- run-icon-help-modal-smoke! [http-client chrome url]
   (println "Smoke checking icon help modal.")
   (let [client (open-gnostica-page! http-client
@@ -746,6 +776,7 @@
           (println (str "Smoke target: " (:url target)))
           (doseq [viewport stats/viewports]
             (run-happy-viewport! http-client chrome (:url target) viewport))
+          (run-narrow-mobile-header-smoke! http-client chrome (:url target))
           (run-icon-help-modal-smoke! http-client chrome (:url target))
           (run-confirmed-three-keyboard-placement! http-client chrome (:url target))
           (run-confirmed-three-direct-drop! http-client chrome (:url target))
