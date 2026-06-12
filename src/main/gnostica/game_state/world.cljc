@@ -3,13 +3,13 @@
             [gnostica.game-state.composite :as composite]
             [gnostica.game-state.core :as core]
             [gnostica.game-state.cup :as cup]
-            [gnostica.game-state.disc :as disc]
+            [gnostica.game-state.disc-major :as disc-major]
             [gnostica.game-state.draw :as draw]
             [gnostica.game-state.major :as major]
             [gnostica.game-state.major-power :as major-power]
             [gnostica.game-state.manipulation :as manipulation]
             [gnostica.game-state.rod :as rod]
-            [gnostica.game-state.sword :as sword]))
+            [gnostica.game-state.sword-major :as sword-major]))
 
 (def world-card-id "world")
 
@@ -266,14 +266,14 @@
          {:source-opts (:source-opts opts)})
 
         :disc
-        (disc/apply-disc-move-with-opts
+        (disc-major/apply-disc-move-with-opts
          state
          (assoc (clean-suit-command command)
                 :disc-variant (cards/disc-variant copied-card))
          {:source-opts (:source-opts opts)})
 
         :sword
-        (sword/apply-sword-move-with-opts
+        (sword-major/apply-sword-move-with-opts
          state
          (assoc (clean-suit-command command)
                 :sword-variant (cards/sword-variant copied-card))
@@ -354,7 +354,7 @@
                                                          opts)
 
       "moon"
-      (sword/apply-moon-move-with-opts
+      (sword-major/apply-moon-move-with-opts
        state
        command
        {:required-card-id source-card-id
@@ -365,7 +365,7 @@
       (let [minion-result (validate-source-piece-minion source-result command)]
         (if-not (:ok? minion-result)
           minion-result
-          (disc/apply-sun-move-with-opts
+          (disc-major/apply-sun-move-with-opts
            state
            command
            {:source-opts (source-opts source-result copied-card)})))

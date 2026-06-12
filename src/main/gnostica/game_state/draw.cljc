@@ -1,11 +1,11 @@
 (ns gnostica.game-state.draw
   (:require [gnostica.game-state.core :as core]
             [gnostica.game-state.cup :as cup]
-            [gnostica.game-state.disc :as disc]
+            [gnostica.game-state.disc-major :as disc-major]
             [gnostica.game-state.major :as major]
             [gnostica.game-state.major-power :as major-power]
             [gnostica.game-state.rod :as rod]
-            [gnostica.game-state.sword :as sword]
+            [gnostica.game-state.sword-major :as sword-major]
             [gnostica.pieces :as pieces]))
 
 (defn- draw-from-piles [state draw-count shuffle-fn]
@@ -468,16 +468,16 @@
                                   {:source-opts source-opts})
 
     :disc
-    (disc/apply-disc-move-with-opts state
-                                    command
-                                    {:source-opts source-opts
-                                     :charge-source? false})
+    (disc-major/apply-disc-move-with-opts state
+                                          command
+                                          {:source-opts source-opts
+                                           :charge-source? false})
 
     :sword
-    (sword/apply-sword-move-with-opts state
-                                      command
-                                      {:source-opts source-opts
-                                       :charge-source? false})))
+    (sword-major/apply-sword-move-with-opts state
+                                            command
+                                            {:source-opts source-opts
+                                             :charge-source? false})))
 
 (defn- apply-fool-play [state player-id card action shuffle-fn]
   (let [play-command (or (:play-command action)

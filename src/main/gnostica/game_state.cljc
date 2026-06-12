@@ -4,6 +4,7 @@
             [gnostica.game-state.core :as core]
             [gnostica.game-state.cup :as cup]
             [gnostica.game-state.disc :as disc]
+            [gnostica.game-state.disc-major :as disc-major]
             [gnostica.game-state.draw :as draw]
             [gnostica.game-state.major :as major]
             [gnostica.game-state.manipulation :as manipulation]
@@ -11,6 +12,7 @@
             [gnostica.game-state.rod :as rod]
             [gnostica.game-state.spatial :as spatial]
             [gnostica.game-state.sword :as sword]
+            [gnostica.game-state.sword-major :as sword-major]
             [gnostica.game-state.world :as world]))
 
 (def min-players core/min-players)
@@ -172,10 +174,10 @@
    (disc/resolve-disc-command state command source-opts)))
 
 (defn apply-disc-move [state command]
-  (apply-source-turn-action state command disc/apply-disc-move))
+  (apply-source-turn-action state command disc-major/apply-disc-move))
 
 (defn apply-sun-move [state command]
-  (apply-source-turn-action state command disc/apply-sun-move))
+  (apply-source-turn-action state command disc-major/apply-sun-move))
 
 (def sword-territory-card-sources sword/sword-territory-card-sources)
 (def sword-direction-offsets spatial/cardinal-direction-offsets)
@@ -189,10 +191,10 @@
    (sword/resolve-sword-command state command source-opts)))
 
 (defn apply-sword-move [state command]
-  (apply-source-turn-action state command sword/apply-sword-move))
+  (apply-source-turn-action state command sword-major/apply-sword-move))
 
 (defn apply-moon-move [state command]
-  (apply-source-turn-action state command sword/apply-moon-move))
+  (apply-source-turn-action state command sword-major/apply-moon-move))
 
 (defn apply-draw-move [state command]
   (apply-turn-action state command :draw-cards draw/apply-draw-move))
