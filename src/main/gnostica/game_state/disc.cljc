@@ -4,6 +4,7 @@
             [gnostica.game-state.cup :as cup]
             [gnostica.game-state.card-source :as card-source]
             [gnostica.game-state.core :as core]
+            [gnostica.game-state.major :as major]
             [gnostica.game-state.major-power :as major-power]
             [gnostica.game-state.placement :as placement]
             [gnostica.game-state.spatial :as spatial]
@@ -706,7 +707,8 @@
   (cond-> {:source-card (:source-card source-result)
            :source-card-already-discarded? (= :hand-card
                                               (get-in source-result
-                                                      [:source :kind]))}
+                                                      [:source :kind]))
+           :allow-major-minion? true}
     (:power-card source-result)
     (assoc :power-card (:power-card source-result))))
 
@@ -771,6 +773,51 @@
       {:ok? true
        :actions (mapv #(disc-action-command command %) actions)})))
 
+(defn- validate-strength-action-minion [state player-id minion-ids action]
+  (let [piece-id (get-in action [:source :piece-id])
+        piece (when piece-id
+                (core/piece-by-id state piece-id))]
+    (cond
+      (nil? piece-id)
+      (core/failure :missing-major-minion
+                    "Strength Disc actions require an acting minion."
+                    {:action action})
+
+      (not (contains? minion-ids piece-id))
+      (core/failure :invalid-major-minion
+                    "The acting piece is not a minion for this Strength sequence."
+                    {:piece-id piece-id
+                     :available-minion-ids (vec (sort-by str minion-ids))
+                     :action action})
+
+      (nil? piece)
+      (core/failure :invalid-piece
+                    "The acting Strength minion must still be on the board."
+                    {:piece-id piece-id})
+
+      (not= player-id (:player-id piece))
+      (core/failure :invalid-piece
+                    "Strength minions must belong to the move's player."
+                    {:piece-id piece-id
+                     :player-id player-id
+                     :piece-player-id (:player-id piece)})
+
+      :else
+      {:ok? true
+       :piece piece
+       :piece-id piece-id})))
+
+(defn- strength-affected-piece-ids [player-id result]
+  (vec
+   (concat
+    (:affected-piece-ids result)
+    (map :id (:affected-pieces result))
+    (keep (fn [event]
+            (let [piece (:piece event)]
+              (when (= player-id (:player-id piece))
+                (:id piece))))
+          (:events result)))))
+
 (defn- shortcut-result [left-result right-result]
   (let [right-command (:command right-result)]
     (cond-> (assoc left-result
@@ -805,23 +852,32 @@
                     "Strength Disc shortcuts require piece or territory targets."
                     {:target (get-in result [:command :target])}))))
 
-(defn- apply-strength-actions-sequential [state player-id actions source-opts]
+(defn- apply-strength-actions-sequential [state player-id actions source-opts minion-ids]
   (loop [current-state state
+         current-minion-ids minion-ids
          remaining actions
          events []]
     (if-let [action (first remaining)]
-      (let [result (resolve-disc-command* current-state action source-opts)]
-        (if-not (:ok? result)
-          result
-          (let [applied (apply-resolved-disc-action current-state
-                                                    player-id
-                                                    result
-                                                    {:charge-source? false})]
-            (if-not (:ok? applied)
-              applied
-              (recur (:state applied)
-                     (rest remaining)
-                     (into events (:events applied)))))))
+      (let [minion-result (validate-strength-action-minion current-state
+                                                           player-id
+                                                           current-minion-ids
+                                                           action)]
+        (if-not (:ok? minion-result)
+          minion-result
+          (let [result (resolve-disc-command* current-state action source-opts)]
+            (if-not (:ok? result)
+              result
+              (let [applied (apply-resolved-disc-action current-state
+                                                        player-id
+                                                        result
+                                                        {:charge-source? false})]
+                (if-not (:ok? applied)
+                  applied
+                  (recur (:state applied)
+                         (into current-minion-ids
+                               (strength-affected-piece-ids player-id applied))
+                         (rest remaining)
+                         (into events (:events applied)))))))))
       (core/success current-state events))))
 
 (defn- apply-strength-disc-move
@@ -844,39 +900,64 @@
            actions-result
 
            :else
-           (let [cost-state (source-cost-state state player-id source-result)
-                 actions (:actions actions-result)
-                 source-opts (paid-disc-source-opts source-result)]
-             (if (= 2 (count actions))
-               (let [left-result (resolve-disc-command* cost-state
-                                                        (first actions)
-                                                        source-opts)
-                     right-result (when (:ok? left-result)
-                                    (resolve-disc-command* cost-state
-                                                           (second actions)
-                                                           source-opts))]
-                 (cond
-                   (not (:ok? left-result))
-                   left-result
+           (let [major-source-result (major/resolve-major-source state
+                                                                 command
+                                                                 source-opts)]
+             (if-not (:ok? major-source-result)
+               major-source-result
+               (let [cost-state (source-cost-state state player-id source-result)
+                     actions (:actions actions-result)
+                     source-opts (paid-disc-source-opts source-result)
+                     minion-ids (set (:minion-ids major-source-result))]
+                 (if (= 2 (count actions))
+                   (let [left-minion-result
+                         (validate-strength-action-minion cost-state
+                                                          player-id
+                                                          minion-ids
+                                                          (first actions))
+                         left-result (when (:ok? left-minion-result)
+                                       (resolve-disc-command* cost-state
+                                                              (first actions)
+                                                              source-opts))
+                         right-minion-result
+                         (when (and (:ok? left-result)
+                                    (contains? minion-ids
+                                               (get-in (second actions)
+                                                       [:source :piece-id])))
+                           (validate-strength-action-minion cost-state
+                                                            player-id
+                                                            minion-ids
+                                                            (second actions)))
+                         right-result (when (and (:ok? left-result)
+                                                 (:ok? right-minion-result))
+                                        (resolve-disc-command* cost-state
+                                                               (second actions)
+                                                               source-opts))]
+                     (cond
+                       (not (:ok? left-minion-result))
+                       left-minion-result
 
-                   (not (:ok? right-result))
-                   right-result
+                       (not (:ok? left-result))
+                       left-result
 
-                   (same-disc-target? left-result right-result)
-                   (apply-strength-shortcut cost-state
-                                            player-id
-                                            left-result
-                                            right-result)
+                       (and (:ok? right-result)
+                            (same-disc-target? left-result right-result))
+                       (apply-strength-shortcut cost-state
+                                                player-id
+                                                left-result
+                                                right-result)
 
-                   :else
+                       :else
+                       (apply-strength-actions-sequential cost-state
+                                                          player-id
+                                                          actions
+                                                          source-opts
+                                                          minion-ids)))
                    (apply-strength-actions-sequential cost-state
                                                       player-id
                                                       actions
-                                                      source-opts)))
-               (apply-strength-actions-sequential cost-state
-                                                  player-id
-                                                  actions
-                                                  source-opts)))))))))
+                                                      source-opts
+                                                      minion-ids)))))))))))
 
 (defn- apply-star-disc-move
   ([state command]

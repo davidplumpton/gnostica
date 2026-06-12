@@ -73,7 +73,10 @@
                          :disc-actions [{:target {:kind :territory
                                                   :board-index 5}
                                          :replacement-card-source :discard-pile
-                                         :replacement-card-id "cups3"}]}
+                                         :replacement-card-id "cups3"}
+                                        {:piece-id :rose-medium-1
+                                         :target {:kind :piece
+                                                  :piece-id :rose-target}}]}
                   :sword {:player-id :rose
                           :source (assoc hand-source :card-id "tower")
                           :sword-variant :sword-from-discard

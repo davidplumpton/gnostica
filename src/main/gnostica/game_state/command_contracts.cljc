@@ -212,6 +212,10 @@
 (def DiscAction
   (apply closed-map disc-action-entries))
 
+(def MajorDiscAction
+  (apply closed-map (conj disc-action-entries
+                          [:piece-id {:optional true} PieceId])))
+
 (defn- star-disc-command? [command]
   (if (contains? command :disc-variant)
     (= :disc-from-discard (:disc-variant command))
@@ -234,7 +238,7 @@
 (def StrengthDiscCommand
   (apply closed-map (concat acting-source-command-entries
                             [[:disc-variant {:optional true} :keyword]
-                             [:disc-actions [:vector {:min 1 :max 2} DiscAction]]])))
+                             [:disc-actions [:vector {:min 1 :max 2} MajorDiscAction]]])))
 
 (def DiscCommand
   [:or SingleDiscCommand StarDiscCommand StrengthDiscCommand])

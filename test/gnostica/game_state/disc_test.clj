@@ -393,6 +393,96 @@
     (is (= "star" (get-in (board-cell-by-index state 4) [:card :id])))
     (is (= ["cupsking"] (mapv :id (:discard-pile state))))
     (is (game-schema/valid-game? state))))
+(deftest territory-strength-disc-promotes-grown-piece-into-next-minion
+  (let [first-target {:id :rose-strength-first-target
+                      :player-id :rose
+                      :space-index 4
+                      :size :small
+                      :orientation :east}
+        second-target {:id :rose-strength-second-target
+                       :player-id :rose
+                       :space-index 5
+                       :size :small
+                       :orientation :south}
+        state (-> (:state (game-state/create-game
+                           player-specs
+                           {:deck-order (deck-with-board-card 3 "strength")}))
+                  (game-state/with-board-pieces [rose-disc-minion
+                                                 first-target
+                                                 second-target]))
+        {:keys [ok? state events]} (game-state/apply-disc-move
+                                    state
+                                    {:player-id :rose
+                                     :source {:kind :territory
+                                              :board-index 3
+                                              :piece-id :rose-disc-minion}
+                                     :disc-actions [{:target {:kind :piece
+                                                              :piece-id (:id first-target)}}
+                                                    {:piece-id :rose-medium-1
+                                                     :target {:kind :piece
+                                                              :piece-id (:id second-target)}}]})
+        first-grown (piece-by-id state :rose-medium-1)
+        second-grown (piece-by-id state :rose-medium-2)]
+    (is ok?)
+    (is (= [:disc/piece-grown :disc/piece-grown]
+           (mapv :type events)))
+    (is (= {:id :rose-medium-1
+            :player-id :rose
+            :space-index 4
+            :size :medium
+            :orientation :east}
+           first-grown))
+    (is (= {:id :rose-medium-2
+            :player-id :rose
+            :space-index 5
+            :size :medium
+            :orientation :south}
+           second-grown))
+    (is (nil? (piece-by-id state (:id first-target))))
+    (is (nil? (piece-by-id state (:id second-target))))
+    (is (empty? (:discard-pile state)))
+    (is (game-schema/valid-game? state))))
+(deftest territory-strength-disc-rejects-unpromoted-later-minion
+  (let [first-target {:id :rose-strength-first-target
+                      :player-id :rose
+                      :space-index 4
+                      :size :small
+                      :orientation :east}
+        second-target {:id :rose-strength-second-target
+                       :player-id :rose
+                       :space-index 5
+                       :size :small
+                       :orientation :south}
+        unrelated-piece {:id :rose-unpromoted-disc-minion
+                         :player-id :rose
+                         :space-index 0
+                         :size :small
+                         :orientation :east}
+        state (-> (:state (game-state/create-game
+                           player-specs
+                           {:deck-order (deck-with-board-card 3 "strength")}))
+                  (game-state/with-board-pieces [rose-disc-minion
+                                                 first-target
+                                                 second-target
+                                                 unrelated-piece]))
+        result (game-state/apply-disc-move
+                state
+                {:player-id :rose
+                 :source {:kind :territory
+                          :board-index 3
+                          :piece-id :rose-disc-minion}
+                 :disc-actions [{:target {:kind :piece
+                                          :piece-id (:id first-target)}}
+                                {:piece-id (:id unrelated-piece)
+                                 :target {:kind :piece
+                                          :piece-id (:id second-target)}}]})]
+    (is (= :invalid-major-minion
+           (get-in result [:error :code])))
+    (is (not (contains? result :state)))
+    (is (nil? (piece-by-id state :rose-medium-1)))
+    (is (= first-target (piece-by-id state (:id first-target))))
+    (is (= second-target (piece-by-id state (:id second-target))))
+    (is (game-schema/valid-game? state))))
 (deftest strength-disc-can_skip_intermediate_piece_size
   (let [small-minion (assoc rose-disc-minion :size :small)
         medium-pieces [{:id :rose-medium-a
