@@ -80,6 +80,33 @@
     (is (= "Scenario Missing colon" (get-in failure [:failure :data :text])))
     (is (str/includes? formatted (str feature-file ":3")))))
 
+(deftest blank-title-bearing-heading-produces-a-failing-result
+  (doseq [[label contents line text]
+          [["feature"
+            "Feature:\n"
+            1
+            "Feature:"]
+           ["scenario"
+            (str "Feature: Parser validation\n"
+                 "\n"
+                 "Scenario:\n")
+            3
+            "Scenario:"]
+           ["scenario outline"
+            (str "Feature: Parser validation\n"
+                 "\n"
+                 "Scenario Outline:\n")
+            3
+            "Scenario Outline:"]]]
+    (let [feature-file (temp-feature-file contents)
+          results (feature-runner/run-feature-file (str feature-file) passing-steps)
+          failure (result-with-code results :unexpected-feature-content)]
+      (is (= 1 (count results)) label)
+      (is failure label)
+      (is (= line (get-in failure [:failure :data :line])) label)
+      (is (= text (get-in failure [:failure :data :text])) label)
+      (is (= :heading (get-in failure [:failure :data :kind])) label))))
+
 (deftest malformed-feature-step-text-produces-a-failing-result
   (let [feature-file (temp-feature-file
                       (str "Feature: Parser validation\n"

@@ -24,15 +24,29 @@
     (when (str/starts-with? (str/trim line) marker)
       (str/trim (subs (str/trim line) (count marker))))))
 
+(def ^:private named-heading-prefixes ["Scenario Outline" "Feature" "Scenario"])
+
+(defn- parse-named-heading [prefix line]
+  (let [heading (parse-heading prefix line)]
+    (when (and (some? heading)
+               (not (str/blank? heading)))
+      heading)))
+
 (def ^:private heading-prefixes ["Scenario Outline" "Feature" "Background" "Scenario" "Examples"])
 
 (defn- malformed-heading-line? [line]
   (boolean
-   (some (fn [prefix]
-           (and (or (= line prefix)
-                    (str/starts-with? line (str prefix " ")))
-                (not (parse-heading prefix line))))
-         heading-prefixes)))
+   (or
+    (some (fn [prefix]
+            (let [heading (parse-heading prefix line)]
+              (and (some? heading)
+                   (str/blank? heading))))
+          named-heading-prefixes)
+    (some (fn [prefix]
+            (and (or (= line prefix)
+                     (str/starts-with? line (str prefix " ")))
+                 (not (parse-heading prefix line))))
+          heading-prefixes))))
 
 (defn- step-line [line-number line]
   (let [trimmed (str/trim line)
@@ -108,14 +122,14 @@
                 (str/starts-with? trimmed "#"))
             (recur (first remaining) (rest remaining) feature scenario section example-header)
 
-            (parse-heading "Feature" trimmed)
+            (parse-named-heading "Feature" trimmed)
             (if (and (nil? (:name feature))
                      (nil? scenario)
                      (nil? section)
                      (empty? (:scenarios feature)))
               (recur (first remaining)
                      (rest remaining)
-                     (assoc feature :name (parse-heading "Feature" trimmed))
+                     (assoc feature :name (parse-named-heading "Feature" trimmed))
                      scenario
                      section
                      example-header)
@@ -159,24 +173,24 @@
                      section
                      example-header))
 
-            (parse-heading "Scenario Outline" trimmed)
+            (parse-named-heading "Scenario Outline" trimmed)
             (recur (first remaining)
                    (rest remaining)
                    (add-scenario feature scenario)
                    {:line line
-                    :name (parse-heading "Scenario Outline" trimmed)
+                    :name (parse-named-heading "Scenario Outline" trimmed)
                     :outline? true
                     :steps []
                     :examples []}
                    :scenario
                    nil)
 
-            (parse-heading "Scenario" trimmed)
+            (parse-named-heading "Scenario" trimmed)
             (recur (first remaining)
                    (rest remaining)
                    (add-scenario feature scenario)
                    {:line line
-                    :name (parse-heading "Scenario" trimmed)
+                    :name (parse-named-heading "Scenario" trimmed)
                     :outline? false
                     :steps []
                     :examples []}
