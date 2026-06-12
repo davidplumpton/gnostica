@@ -18,7 +18,7 @@ The shadow-cljs dev server serves the app at `http://localhost:8080/index.html`.
 
 For the released Ring server path, run `clojure -M:release` first. `clojure -M:server` serves the existing files under `src/main/resources`, including the compiled browser bundle at `src/main/resources/js/main.js`; it does not rebuild stale or missing JavaScript assets.
 
-Run `clojure -M:lint` to verify clj-kondo warning/error findings and cljfmt formatting across `src/main`, `test`, `deps.edn`, and `shadow-cljs.edn`. The generated browser bundle under `src/main/resources/js` is excluded from these source checks.
+Run `clojure -M:lint` to verify the br tracker guard, clj-kondo warning/error findings, and cljfmt formatting. The guard fails when `.beads/embeddeddolt` is missing, is a directory left by legacy `bd`, is not a regular file, or when `.beads/issues.jsonl` is absent. The clj-kondo and cljfmt checks cover `src/main`, `test`, `deps.edn`, and `shadow-cljs.edn`; the generated browser bundle under `src/main/resources/js` is excluded from these source checks.
 
 The browser runtime loads Three.js and OrbitControls from pinned `three@0.128.0` CDN scripts with SRI hashes and `crossorigin="anonymous"` before the compiled ClojureScript bundle. This keeps browser builds npm-free while still exposing the global `THREE` and `THREE.OrbitControls` values used by the `gnostica.three-board` renderer. The re-frame initialization boundary captures the runtime capability status into app-db, and the board view-model enables the 3D renderer only when `THREE.REVISION` is `"128"` and OrbitControls is present.
 
@@ -99,6 +99,8 @@ clojure -M:smoke
 
 `clojure -M:smoke` starts the released Ring app unless `SMOKE_URL` points at an already-running dev or release server. The default local smoke path needs a current `src/main/resources/js/main.js`, normally produced by `clojure -M:release`; if that file is missing or stale, rebuild before running smoke. The smoke runner drives a local headless Chrome/Chromium through the DevTools protocol, so no npm workflow is added. Set `SMOKE_CHROME` or `CHROME_PATH` if Chrome is not in a standard location.
 
+`clojure -M:lint` runs the br tracker guard before source verification. Fix guard failures by restoring the tracked regular-file `.beads/embeddeddolt` sentinel, moving or deleting a stale directory at that path, or recovering a missing `.beads/issues.jsonl` with `br sync --flush-only --force`.
+
 The smoke checks desktop and mobile viewport widths, verifies the r128 Three.js and OrbitControls globals, confirms the canvas fills the app viewport and its screenshot is nonblank with visible board content plus both velvet and black void table pixels, verifies antialiasing is requested and enabled when the browser reports support, waits for nine card texture loads, checks icon texture renderer metadata, checks the twelve initial wasteland outline targets and visible piece edge outline count, fails on happy-path texture/fallback status messages, verifies the reset control is present, confirms WASD and arrow-key board movement updates the camera target, confirms the `?` command dialog and special move icon guide open as modal help dialogs with focus entry, Tab/Shift+Tab containment, inert background chrome, Escape close, focus restoration, and shortcut containment while open, confirms `I` preserves a changed 3D camera distance while toggling icon mode, exercises direct move-entry pending trays through a Three.js piece drag, hand-card drag, and CSS fallback piece drag with Detailed entry fallback, completes confirmed keyboard-only first-piece placement in both Three.js and CSS fallback by activating the Place first piece source, arrow-selecting a legal target, accepting it, orienting, and confirming, completes confirmed Three.js and CSS fallback source-to-board drops for first-piece placement after updating pending orientation by hotkey, completes a confirmed CSS fallback first-piece wasteland target click, clicks the center 3D card and checks that the territory panel updates, blocks the pinned CDN scripts to verify the missing-global CSS fallback path, and injects a mismatched Three.js revision to verify that version drift also falls back before user interaction. Pip marker count and placement are covered by the browser-free layout tests.
 
 The smoke checks also assert that the current-player card zones are present in the Three.js and fallback layouts, including six visible hand cards, a non-empty draw deck count, and the initial empty discard pile state.
@@ -109,7 +111,7 @@ The smoke checks also assert that the current-player card zones are present in t
 clojure -M:dev       # start the ClojureScript watcher
 clojure -M:release   # compile an optimized browser build
 clojure -M:server    # serve existing released assets with Clojure/Ring
-clojure -M:lint      # run clj-kondo and cljfmt source verification
+clojure -M:lint      # run the br tracker guard, clj-kondo, and cljfmt source verification
 clojure -M:test      # run Clojure tests and gameplay feature scenarios
 clojure -M:smoke     # run the headless Chrome 3D board smoke check
 ```
