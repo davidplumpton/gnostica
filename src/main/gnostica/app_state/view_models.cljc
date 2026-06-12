@@ -1,6 +1,7 @@
 (ns gnostica.app-state.view-models
   (:require [gnostica.app-state.db :as db]
-            [gnostica.app-state.lobby :as lobby]
+            [gnostica.app-state.lobby-setup :as lobby-setup]
+            [gnostica.app-state.lobby-view-models :as lobby-view-models]
             [gnostica.board-layout :as layout]
             [gnostica.game-state :as game-state]
             [gnostica.keyboard-shortcuts :as shortcuts]
@@ -422,13 +423,13 @@
    {:current-player (current-player app-db)
     :card-icon-mode (card-icon-mode app-db)
     :open-panels (open-panels app-db)
-    :lobby? (lobby/lobby-active? app-db)
+    :lobby? (lobby-setup/lobby-active? app-db)
     :game-status (game-status app-db)
     :can-end-turn? (can-end-turn? app-db)
     :can-announce-challenge? (can-announce-challenge? app-db)}))
 
 (defn lobby-view [app-db]
-  (lobby/lobby-view app-db))
+  (lobby-view-models/lobby-view app-db))
 
 (defn help-dialogs-view-model
   [{:keys [hotkey-help-open? icon-help-open? hotkey-commands]}]
@@ -455,4 +456,4 @@
    {:setup-error (db/setup-error app-db)
     :card-icon-mode (card-icon-mode app-db)
     :open-panels (open-panels app-db)
-    :lobby? (lobby/lobby-active? app-db)}))
+    :lobby? (lobby-setup/lobby-active? app-db)}))
