@@ -250,198 +250,258 @@
                     (:hermit-destination-wasteland params)))
        [choices/orientation-choices orientation-options (:orientation params)])]))
 
+(defn- render-source-board-control
+  [{:keys [params]} {:keys [source-board-options legal-targets]}]
+  [choices/board-choice-grid "Source territory" source-board-options
+   (:source-board-index params)
+   (:territories legal-targets)])
+
+(defn- render-hand-card-control
+  [{:keys [params]} {:keys [hand-options]}]
+  [choices/hand-card-choices hand-options (:hand-card-id params)])
+
+(defn- render-piece-control
+  [{:keys [params]} {:keys [board piece-options]}]
+  [choices/piece-choices board piece-options (:piece-id params)])
+
+(defn- render-power-control
+  [_ {:keys [power power-options]}]
+  [choices/power-choices power-options power])
+
+(defn- render-major-action-count-control
+  [_ {:keys [major-action-count-options major-action-count]}]
+  [choices/major-action-count-choices major-action-count-options major-action-count])
+
+(defn- render-sword-action-count-control
+  [{:keys [params]} {:keys [sword-action-count-options]}]
+  [choices/sword-action-count-choices sword-action-count-options (:sword-action-count params)])
+
+(defn- render-world-copy-control
+  [{:keys [params]} {:keys [world-copy-options legal-targets]}]
+  [choices/world-copy-choices world-copy-options (:copied-board-index params)
+   (:territories legal-targets)])
+
+(defn- render-world-copied-power-control
+  [_ {:keys [world-copied-power-options world-copied-power]}]
+  [choices/power-choices world-copied-power-options world-copied-power])
+
+(defn- render-rod-control
+  [{:keys [params]} {:keys [board rod-mode-options target-piece-options
+                            target-board-options distance-options orientation-options
+                            orientation-required? legal-targets]}]
+  [rod-move-controls params
+   board
+   rod-mode-options
+   target-piece-options
+   target-board-options
+   distance-options
+   orientation-options
+   orientation-required?
+   legal-targets])
+
+(defn- render-cup-control
+  [{:keys [params]} {:keys [board target-piece-options target-board-options
+                            target-wasteland-options territory-card-source-options
+                            one-point-card-options orientation-options legal-targets]}]
+  [cup-move-controls params
+   board
+   target-piece-options
+   target-board-options
+   target-wasteland-options
+   territory-card-source-options
+   one-point-card-options
+   orientation-options
+   legal-targets])
+
+(defn- render-disc-control
+  [{:keys [params]} {:keys [board disc-action-count-options
+                            disc-minion-orientation-required?
+                            disc-target-kind-options target-piece-options
+                            target-board-options territory-card-source-options
+                            replacement-card-options orientation-options
+                            disc-orientation-available? legal-targets]}]
+  [disc-move-controls params
+   board
+   disc-action-count-options
+   disc-minion-orientation-required?
+   disc-target-kind-options
+   target-piece-options
+   target-board-options
+   territory-card-source-options
+   replacement-card-options
+   orientation-options
+   disc-orientation-available?
+   legal-targets])
+
+(defn- render-sun-control
+  [{:keys [params]} {:keys [board sun-disc-mode-options target-piece-options
+                            target-board-options target-wasteland-options
+                            one-point-card-options replacement-card-options
+                            orientation-options sun-cup-target-piece
+                            sun-disc-orientation-available? legal-targets]}]
+  [sun-move-controls params
+   board
+   sun-disc-mode-options
+   target-piece-options
+   target-board-options
+   target-wasteland-options
+   one-point-card-options
+   replacement-card-options
+   orientation-options
+   sun-cup-target-piece
+   sun-disc-orientation-available?
+   legal-targets])
+
+(defn- render-sword-control
+  [{:keys [params]} {:keys [board sword-target-kind-options target-piece-options
+                            target-board-options territory-card-source-options
+                            replacement-card-options orientation-options
+                            sword-orientation-available? damage-options legal-targets]}]
+  [sword-move-controls params
+   board
+   sword-target-kind-options
+   target-piece-options
+   target-board-options
+   territory-card-source-options
+   replacement-card-options
+   orientation-options
+   sword-orientation-available?
+   damage-options
+   legal-targets])
+
+(defn- render-fool-reveal-count-control
+  [{:keys [params]} {:keys [fool-reveal-count-options]}]
+  [choices/fool-reveal-count-choices
+   fool-reveal-count-options
+   (:fool-reveal-count params)])
+
+(defn- render-fool-reveal-card-control
+  [_ {:keys [fool-reveal-state]}]
+  [choices/fool-reveal-card-control fool-reveal-state])
+
+(defn- render-fool-reveal-decision-control
+  [_ {:keys [fool-reveal-state]}]
+  [choices/fool-reveal-decision-control fool-reveal-state])
+
+(defn- render-fool-play-power-control
+  [_ {:keys [fool-play-power-options fool-play-power]}]
+  [choices/fool-play-power-choices fool-play-power-options fool-play-power])
+
+(defn- render-high-priestess-redraw-count-control
+  [{:keys [params]} {:keys [high-priestess-redraw-count-options]}]
+  [choices/high-priestess-redraw-count-choices
+   high-priestess-redraw-count-options
+   (:high-priestess-redraw-count params)])
+
+(defn- render-high-priestess-redraws-control
+  [_ {:keys [high-priestess-redraw-options]}]
+  [choices/high-priestess-redraw-controls high-priestess-redraw-options])
+
+(defn- render-judgement-card-selection-control
+  [{:keys [params]} {:keys [judgement-card-options judgement-card-maximum]}]
+  [choices/judgement-card-choices
+   judgement-card-options
+   (:judgement-card-ids params)
+   judgement-card-maximum])
+
+(defn- render-piece-orientation-major-control
+  [{:keys [params]} {:keys [board target-piece-options orientation-options]}]
+  [piece-orientation-major-controls
+   "Replacement orientation"
+   params
+   board
+   target-piece-options
+   orientation-options])
+
+(defn- render-hermit-control
+  [{:keys [params]} {:keys [board target-piece-options target-board-options
+                            target-wasteland-options orientation-options
+                            orientation-required? legal-targets]}]
+  [hermit-move-controls params
+   board
+   target-piece-options
+   target-board-options
+   target-wasteland-options
+   orientation-options
+   orientation-required?
+   legal-targets])
+
+(defn- render-devil-control
+  [{:keys [params]} {:keys [board devil-action-count-options target-piece-options
+                            orientation-options]}]
+  [devil-move-controls
+   params
+   board
+   devil-action-count-options
+   target-piece-options
+   orientation-options])
+
+(defn- render-target-piece-control
+  [{:keys [params]} {:keys [board target-piece-options]}]
+  [choices/target-piece-choices board target-piece-options (:target-piece-id params)])
+
+(defn- render-minion-orientation-control
+  [{:keys [params]} {:keys [orientation-options]}]
+  [choices/orientation-choices "Minion orientation"
+   events/set-move-minion-orientation
+   orientation-options
+   (:minion-orientation params)])
+
+(defn- render-discard-cards-control
+  [{:keys [params]} {:keys [discard-card-options]}]
+  [choices/discard-card-choices discard-card-options (:discard-card-ids params)])
+
+(defn- render-draw-count-control
+  [{:keys [params]} {:keys [draw-options]}]
+  [choices/draw-count-choices draw-options (:draw-count params)])
+
+(defn- render-orientation-control
+  [{:keys [params]} {:keys [orientation-options]}]
+  [choices/orientation-choices orientation-options (:orientation params)])
+
+(defn- render-target-space-control
+  [{:keys [params]} {:keys [target-board-options target-wasteland-options legal-targets]}]
+  [choices/target-choice-grid target-board-options
+   target-wasteland-options
+   (:target-board-index params)
+   (:target-wasteland params)
+   legal-targets])
+
+(def control-renderers
+  {:source-board render-source-board-control
+   :hand-card render-hand-card-control
+   :piece render-piece-control
+   :power render-power-control
+   :major-action-count render-major-action-count-control
+   :sword-action-count render-sword-action-count-control
+   :world-copy render-world-copy-control
+   :world-copied-power render-world-copied-power-control
+   :rod render-rod-control
+   :cup render-cup-control
+   :disc render-disc-control
+   :sun render-sun-control
+   :sword render-sword-control
+   :fool-reveal-count render-fool-reveal-count-control
+   :fool-reveal-card render-fool-reveal-card-control
+   :fool-reveal-decision render-fool-reveal-decision-control
+   :fool-play-power render-fool-play-power-control
+   :high-priestess-redraw-count render-high-priestess-redraw-count-control
+   :high-priestess-redraws render-high-priestess-redraws-control
+   :judgement-card-selection render-judgement-card-selection-control
+   :piece-orientation-major render-piece-orientation-major-control
+   :hermit render-hermit-control
+   :devil render-devil-control
+   :target-piece render-target-piece-control
+   :minion-orientation render-minion-orientation-control
+   :discard-cards render-discard-cards-control
+   :draw-count render-draw-count-control
+   :orientation render-orientation-control
+   :target-space render-target-space-control})
+
 (defn- render-control-group [{:keys [type]} selection controls]
-  (let [{:keys [params]} selection
-        {:keys [board power power-options rod-mode-options piece-options
-                world-copy-options world-copied-power-options world-copied-power
-                disc-action-count-options major-action-count-options major-action-count
-                sword-action-count-options devil-action-count-options
-                sun-disc-mode-options
-                sun-cup-target-piece
-                fool-reveal-count-options fool-reveal-state
-                fool-play-power-options fool-play-power
-                high-priestess-redraw-count-options
-                high-priestess-redraw-options judgement-card-options
-                judgement-card-maximum
-                disc-minion-orientation-required?
-                disc-target-kind-options sword-target-kind-options
-                target-piece-options hand-options discard-card-options source-board-options
-                target-board-options target-wasteland-options
-                territory-card-source-options one-point-card-options
-                replacement-card-options orientation-options orientation-required?
-                disc-orientation-available? sun-disc-orientation-available?
-                sword-orientation-available?
-                distance-options damage-options draw-options legal-targets]} controls]
-    (case (move-registry/control-renderer-key type)
-      :source-board
-      [choices/board-choice-grid "Source territory" source-board-options (:source-board-index params)
-       (:territories legal-targets)]
-
-      :hand-card
-      [choices/hand-card-choices hand-options (:hand-card-id params)]
-
-      :piece
-      [choices/piece-choices board piece-options (:piece-id params)]
-
-      :power
-      [choices/power-choices power-options power]
-
-      :major-action-count
-      [choices/major-action-count-choices major-action-count-options major-action-count]
-
-      :sword-action-count
-      [choices/sword-action-count-choices sword-action-count-options (:sword-action-count params)]
-
-      :world-copy
-      [choices/world-copy-choices world-copy-options (:copied-board-index params)
-       (:territories legal-targets)]
-
-      :world-copied-power
-      [choices/power-choices world-copied-power-options world-copied-power]
-
-      :rod
-      [rod-move-controls params
-       board
-       rod-mode-options
-       target-piece-options
-       target-board-options
-       distance-options
-       orientation-options
-       orientation-required?
-       legal-targets]
-
-      :cup
-      [cup-move-controls params
-       board
-       target-piece-options
-       target-board-options
-       target-wasteland-options
-       territory-card-source-options
-       one-point-card-options
-       orientation-options
-       legal-targets]
-
-      :disc
-      [disc-move-controls params
-       board
-       disc-action-count-options
-       disc-minion-orientation-required?
-       disc-target-kind-options
-       target-piece-options
-       target-board-options
-       territory-card-source-options
-       replacement-card-options
-       orientation-options
-       disc-orientation-available?
-       legal-targets]
-
-      :sun
-      [sun-move-controls params
-       board
-       sun-disc-mode-options
-       target-piece-options
-       target-board-options
-       target-wasteland-options
-       one-point-card-options
-       replacement-card-options
-       orientation-options
-       sun-cup-target-piece
-       sun-disc-orientation-available?
-       legal-targets]
-
-      :sword
-      [sword-move-controls params
-       board
-       sword-target-kind-options
-       target-piece-options
-       target-board-options
-       territory-card-source-options
-       replacement-card-options
-       orientation-options
-       sword-orientation-available?
-       damage-options
-       legal-targets]
-
-      :fool-reveal-count
-      [choices/fool-reveal-count-choices
-       fool-reveal-count-options
-       (:fool-reveal-count params)]
-
-      :fool-reveal-card
-      [choices/fool-reveal-card-control fool-reveal-state]
-
-      :fool-reveal-decision
-      [choices/fool-reveal-decision-control fool-reveal-state]
-
-      :fool-play-power
-      [choices/fool-play-power-choices fool-play-power-options fool-play-power]
-
-      :high-priestess-redraw-count
-      [choices/high-priestess-redraw-count-choices
-       high-priestess-redraw-count-options
-       (:high-priestess-redraw-count params)]
-
-      :high-priestess-redraws
-      [choices/high-priestess-redraw-controls high-priestess-redraw-options]
-
-      :judgement-card-selection
-      [choices/judgement-card-choices
-       judgement-card-options
-       (:judgement-card-ids params)
-       judgement-card-maximum]
-
-      :piece-orientation-major
-      [piece-orientation-major-controls
-       "Replacement orientation"
-       params
-       board
-       target-piece-options
-       orientation-options]
-
-      :hermit
-      [hermit-move-controls params
-       board
-       target-piece-options
-       target-board-options
-       target-wasteland-options
-       orientation-options
-       orientation-required?
-       legal-targets]
-
-      :devil
-      [devil-move-controls
-       params
-       board
-       devil-action-count-options
-       target-piece-options
-       orientation-options]
-
-      :target-piece
-      [choices/target-piece-choices board target-piece-options (:target-piece-id params)]
-
-      :minion-orientation
-      [choices/orientation-choices "Minion orientation"
-       events/set-move-minion-orientation
-       orientation-options
-       (:minion-orientation params)]
-
-      :discard-cards
-      [choices/discard-card-choices discard-card-options (:discard-card-ids params)]
-
-      :draw-count
-      [choices/draw-count-choices draw-options (:draw-count params)]
-
-      :orientation
-      [choices/orientation-choices orientation-options (:orientation params)]
-
-      :target-space
-      [choices/target-choice-grid target-board-options
-       target-wasteland-options
-       (:target-board-index params)
-       (:target-wasteland params)
-       legal-targets]
-
-      nil)))
+  (when-let [renderer (get control-renderers
+                           (move-registry/control-renderer-key type))]
+    [renderer selection controls]))
 
 (defn active-controls [selection controls control-groups]
   [:<>

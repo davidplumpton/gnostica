@@ -1,5 +1,7 @@
 (ns gnostica.app-state.registry-test
-  (:require [clojure.test :refer [deftest is testing]]
+  (:require [clojure.java.io :as io]
+            [clojure.set :as set]
+            [clojure.test :refer [deftest is testing]]
             [gnostica.app.handlers :as app-handlers]
             [gnostica.app.subscriptions :as app-subscriptions]
             [gnostica.app-state :as app-state]
@@ -27,6 +29,17 @@
                                                 deck-starting-with
                                                 deck-with-card-at
                                                 deck-with-cards-at]]))
+
+(defn- source-file [& path]
+  (apply io/file path))
+
+(defn- move-panel-control-renderer-keys []
+  (let [source (slurp (source-file "src/main/gnostica/ui/move_panel/controls.cljs"))
+        renderer-map-source (second (re-find #"(?s)\(def control-renderers\s+\{(.*?)\}\)"
+                                             source))]
+    (->> (re-seq #":([A-Za-z0-9*+!_\-?]+)\s+render-" renderer-map-source)
+         (map (comp keyword second))
+         set)))
 
 (deftest move-power-registry-covers-implemented-browser-powers
   (is (= (set move-registry/move-power-order)
@@ -110,3 +123,10 @@
     (is (= [] missing-registry-types))
     (is (= [] missing-power-renderers))
     (is (= [] nil-renderer-keys))))
+
+(deftest move-panel-ui-renderers-cover-registry-renderer-keys
+  (let [registry-renderer-keys (move-registry/control-renderer-types)
+        ui-renderer-keys (move-panel-control-renderer-keys)]
+    (is (seq ui-renderer-keys))
+    (is (= #{} (set/difference registry-renderer-keys ui-renderer-keys)))
+    (is (= #{} (set/difference ui-renderer-keys registry-renderer-keys)))))
