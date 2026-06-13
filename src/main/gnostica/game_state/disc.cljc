@@ -7,6 +7,31 @@
 
 (def disc-territory-card-sources #{:hand :discard-pile})
 
+(def disc-source-config
+  {:suit-label "Disc"
+   :variant-key :disc-variant
+   :variants-fn cards/disc-variants
+   :variant-ids cards/disc-variant-ids
+   :source-card-not-suit-code :source-card-not-disc
+   :invalid-variant-code :invalid-disc-variant
+   :variant-unavailable-code :disc-variant-unavailable
+   :command-error-code :invalid-disc-command
+   :direction-error-code :invalid-disc-direction
+   :invalid-target-code :invalid-disc-target})
+
+(def disc-replacement-card-config
+  {:valid-sources disc-territory-card-sources
+   :source-error-code :invalid-disc-replacement-card-source
+   :source-error-message
+   "Disc territory growth requires a supported replacement card source."
+   :piece-error-code :invalid-disc-replacement
+   :piece-error-message "Disc piece growth does not use a replacement card."
+   :variant-key :disc-variant
+   :discard-variant :disc-from-discard
+   :discard-unavailable-code :disc-variant-option-unavailable
+   :discard-unavailable-message
+   "Only Star Disc can grow territory from a discard-pile replacement card."})
+
 (def disc-piece-size-ranks
   {:small 0
    :medium 1
@@ -35,190 +60,18 @@
                                 (disc-target-coordinate actor-coordinate orientation))))
 
 (defn- territory-target-cell [state target]
-  (cond
-    (not (map? target))
-    (core/failure :invalid-disc-target
-                  "Disc territory targets require a target map."
-                  {:target target})
-
-    (not= :territory (:kind target))
-    (core/failure :invalid-disc-target
-                  "Disc territory targets must use :kind :territory."
-                  {:target target})
-
-    (some? (:board-index target))
-    (if-let [cell (core/board-cell-by-index state (:board-index target))]
-      {:ok? true
-       :cell cell}
-      (core/failure :invalid-target-territory
-                    "Disc territory targets must reference an existing board cell."
-                    {:target target}))
-
-    (and (int? (:row target))
-         (int? (:col target)))
-    (if-let [cell (core/board-cell-at state (:row target) (:col target))]
-      {:ok? true
-       :cell cell}
-      (core/failure :invalid-target-territory
-                    "Disc territory targets must reference an existing board cell."
-                    {:target target}))
-
-    :else
-    (core/failure :invalid-disc-target
-                  "Disc territory targets require a board index or row and column."
-                  {:target target})))
-
-(defn- resolve-disc-variant [card requested-variant source]
-  (let [variants (cards/disc-variants card)
-        variant-set (set variants)]
-    (cond
-      (empty? variants)
-      (core/failure :source-card-not-disc
-                    "The source card does not provide a Disc power."
-                    {:card-id (:id card)
-                     :source source})
-
-      (nil? requested-variant)
-      {:ok? true
-       :disc-variant (first variants)}
-
-      (not (contains? cards/disc-variant-ids requested-variant))
-      (core/failure :invalid-disc-variant
-                    "Disc moves require a known Disc variant."
-                    {:disc-variant requested-variant
-                     :valid-variants cards/disc-variant-ids})
-
-      (contains? variant-set requested-variant)
-      {:ok? true
-       :disc-variant requested-variant}
-
-      :else
-      (core/failure :disc-variant-unavailable
-                    "The source card does not provide the selected Disc variant."
-                    {:card-id (:id card)
-                     :disc-variant requested-variant
-                     :available-variants variants}))))
+  (card-source/territory-target-cell state target disc-source-config))
 
 (defn- resolve-disc-source
   ([state player-id source disc-variant]
    (resolve-disc-source state player-id source disc-variant {}))
-  ([state player-id source disc-variant
-    {:keys [source-card-already-discarded? source-card power-card
-            allow-major-minion?]}]
-   (let [piece (core/piece-by-id state (:piece-id source))
-         piece-coordinate (when piece
-                            (core/piece-coordinate state piece))]
-     (cond
-       (not (map? source))
-       (core/failure :invalid-disc-command
-                     "Disc moves require a source map."
-                     {:source source})
-
-       (nil? piece)
-       (core/failure :invalid-piece
-                     "Disc moves require one of the player's pieces as the acting minion."
-                     {:piece-id (:piece-id source)})
-
-       (not= player-id (:player-id piece))
-       (core/failure :invalid-piece
-                     "The acting minion must belong to the move's player."
-                     {:piece-id (:piece-id source)
-                      :player-id player-id
-                      :piece-player-id (:player-id piece)})
-
-       (nil? piece-coordinate)
-       (core/failure :invalid-piece-space
-                     "Disc moves require an acting minion with a board coordinate."
-                     {:piece-id (:piece-id source)
-                      :space-index (:space-index piece)
-                      :space (:space piece)})
-
-       (not (contains? pieces/legal-orientations (:orientation piece)))
-       (core/failure :invalid-disc-direction
-                     "Disc moves require the acting minion to have a legal orientation."
-                     {:piece-id (:id piece)
-                      :orientation (:orientation piece)
-                      :legal-orientations pieces/legal-orientations})
-
-       (= :territory (:kind source))
-       (let [cell (core/board-cell-by-index state (:board-index source))]
-         (cond
-           (nil? cell)
-           (core/failure :invalid-source-territory
-                         "Disc territory sources must reference an existing board cell."
-                         {:board-index (:board-index source)})
-
-           (and source-card
-                (not= (get-in cell [:card :id]) (:id source-card)))
-           (core/failure :invalid-source-territory
-                         "Disc paid source cards must match the command source territory."
-                         {:board-index (:board-index source)
-                          :territory-card-id (get-in cell [:card :id])
-                          :source-card-id (:id source-card)})
-
-           (and (not allow-major-minion?)
-                (not= (:board-index source) (:space-index piece)))
-           (core/failure :source-piece-mismatch
-                         "The acting minion must occupy the source territory."
-                         {:piece-id (:piece-id source)
-                          :piece-space-index (:space-index piece)
-                          :source-board-index (:board-index source)})
-
-           :else
-           (let [paid-card (or source-card (:card cell))
-                 power-card (or power-card paid-card)
-                 variant-result (resolve-disc-variant power-card
-                                                      disc-variant
-                                                      source)]
-             (if (:ok? variant-result)
-               {:ok? true
-                :source source
-                :source-card paid-card
-                :power-card power-card
-                :disc-variant (:disc-variant variant-result)
-                :piece piece
-                :piece-coordinate (spatial/coordinate-map piece-coordinate)
-                :orientation (:orientation piece)}
-               variant-result))))
-
-       (= :hand-card (:kind source))
-       (let [card (or source-card
-                      (core/player-hand-card state player-id (:card-id source))
-                      (when source-card-already-discarded?
-                        (card-source/discard-pile-card state (:card-id source))))]
-         (cond
-           (nil? card)
-           (core/failure :invalid-hand-card
-                         "Disc hand-card sources must reference a card in the player's hand."
-                         {:card-id (:card-id source)
-                          :player-id player-id})
-
-           (and source-card
-                (not= (:card-id source) (:id source-card)))
-           (core/failure :invalid-hand-card
-                         "Disc paid source cards must match the command source card."
-                         {:card-id (:card-id source)
-                          :source-card-id (:id source-card)})
-
-           :else
-           (let [power-card (or power-card card)
-                 variant-result (resolve-disc-variant power-card disc-variant source)]
-             (if (:ok? variant-result)
-               {:ok? true
-                :source source
-                :source-card card
-                :power-card power-card
-                :disc-variant (:disc-variant variant-result)
-                :discard-source-card? (not source-card-already-discarded?)
-                :piece piece
-                :piece-coordinate (spatial/coordinate-map piece-coordinate)
-                :orientation (:orientation piece)}
-               variant-result))))
-
-       :else
-       (core/failure :invalid-disc-command
-                     "Disc move sources must be either :territory or :hand-card."
-                     {:source source})))))
+  ([state player-id source disc-variant source-opts]
+   (card-source/resolve-suit-source state
+                                    player-id
+                                    source
+                                    disc-variant
+                                    source-opts
+                                    disc-source-config)))
 
 (defn- resolve-disc-orientation [player-id target-piece orientation]
   (cond
@@ -369,39 +222,12 @@
 
 (defn- resolve-replacement-card-options
   [source-result target replacement-card-source replacement-card-id]
-  (if (= :territory (:kind target))
-    (let [replacement-card-source (or replacement-card-source
-                                      (when (some? replacement-card-id)
-                                        :hand))]
-      (cond
-        (nil? replacement-card-source)
-        {:ok? true}
-
-        (not (contains? disc-territory-card-sources replacement-card-source))
-        (core/failure :invalid-disc-replacement-card-source
-                      "Disc territory growth requires a supported replacement card source."
-                      {:replacement-card-source replacement-card-source
-                       :valid-sources disc-territory-card-sources})
-
-        (and (= :discard-pile replacement-card-source)
-             (not= :disc-from-discard (:disc-variant source-result)))
-        (core/failure :disc-variant-option-unavailable
-                      "Only Star Disc can grow territory from a discard-pile replacement card."
-                      {:disc-variant (:disc-variant source-result)
-                       :replacement-card-source replacement-card-source})
-
-        :else
-        {:ok? true
-         :replacement-card-source replacement-card-source
-         :replacement-card-id replacement-card-id}))
-    (if (or (some? replacement-card-source)
-            (some? replacement-card-id))
-      (core/failure :invalid-disc-replacement
-                    "Disc piece growth does not use a replacement card."
-                    {:target target
-                     :replacement-card-source replacement-card-source
-                     :replacement-card-id replacement-card-id})
-      {:ok? true})))
+  (card-source/resolve-replacement-card-options
+   source-result
+   target
+   {:replacement-card-source replacement-card-source
+    :replacement-card-id replacement-card-id}
+   disc-replacement-card-config))
 
 (defn- resolve-disc-action
   [state player-id source-result action]
@@ -446,29 +272,17 @@
 
 (defn resolve-disc-command*
   [state command source-opts]
-  (let [{:keys [player-id source disc-variant]} command]
-    (cond
-      (not (map? command))
-      (core/failure :invalid-disc-command
-                    "Disc moves require a command map."
-                    {:command command})
-
-      (nil? (get-in state [:players-by-id player-id]))
-      (core/failure :unknown-player
-                    "Disc moves require a participating player."
-                    {:player-id player-id})
-
-      (not (core/current-player-id? state player-id))
-      (core/failure :not-current-player
-                    "Only the current player can resolve a Disc move."
-                    {:player-id player-id
-                     :current-player-id (get-in state [:turn :current-player-id])})
-
-      :else
-      (let [source-result (resolve-disc-source state
+  (let [player-result (card-source/resolve-current-player-command
+                       state
+                       command
+                       disc-source-config)]
+    (if-not (:ok? player-result)
+      player-result
+      (let [player-id (:player-id player-result)
+            source-result (resolve-disc-source state
                                                player-id
-                                               source
-                                               disc-variant
+                                               (:source command)
+                                               (:disc-variant command)
                                                source-opts)]
         (if-not (:ok? source-result)
           source-result
@@ -482,34 +296,6 @@
 
 (defn- piece-space [piece]
   (select-keys piece [:space-index :space]))
-
-(defn- remove-card-from-discard [state card-id]
-  (update state :discard-pile
-          (fn [discard-pile]
-            (vec (remove #(= card-id (:id %)) discard-pile)))))
-
-(defn- replace-board-cell-card [state board-index replacement-card]
-  (update state :board
-          (fn [cells]
-            (mapv (fn [cell]
-                    (if (= board-index (:index cell))
-                      (assoc cell :card replacement-card)
-                      cell))
-                  cells))))
-
-(defn- replacement-card-from-source
-  [state player-id replacement-card-source replacement-card-id]
-  (case replacement-card-source
-    :hand (core/player-hand-card state player-id replacement-card-id)
-    :discard-pile (card-source/discard-pile-card state replacement-card-id)
-    nil))
-
-(defn- remove-replacement-card
-  [state player-id replacement-card-source replacement-card-id]
-  (case replacement-card-source
-    :hand (core/remove-card-from-hand state player-id replacement-card-id)
-    :discard-pile (remove-card-from-discard state replacement-card-id)
-    state))
 
 (defn- apply-disc-piece-growth
   ([state player-id result]
@@ -608,10 +394,11 @@
              cost-state (cond-> state
                           charge-source?
                           (core/apply-source-cost player-id source-cost))
-             replacement-card (replacement-card-from-source cost-state
-                                                            player-id
-                                                            replacement-card-source
-                                                            replacement-card-id)
+             replacement-card (card-source/replacement-card-from-source
+                               cost-state
+                               player-id
+                               replacement-card-source
+                               replacement-card-id)
              original-value (cards/card-point-value original-card)
              replacement-value (cards/card-point-value replacement-card)]
          (cond
@@ -650,11 +437,13 @@
                          shortcut?
                          (assoc :shortcut? true))
                  next-state (-> cost-state
-                                (remove-replacement-card player-id
-                                                         replacement-card-source
-                                                         replacement-card-id)
-                                (replace-board-cell-card (:index target-cell)
-                                                         replacement-card)
+                                (card-source/remove-replacement-card
+                                 player-id
+                                 replacement-card-source
+                                 replacement-card-id)
+                                (card-source/replace-board-cell-card
+                                 (:index target-cell)
+                                 replacement-card)
                                 (core/discard-card original-card)
                                 (core/append-history event))]
              (core/success next-state [event]))))))))
@@ -663,26 +452,17 @@
   ([state command]
    (resolve-disc-source-command state command {}))
   ([state command source-opts]
-   (let [{:keys [player-id source disc-variant]} command]
-     (cond
-       (not (map? command))
-       (core/failure :invalid-disc-command
-                     "Disc moves require a command map."
-                     {:command command})
-
-       (nil? (get-in state [:players-by-id player-id]))
-       (core/failure :unknown-player
-                     "Disc moves require a participating player."
-                     {:player-id player-id})
-
-       (not (core/current-player-id? state player-id))
-       (core/failure :not-current-player
-                     "Only the current player can resolve a Disc move."
-                     {:player-id player-id
-                      :current-player-id (get-in state [:turn :current-player-id])})
-
-       :else
-       (resolve-disc-source state player-id source disc-variant source-opts)))))
+   (let [player-result (card-source/resolve-current-player-command
+                        state
+                        command
+                        disc-source-config)]
+     (if-not (:ok? player-result)
+       player-result
+       (resolve-disc-source state
+                            (:player-id player-result)
+                            (:source command)
+                            (:disc-variant command)
+                            source-opts)))))
 
 (defn source-cost-state [state player-id source-result]
   (core/apply-source-cost state
@@ -692,20 +472,13 @@
                                                   source-result)}))
 
 (defn source-power-card [source-result]
-  (or (:power-card source-result)
-      (:source-card source-result)))
+  (card-source/source-power-card source-result))
 
 (defn source-power-card-id [source-result]
-  (:id (source-power-card source-result)))
+  (card-source/source-power-card-id source-result))
 
 (defn paid-disc-source-opts [source-result]
-  (cond-> {:source-card (:source-card source-result)
-           :source-card-already-discarded? (= :hand-card
-                                              (get-in source-result
-                                                      [:source :kind]))
-           :allow-major-minion? true}
-    (:power-card source-result)
-    (assoc :power-card (:power-card source-result))))
+  (card-source/paid-source-opts source-result))
 
 (defn apply-resolved-disc-action [state player-id result opts]
   (case (get-in result [:command :target :kind])

@@ -15,6 +15,42 @@
 (def sword-piece-sizes-by-rank
   (into {} (map (fn [[size rank]] [rank size]) sword-piece-size-ranks)))
 
+(defn- legal-sword-source-piece-size [piece]
+  (when (nil? (get sword-piece-size-ranks (:size piece)))
+    (core/failure :invalid-piece-size
+                  "Sword moves require an acting minion with a legal size."
+                  {:piece-id (:id piece)
+                   :size (:size piece)})))
+
+(def sword-source-config
+  {:suit-label "Sword"
+   :variant-key :sword-variant
+   :variants-fn cards/sword-variants
+   :variant-ids cards/sword-variant-ids
+   :source-card-not-suit-code :source-card-not-sword
+   :invalid-variant-code :invalid-sword-variant
+   :variant-unavailable-code :sword-variant-unavailable
+   :command-error-code :invalid-sword-command
+   :direction-error-code :invalid-sword-direction
+   :invalid-target-code :invalid-sword-target
+   :piece-check-fn legal-sword-source-piece-size})
+
+(def sword-replacement-card-config
+  {:valid-sources sword-territory-card-sources
+   :source-error-code :invalid-sword-replacement-card-source
+   :source-error-message
+   "Sword territory attacks require a supported replacement card source."
+   :piece-error-code :invalid-sword-replacement
+   :piece-error-message "Sword piece attacks do not use a replacement card."
+   :destroyed-error-code :invalid-sword-replacement
+   :destroyed-error-message
+   "Destroyed territories do not use a replacement card."
+   :variant-key :sword-variant
+   :discard-variant :sword-from-discard
+   :discard-unavailable-code :sword-variant-option-unavailable
+   :discard-unavailable-message
+   "Only Tower Sword can attack territory using a discard-pile replacement card."})
+
 (defn- sword-piece-size-after [size damage]
   (get sword-piece-sizes-by-rank
        (- (get sword-piece-size-ranks size -100)
@@ -30,196 +66,18 @@
                                 (sword-target-coordinate actor-coordinate orientation))))
 
 (defn- territory-target-cell [state target]
-  (cond
-    (not (map? target))
-    (core/failure :invalid-sword-target
-                  "Sword territory targets require a target map."
-                  {:target target})
-
-    (not= :territory (:kind target))
-    (core/failure :invalid-sword-target
-                  "Sword territory targets must use :kind :territory."
-                  {:target target})
-
-    (some? (:board-index target))
-    (if-let [cell (core/board-cell-by-index state (:board-index target))]
-      {:ok? true
-       :cell cell}
-      (core/failure :invalid-target-territory
-                    "Sword territory targets must reference an existing board cell."
-                    {:target target}))
-
-    (and (int? (:row target))
-         (int? (:col target)))
-    (if-let [cell (core/board-cell-at state (:row target) (:col target))]
-      {:ok? true
-       :cell cell}
-      (core/failure :invalid-target-territory
-                    "Sword territory targets must reference an existing board cell."
-                    {:target target}))
-
-    :else
-    (core/failure :invalid-sword-target
-                  "Sword territory targets require a board index or row and column."
-                  {:target target})))
-
-(defn- resolve-sword-variant [card requested-variant source]
-  (let [variants (cards/sword-variants card)
-        variant-set (set variants)]
-    (cond
-      (empty? variants)
-      (core/failure :source-card-not-sword
-                    "The source card does not provide a Sword power."
-                    {:card-id (:id card)
-                     :source source})
-
-      (nil? requested-variant)
-      {:ok? true
-       :sword-variant (first variants)}
-
-      (not (contains? cards/sword-variant-ids requested-variant))
-      (core/failure :invalid-sword-variant
-                    "Sword moves require a known Sword variant."
-                    {:sword-variant requested-variant
-                     :valid-variants cards/sword-variant-ids})
-
-      (contains? variant-set requested-variant)
-      {:ok? true
-       :sword-variant requested-variant}
-
-      :else
-      (core/failure :sword-variant-unavailable
-                    "The source card does not provide the selected Sword variant."
-                    {:card-id (:id card)
-                     :sword-variant requested-variant
-                     :available-variants variants}))))
+  (card-source/territory-target-cell state target sword-source-config))
 
 (defn- resolve-sword-source
   ([state player-id source sword-variant]
    (resolve-sword-source state player-id source sword-variant {}))
-  ([state player-id source sword-variant
-    {:keys [source-card power-card source-card-already-discarded?
-            allow-major-minion?]}]
-   (let [piece (core/piece-by-id state (:piece-id source))
-         piece-coordinate (when piece
-                            (core/piece-coordinate state piece))]
-     (cond
-       (not (map? source))
-       (core/failure :invalid-sword-command
-                     "Sword moves require a source map."
-                     {:source source})
-
-       (nil? piece)
-       (core/failure :invalid-piece
-                     "Sword moves require one of the player's pieces as the acting minion."
-                     {:piece-id (:piece-id source)})
-
-       (not= player-id (:player-id piece))
-       (core/failure :invalid-piece
-                     "The acting minion must belong to the move's player."
-                     {:piece-id (:piece-id source)
-                      :player-id player-id
-                      :piece-player-id (:player-id piece)})
-
-       (nil? piece-coordinate)
-       (core/failure :invalid-piece-space
-                     "Sword moves require an acting minion with a board coordinate."
-                     {:piece-id (:piece-id source)
-                      :space-index (:space-index piece)
-                      :space (:space piece)})
-
-       (not (contains? pieces/legal-orientations (:orientation piece)))
-       (core/failure :invalid-sword-direction
-                     "Sword moves require the acting minion to have a legal orientation."
-                     {:piece-id (:id piece)
-                      :orientation (:orientation piece)
-                      :legal-orientations pieces/legal-orientations})
-
-       (nil? (get sword-piece-size-ranks (:size piece)))
-       (core/failure :invalid-piece-size
-                     "Sword moves require an acting minion with a legal size."
-                     {:piece-id (:id piece)
-                      :size (:size piece)})
-
-       (= :territory (:kind source))
-       (let [cell (core/board-cell-by-index state (:board-index source))]
-         (cond
-           (nil? cell)
-           (core/failure :invalid-source-territory
-                         "Sword territory sources must reference an existing board cell."
-                         {:board-index (:board-index source)})
-
-           (and source-card
-                (not= (get-in cell [:card :id]) (:id source-card)))
-           (core/failure :invalid-source-territory
-                         "Sword paid source cards must match the command source territory."
-                         {:board-index (:board-index source)
-                          :territory-card-id (get-in cell [:card :id])
-                          :source-card-id (:id source-card)})
-
-           (and (not allow-major-minion?)
-                (not= (:board-index source) (:space-index piece)))
-           (core/failure :source-piece-mismatch
-                         "The acting minion must occupy the source territory."
-                         {:piece-id (:piece-id source)
-                          :piece-space-index (:space-index piece)
-                          :source-board-index (:board-index source)})
-
-           :else
-           (let [paid-card (or source-card (:card cell))
-                 power-card (or power-card paid-card)
-                 variant-result (resolve-sword-variant power-card
-                                                       sword-variant
-                                                       source)]
-             (if (:ok? variant-result)
-               {:ok? true
-                :source source
-                :source-card paid-card
-                :power-card power-card
-                :sword-variant (:sword-variant variant-result)
-                :piece piece
-                :piece-coordinate (spatial/coordinate-map piece-coordinate)
-                :orientation (:orientation piece)}
-               variant-result))))
-
-       (= :hand-card (:kind source))
-       (let [card (or source-card
-                      (core/player-hand-card state player-id (:card-id source))
-                      (when source-card-already-discarded?
-                        (card-source/discard-pile-card state (:card-id source))))]
-         (cond
-           (nil? card)
-           (core/failure :invalid-hand-card
-                         "Sword hand-card sources must reference a card in the player's hand."
-                         {:card-id (:card-id source)
-                          :player-id player-id})
-
-           (and source-card
-                (not= (:card-id source) (:id source-card)))
-           (core/failure :invalid-hand-card
-                         "Sword paid source cards must match the command source card."
-                         {:card-id (:card-id source)
-                          :source-card-id (:id source-card)})
-
-           :else
-           (let [power-card (or power-card card)
-                 variant-result (resolve-sword-variant power-card sword-variant source)]
-             (if (:ok? variant-result)
-               {:ok? true
-                :source source
-                :source-card card
-                :power-card power-card
-                :sword-variant (:sword-variant variant-result)
-                :discard-source-card? (not source-card-already-discarded?)
-                :piece piece
-                :piece-coordinate (spatial/coordinate-map piece-coordinate)
-                :orientation (:orientation piece)}
-               variant-result))))
-
-       :else
-       (core/failure :invalid-sword-command
-                     "Sword move sources must be either :territory or :hand-card."
-                     {:source source})))))
+  ([state player-id source sword-variant source-opts]
+   (card-source/resolve-suit-source state
+                                    player-id
+                                    source
+                                    sword-variant
+                                    source-opts
+                                    sword-source-config)))
 
 (defn- resolve-damage [damage max-damage target-pips target]
   (cond
@@ -464,107 +322,44 @@
 
 (defn- resolve-replacement-card-options
   [source-result target destroyed? replacement-card-source replacement-card-id]
-  (if (= :territory (:kind target))
-    (let [replacement-card-source (or replacement-card-source
-                                      (when (some? replacement-card-id)
-                                        :hand))]
-      (cond
-        (and destroyed?
-             (or (some? replacement-card-source)
-                 (some? replacement-card-id)))
-        (core/failure :invalid-sword-replacement
-                      "Destroyed territories do not use a replacement card."
-                      {:target target
-                       :replacement-card-source replacement-card-source
-                       :replacement-card-id replacement-card-id})
-
-        destroyed?
-        {:ok? true}
-
-        (and (not destroyed?)
-             (nil? replacement-card-source))
-        {:ok? true}
-
-        (not (contains? sword-territory-card-sources replacement-card-source))
-        (core/failure :invalid-sword-replacement-card-source
-                      "Sword territory attacks require a supported replacement card source."
-                      {:replacement-card-source replacement-card-source
-                       :valid-sources sword-territory-card-sources})
-
-        (and (= :discard-pile replacement-card-source)
-             (not= :sword-from-discard (:sword-variant source-result)))
-        (core/failure :sword-variant-option-unavailable
-                      "Only Tower Sword can attack territory using a discard-pile replacement card."
-                      {:sword-variant (:sword-variant source-result)
-                       :replacement-card-source replacement-card-source})
-
-        :else
-        {:ok? true
-         :replacement-card-source replacement-card-source
-         :replacement-card-id replacement-card-id}))
-    (if (or (some? replacement-card-source)
-            (some? replacement-card-id))
-      (core/failure :invalid-sword-replacement
-                    "Sword piece attacks do not use a replacement card."
-                    {:target target
-                     :replacement-card-source replacement-card-source
-                     :replacement-card-id replacement-card-id})
-      {:ok? true})))
+  (card-source/resolve-replacement-card-options
+   source-result
+   target
+   {:destroyed? destroyed?
+    :replacement-card-source replacement-card-source
+    :replacement-card-id replacement-card-id}
+   sword-replacement-card-config))
 
 (defn resolve-sword-source-command
   ([state command]
    (resolve-sword-source-command state command {}))
   ([state command source-opts]
-   (let [{:keys [player-id source sword-variant]} command]
-     (cond
-       (not (map? command))
-       (core/failure :invalid-sword-command
-                     "Sword moves require a command map."
-                     {:command command})
-
-       (nil? (get-in state [:players-by-id player-id]))
-       (core/failure :unknown-player
-                     "Sword moves require a participating player."
-                     {:player-id player-id})
-
-       (not (core/current-player-id? state player-id))
-       (core/failure :not-current-player
-                     "Only the current player can resolve a Sword move."
-                     {:player-id player-id
-                      :current-player-id (get-in state [:turn :current-player-id])})
-
-       :else
+   (let [player-result (card-source/resolve-current-player-command
+                        state
+                        command
+                        sword-source-config)]
+     (if-not (:ok? player-result)
+       player-result
        (resolve-sword-source state
-                             player-id
-                             source
-                             sword-variant
+                             (:player-id player-result)
+                             (:source command)
+                             (:sword-variant command)
                              source-opts)))))
 
 (defn resolve-sword-command* [state command source-opts]
-  (let [{:keys [player-id source sword-variant target damage orientation
-                replacement-card-source replacement-card-id]} command]
-    (cond
-      (not (map? command))
-      (core/failure :invalid-sword-command
-                    "Sword moves require a command map."
-                    {:command command})
-
-      (nil? (get-in state [:players-by-id player-id]))
-      (core/failure :unknown-player
-                    "Sword moves require a participating player."
-                    {:player-id player-id})
-
-      (not (core/current-player-id? state player-id))
-      (core/failure :not-current-player
-                    "Only the current player can resolve a Sword move."
-                    {:player-id player-id
-                     :current-player-id (get-in state [:turn :current-player-id])})
-
-      :else
-      (let [source-result (resolve-sword-source state
+  (let [player-result (card-source/resolve-current-player-command
+                       state
+                       command
+                       sword-source-config)]
+    (if-not (:ok? player-result)
+      player-result
+      (let [player-id (:player-id player-result)
+            {:keys [target damage orientation replacement-card-source
+                    replacement-card-id]} command
+            source-result (resolve-sword-source state
                                                 player-id
-                                                source
-                                                sword-variant
+                                                (:source command)
+                                                (:sword-variant command)
                                                 source-opts)]
         (if-not (:ok? source-result)
           source-result
@@ -623,38 +418,10 @@
 (defn- piece-space [piece]
   (select-keys piece [:space-index :space]))
 
-(defn- remove-card-from-discard [state card-id]
-  (update state :discard-pile
-          (fn [discard-pile]
-            (vec (remove #(= card-id (:id %)) discard-pile)))))
-
-(defn- replace-board-cell-card [state board-index replacement-card]
-  (update state :board
-          (fn [cells]
-            (mapv (fn [cell]
-                    (if (= board-index (:index cell))
-                      (assoc cell :card replacement-card)
-                      cell))
-                  cells))))
-
 (defn- remove-board-cell [state board-index]
   (update state :board
           (fn [cells]
             (vec (remove #(= board-index (:index %)) cells)))))
-
-(defn- replacement-card-from-source
-  [state player-id replacement-card-source replacement-card-id]
-  (case replacement-card-source
-    :hand (core/player-hand-card state player-id replacement-card-id)
-    :discard-pile (card-source/discard-pile-card state replacement-card-id)
-    nil))
-
-(defn- remove-replacement-card
-  [state player-id replacement-card-source replacement-card-id]
-  (case replacement-card-source
-    :hand (core/remove-card-from-hand state player-id replacement-card-id)
-    :discard-pile (remove-card-from-discard state replacement-card-id)
-    state))
 
 (defn- remove-piece-by-id [state piece-id]
   (update-in state [:pieces :on-board]
@@ -817,10 +584,11 @@
                                (return-pieces-to-stash destroyed-pieces)
                                (core/append-history event))]
             (core/success next-state [event]))
-          (let [replacement-card (replacement-card-from-source cost-state
-                                                               player-id
-                                                               replacement-card-source
-                                                               replacement-card-id)
+          (let [replacement-card (card-source/replacement-card-from-source
+                                  cost-state
+                                  player-id
+                                  replacement-card-source
+                                  replacement-card-id)
                 replacement-value (cards/card-point-value replacement-card)]
             (cond
               (nil? replacement-card)
@@ -860,11 +628,13 @@
                             shortcut?
                             (assoc :shortcut? true))
                     next-state (-> cost-state
-                                   (remove-replacement-card player-id
-                                                            replacement-card-source
-                                                            replacement-card-id)
-                                   (replace-board-cell-card (:index target-cell)
-                                                            replacement-card)
+                                   (card-source/remove-replacement-card
+                                    player-id
+                                    replacement-card-source
+                                    replacement-card-id)
+                                   (card-source/replace-board-cell-card
+                                    (:index target-cell)
+                                    replacement-card)
                                    (core/discard-card original-card)
                                    (core/append-history event))]
                 (core/success next-state [event])))))))))
@@ -899,26 +669,19 @@
                                     {:charge-source? charge-source?})))))
 
 (defn source-card-id [source-result]
-  (get-in source-result [:source-card :id]))
+  (card-source/source-card-id source-result))
 
 (defn source-power-card [source-result]
-  (or (:power-card source-result)
-      (:source-card source-result)))
+  (card-source/source-power-card source-result))
 
 (defn source-power-card-id [source-result]
-  (:id (source-power-card source-result)))
+  (card-source/source-power-card-id source-result))
 
 (defn paid-sword-source-opts
   ([source-result]
-   (paid-sword-source-opts source-result (:power-card source-result)))
+   (card-source/paid-source-opts source-result))
   ([source-result power-card]
-   (cond-> {:source-card (:source-card source-result)
-            :source-card-already-discarded? (= :hand-card
-                                               (get-in source-result
-                                                       [:source :kind]))
-            :allow-major-minion? true}
-     power-card
-     (assoc :power-card power-card))))
+   (card-source/paid-source-opts source-result power-card)))
 
 (defn apply-sword-move-with-opts
   ([state command]
