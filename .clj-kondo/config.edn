@@ -1,4 +1,6 @@
 {:config-paths ["imports/metosin/malli"]
+ :hooks {:analyze-call {gnostica.app-state.facade-macros/def-facade-aliases
+                         gnostica.kondo.facade/def-facade-aliases}}
  :linters {:refer-all {:level :off}
            :redundant-call {:level :off}
            :unused-namespace {:level :off}

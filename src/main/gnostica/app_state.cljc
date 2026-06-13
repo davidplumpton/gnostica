@@ -3,7 +3,12 @@
             [gnostica.app-state.gestures :as gestures]
             [gnostica.app-state.lobby :as lobby]
             [gnostica.app-state.moves :as moves]
-            [gnostica.app-state.view-models :as views]))
+            [gnostica.app-state.view-models :as views]
+            #?(:clj [gnostica.app-state.facade-macros
+                     :refer [def-facade-aliases]]))
+  #?(:cljs
+     (:require-macros [gnostica.app-state.facade-macros
+                       :refer [def-facade-aliases]])))
 
 (def default-player-specs db/default-player-specs)
 (def default-lobby-player-specs db/default-lobby-player-specs)
@@ -107,105 +112,9 @@
 (def territory-view-model views/territory-view-model)
 (def territory-view views/territory-view)
 
-(def move-target-wasteland-options moves/move-target-wasteland-options)
-(def turn-action-consumed? moves/turn-action-consumed?)
-(def max-draw-count moves/max-draw-count)
-(def draw-count-options moves/draw-count-options)
-(def move-source-options moves/move-source-options)
-(def move-selection moves/move-selection)
-(def move-params moves/move-params)
-(def move-control-groups moves/move-control-groups)
-(def move-action-ribbon moves/move-action-ribbon)
-(def move-power-options moves/move-power-options)
-(def move-power moves/move-power)
-(def move-world-copy-options moves/move-world-copy-options)
-(def move-world-copied-power-options moves/move-world-copied-power-options)
-(def move-world-copied-power moves/move-world-copied-power)
-(def move-rod-mode-options moves/move-rod-mode-options)
-(def move-disc-action-count-options moves/move-disc-action-count-options)
-(def move-major-action-count-options moves/move-major-action-count-options)
-(def move-major-action-count moves/move-major-action-count)
-(def move-sword-action-count-options moves/move-sword-action-count-options)
-(def move-devil-action-count-options moves/move-devil-action-count-options)
-(def move-sun-disc-mode-options moves/move-sun-disc-mode-options)
-(def move-fool-reveal-count-options moves/move-fool-reveal-count-options)
-(def move-fool-play-power-options moves/move-fool-play-power-options)
-(def move-fool-play-power moves/move-fool-play-power)
-(def move-fool-reveal-state moves/move-fool-reveal-state)
-(def move-high-priestess-redraw-count-options
-  moves/move-high-priestess-redraw-count-options)
-(def move-high-priestess-redraw-options
-  moves/move-high-priestess-redraw-options)
-(def move-judgement-card-options moves/move-judgement-card-options)
-(def move-judgement-card-maximum moves/move-judgement-card-maximum)
-(def move-disc-minion-orientation-required?
-  moves/move-disc-minion-orientation-required?)
-(def move-disc-target-kind-options moves/move-disc-target-kind-options)
-(def move-sword-target-kind-options moves/move-sword-target-kind-options)
-(def move-legal-targets moves/move-legal-targets)
-(def move-preview moves/move-preview)
-(def move-distance-options moves/move-distance-options)
-(def move-damage-options moves/move-damage-options)
-(def move-target-piece-options moves/move-target-piece-options)
-(def move-rod-orientation-required? moves/move-rod-orientation-required?)
-(def move-disc-orientation-available? moves/move-disc-orientation-available?)
-(def move-sun-disc-orientation-available?
-  moves/move-sun-disc-orientation-available?)
-(def move-sword-orientation-available?
-  moves/move-sword-orientation-available?)
-(def move-hermit-orientation-required? moves/move-hermit-orientation-required?)
-(def move-ready? moves/move-ready?)
-(def move-prompt moves/move-prompt)
-(def select-move-source moves/select-move-source)
-(def select-board-for-active-move moves/select-board-for-active-move)
-(def select-move-wasteland-target moves/select-move-wasteland-target)
-(def select-move-piece moves/select-move-piece)
-(def select-move-hand-card moves/select-move-hand-card)
-(def select-move-power moves/select-move-power)
-(def select-move-world-copy moves/select-move-world-copy)
-(def select-move-rod-mode moves/select-move-rod-mode)
-(def select-move-disc-target-kind moves/select-move-disc-target-kind)
-(def select-move-sword-target-kind moves/select-move-sword-target-kind)
-(def set-move-disc-action-count moves/set-move-disc-action-count)
-(def set-move-major-action-count moves/set-move-major-action-count)
-(def set-move-sword-action-count moves/set-move-sword-action-count)
-(def set-move-devil-action-count moves/set-move-devil-action-count)
-(def set-move-fool-reveal-count moves/set-move-fool-reveal-count)
-(def reveal-move-fool-card moves/reveal-move-fool-card)
-(def skip-move-fool-reveal moves/skip-move-fool-reveal)
-(def play-move-fool-reveal moves/play-move-fool-reveal)
-(def select-move-fool-play-power moves/select-move-fool-play-power)
-(def set-move-high-priestess-redraw-count
-  moves/set-move-high-priestess-redraw-count)
-(def toggle-move-high-priestess-discard-card
-  moves/toggle-move-high-priestess-discard-card)
-(def set-move-high-priestess-draw-count
-  moves/set-move-high-priestess-draw-count)
-(def toggle-move-judgement-card moves/toggle-move-judgement-card)
-(def set-move-minion-orientation moves/set-move-minion-orientation)
-(def select-move-sun-disc-mode moves/select-move-sun-disc-mode)
-(def set-move-sun-disc-orientation moves/set-move-sun-disc-orientation)
-(def select-move-target-piece moves/select-move-target-piece)
-(def select-move-territory-card-source
-  moves/select-move-territory-card-source)
-(def select-move-one-point-card moves/select-move-one-point-card)
-(def select-move-replacement-card moves/select-move-replacement-card)
-(def set-move-orientation moves/set-move-orientation)
-(def set-move-draw-count moves/set-move-draw-count)
-(def toggle-move-discard-card moves/toggle-move-discard-card)
-(def set-move-distance moves/set-move-distance)
-(def set-move-damage moves/set-move-damage)
-(def move-piece-options moves/move-piece-options)
-(def move-hand-card-options moves/move-hand-card-options)
-(def move-discard-card-options moves/move-discard-card-options)
-(def move-source-board-options moves/move-source-board-options)
-(def move-target-board-options moves/move-target-board-options)
-(def move-one-point-card-options moves/move-one-point-card-options)
-(def move-territory-card-source-options
-  moves/move-territory-card-source-options)
-(def move-replacement-card-options moves/move-replacement-card-options)
-(def move-orientation-options moves/move-orientation-options)
-(def move-command moves/move-command)
+(def-facade-aliases
+  moves
+  gnostica.app-state.facade-exports/app-state-move-alias-vars)
 
 (def gesture-intent gestures/gesture-intent)
 (def cancel-gesture-intent gestures/cancel-gesture-intent)
@@ -229,8 +138,6 @@
 (def accept-keyboard-placement-target
   gestures/accept-keyboard-placement-target)
 
-(def end-turn moves/end-turn)
-
 (def move-panel-view-model views/move-panel-view-model)
 (def move-panel-view views/move-panel-view)
 (def header-view-model views/header-view-model)
@@ -239,4 +146,3 @@
 (def help-dialogs-view views/help-dialogs-view)
 (def app-view-model views/app-view-model)
 (def app-view views/app-view)
-(def confirm-move moves/confirm-move)

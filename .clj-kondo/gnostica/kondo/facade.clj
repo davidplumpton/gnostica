@@ -1,0 +1,124 @@
+(ns gnostica.kondo.facade
+  (:require [clj-kondo.hooks-api :as api]))
+
+(def move-selection-alias-vars
+  '[move-target-wasteland-options
+    turn-action-consumed?
+    max-draw-count
+    draw-count-options
+    move-source-options
+    move-selection
+    move-params
+    move-control-groups
+    move-action-ribbon
+    move-power-options
+    move-power
+    move-world-copy-options
+    move-world-copied-power-options
+    move-world-copied-power
+    move-rod-mode-options
+    move-disc-action-count-options
+    move-major-action-count-options
+    move-major-action-count
+    move-sword-action-count-options
+    move-devil-action-count-options
+    move-sun-disc-mode-options
+    move-fool-reveal-count-options
+    move-fool-play-power-options
+    move-fool-play-power
+    move-fool-reveal-state
+    move-high-priestess-redraw-count-options
+    move-high-priestess-redraw-options
+    move-judgement-card-options
+    move-judgement-card-maximum
+    move-disc-minion-orientation-required?
+    move-disc-target-kind-options
+    move-sword-target-kind-options
+    move-legal-targets
+    move-preview
+    move-distance-options
+    move-damage-options
+    move-target-piece-options
+    move-rod-orientation-required?
+    move-disc-orientation-available?
+    move-sun-disc-orientation-available?
+    move-sword-orientation-available?
+    move-hermit-orientation-required?
+    move-ready?
+    move-prompt
+    select-move-source
+    select-board-for-active-move
+    select-move-wasteland-target
+    select-move-piece
+    select-move-hand-card
+    select-move-power
+    select-move-world-copy
+    select-move-rod-mode
+    select-move-disc-target-kind
+    select-move-sword-target-kind
+    set-move-disc-action-count
+    set-move-major-action-count
+    set-move-sword-action-count
+    set-move-devil-action-count
+    set-move-fool-reveal-count
+    reveal-move-fool-card
+    skip-move-fool-reveal
+    play-move-fool-reveal
+    select-move-fool-play-power
+    set-move-high-priestess-redraw-count
+    toggle-move-high-priestess-discard-card
+    set-move-high-priestess-draw-count
+    toggle-move-judgement-card
+    set-move-minion-orientation
+    select-move-sun-disc-mode
+    set-move-sun-disc-orientation
+    select-move-target-piece
+    select-move-territory-card-source
+    select-move-one-point-card
+    select-move-replacement-card
+    set-move-orientation
+    set-move-draw-count
+    toggle-move-discard-card
+    set-move-distance
+    set-move-damage
+    move-piece-options
+    move-hand-card-options
+    move-discard-card-options
+    move-source-board-options
+    move-target-board-options
+    move-one-point-card-options
+    move-territory-card-source-options
+    move-replacement-card-options
+    move-orientation-options
+    move-command])
+
+(def app-state-move-alias-vars
+  (conj move-selection-alias-vars
+        'end-turn
+        'confirm-move))
+
+(def export-tables
+  {'gnostica.app-state.facade-exports/move-selection-alias-vars
+   move-selection-alias-vars
+   'gnostica.app-state.facade-exports/app-state-move-alias-vars
+   app-state-move-alias-vars})
+
+(defn- alias-def-node [source-alias export]
+  (api/list-node
+   [(api/token-node 'def)
+    (api/token-node export)
+    (api/token-node (symbol (name source-alias)
+                            (name export)))]))
+
+(defn def-facade-aliases [{:keys [node]}]
+  (let [[_ source-node export-node] (:children node)
+        source-alias (api/sexpr source-node)
+        export-var (api/sexpr export-node)
+        exports (get export-tables export-var)]
+    (when-not exports
+      (throw (ex-info "Unknown facade export table."
+                      {:export-var export-var})))
+    {:node (api/list-node
+            (into [(api/token-node 'do)]
+                  (map #(alias-def-node source-alias %))
+                  exports))}))
