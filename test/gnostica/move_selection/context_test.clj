@@ -3,6 +3,7 @@
             [gnostica.move-selection.commands :as commands]
             [gnostica.move-selection.confirmation :as confirmation]
             [gnostica.move-selection.controls :as controls]
+            [gnostica.move-selection.flow :as flow]
             [gnostica.move-selection.targets :as targets]))
 
 (defn- dummy-deps [required-keys]
@@ -19,6 +20,9 @@
            ["gnostica.move-selection.commands"
             commands/make-context
             commands/required-context-keys]
+           ["gnostica.move-selection.flow"
+            flow/make-context
+            flow/required-context-keys]
            ["gnostica.move-selection.confirmation"
             confirmation/make-context
             confirmation/required-context-keys]]]
