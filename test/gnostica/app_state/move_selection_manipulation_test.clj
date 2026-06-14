@@ -147,3 +147,111 @@
            (mapv :type (get-in confirmed-db [:move-selection :last-result :events]))))
     (is (empty? (get-in confirmed-db [:game :discard-pile])))
     (is (game-schema/valid-game? (app-state/game confirmed-db)))))
+
+(deftest devil-hand-card-can_stage_and_confirm_three_orientation_actions
+  (let [devil-minion {:id :rose-devil-minion
+                      :player-id :rose
+                      :space-index 4
+                      :size :medium
+                      :orientation :up}
+        first-enemy {:id :indigo-devil-target
+                     :player-id :indigo
+                     :space-index 5
+                     :size :small
+                     :orientation :north}
+        second-enemy {:id :indigo-devil-second-target
+                      :player-id :indigo
+                      :space-index 5
+                      :size :medium
+                      :orientation :up}
+        db (app-state/initialize
+            {:player-specs test-player-specs
+             :game-options {:deck-order (deck-starting-with ["devil"])}
+             :demo-board-pieces [devil-minion first-enemy second-enemy]})
+        source-db (-> db
+                      (app-state/select-move-source :play-hand-card)
+                      (app-state/select-move-hand-card "devil")
+                      (app-state/select-move-piece :rose-devil-minion))
+        action-count-db (app-state/set-move-devil-action-count source-db 3)
+        first-target-db (app-state/select-move-target-piece action-count-db
+                                                            :rose-devil-minion)
+        first-action-db (app-state/set-move-orientation first-target-db :east)
+        second-target-db (app-state/select-move-target-piece first-action-db
+                                                             :indigo-devil-target)
+        second-action-db (app-state/set-move-orientation second-target-db :south)
+        third-target-db (app-state/select-move-target-piece
+                         second-action-db
+                         :indigo-devil-second-target)
+        ready-db (app-state/set-move-orientation third-target-db :west)
+        confirmed-db (app-state/confirm-move ready-db)
+        result-events (get-in confirmed-db [:move-selection :last-result :events])
+        zones (app-state/card-zones confirmed-db)]
+    (is (= :devil (app-state/move-power source-db)))
+    (is (= :devil-action-count (:stage (app-state/move-selection source-db))))
+    (is (= [1 2 3]
+           (get-in (app-state/move-panel-view source-db)
+                   [:controls :devil-action-count-options])))
+    (is (= :target-piece (:stage (app-state/move-selection action-count-db))))
+    (is (= [:rose-devil-minion]
+           (mapv :id (app-state/move-target-piece-options action-count-db))))
+    (is (= :target-piece (:stage (app-state/move-selection first-action-db))))
+    (is (= [{:power :orient-target
+             :piece-id :rose-devil-minion
+             :target {:kind :piece
+                      :piece-id :rose-devil-minion}
+             :orientation :east}]
+           (get-in first-action-db [:move-selection :params :major-actions])))
+    (is (some #{:indigo-devil-target}
+              (mapv :id (app-state/move-target-piece-options first-action-db))))
+    (is (= :target-piece (:stage (app-state/move-selection second-action-db))))
+    (is (= [{:power :orient-target
+             :piece-id :rose-devil-minion
+             :target {:kind :piece
+                      :piece-id :rose-devil-minion}
+             :orientation :east}
+            {:power :orient-target
+             :piece-id :rose-devil-minion
+             :target {:kind :piece
+                      :piece-id :indigo-devil-target}
+             :orientation :south}]
+           (get-in second-action-db [:move-selection :params :major-actions])))
+    (is (some #{:indigo-devil-second-target}
+              (mapv :id (app-state/move-target-piece-options second-action-db))))
+    (is (= :confirm (:stage (app-state/move-selection ready-db))))
+    (is (= {:player-id :rose
+            :source {:kind :hand-card
+                     :card-id "devil"
+                     :piece-id :rose-devil-minion}
+            :actions [{:power :orient-target
+                       :piece-id :rose-devil-minion
+                       :target {:kind :piece
+                                :piece-id :rose-devil-minion}
+                       :orientation :east}
+                      {:power :orient-target
+                       :piece-id :rose-devil-minion
+                       :target {:kind :piece
+                                :piece-id :indigo-devil-target}
+                       :orientation :south}
+                      {:power :orient-target
+                       :piece-id :rose-devil-minion
+                       :target {:kind :piece
+                                :piece-id :indigo-devil-second-target}
+                       :orientation :west}]}
+           (app-state/move-command ready-db)))
+    (is (:ok? (get-in confirmed-db [:move-selection :last-result])))
+    (is (= [:devil/piece-oriented
+            :devil/piece-oriented
+            :devil/piece-oriented]
+           (mapv :type result-events)))
+    (is (= [:rose-devil-minion
+            :indigo-devil-target
+            :indigo-devil-second-target]
+           (mapv #(get-in % [:target :piece-id]) result-events)))
+    (is (= :east (:orientation (piece-by-id confirmed-db :rose-devil-minion))))
+    (is (= :south (:orientation (piece-by-id confirmed-db
+                                             :indigo-devil-target))))
+    (is (= :west (:orientation (piece-by-id confirmed-db
+                                            :indigo-devil-second-target))))
+    (is (= ["devil"] (mapv :id (:discard-pile zones))))
+    (is (not (some #{"devil"} (mapv :id (:hand zones)))))
+    (is (game-schema/valid-game? (app-state/game confirmed-db)))))

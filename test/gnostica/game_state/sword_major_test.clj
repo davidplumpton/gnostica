@@ -314,6 +314,59 @@
                             (get-in state [:pieces :on-board])))))
     (is (= ["moon"] (mapv :id (:discard-pile state))))
     (is (game-schema/valid-game? state))))
+(deftest moon-can-apply-rod-only
+  (let [state (:state (game-state/create-game
+                       player-specs
+                       {:deck-order (deck-starting-with ["moon"])}))
+        state (game-state/with-board-pieces state [rose-sword-minion])
+        {:keys [ok? state events]} (game-state/apply-moon-move
+                                    state
+                                    {:player-id :rose
+                                     :source {:kind :hand-card
+                                              :card-id "moon"}
+                                     :rod {:piece-id :rose-sword-minion
+                                           :mode :move-minion
+                                           :distance 1
+                                           :orientation :up}})
+        moved-piece (piece-by-id state :rose-sword-minion)]
+    (is ok?)
+    (is (= [:rod/minion-moved]
+           (mapv :type events)))
+    (is (= {:id :rose-sword-minion
+            :player-id :rose
+            :space-index 4
+            :size :medium
+            :orientation :up}
+           moved-piece))
+    (is (= ["moon"] (mapv :id (:discard-pile state))))
+    (is (game-schema/valid-game? state))))
+(deftest moon-can-apply-sword-only
+  (let [target-piece {:id :indigo-moon-target
+                      :player-id :indigo
+                      :space-index 4
+                      :size :small
+                      :orientation :north}
+        state (:state (game-state/create-game
+                       player-specs
+                       {:deck-order (deck-starting-with ["moon"])}))
+        state (game-state/with-board-pieces state [rose-sword-minion
+                                                   target-piece])
+        {:keys [ok? state events]} (game-state/apply-moon-move
+                                    state
+                                    {:player-id :rose
+                                     :source {:kind :hand-card
+                                              :card-id "moon"}
+                                     :sword {:piece-id :rose-sword-minion
+                                             :target {:kind :piece
+                                                      :piece-id :indigo-moon-target}
+                                             :damage 1}})]
+    (is ok?)
+    (is (= [:sword/piece-destroyed]
+           (mapv :type events)))
+    (is (= rose-sword-minion (piece-by-id state :rose-sword-minion)))
+    (is (nil? (piece-by-id state :indigo-moon-target)))
+    (is (= ["moon"] (mapv :id (:discard-pile state))))
+    (is (game-schema/valid-game? state))))
 (deftest moon-rejects-full-territory_entry_unless_sword_restores_piece_limit
   (let [full-space-pieces [{:id :indigo-moon-target
                             :player-id :indigo

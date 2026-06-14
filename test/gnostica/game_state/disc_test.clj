@@ -243,10 +243,26 @@
                                          :replacement-card-id "cupsking"))]
     (is (= :invalid-disc-target
            (get-in off-axis-result [:error :code])))
+    (is (= {:piece-id :indigo-off-axis-disc-target
+            :orientation :east
+            :source-coordinate {:row 1 :col 0}
+            :target-coordinate {:row 0 :col 0}
+            :expected-coordinate {:row 1 :col 1}}
+           (get-in off-axis-result [:error :data])))
     (is (= :invalid-orientation
            (get-in enemy-orientation-result [:error :code])))
+    (is (= {:piece-id :indigo-disc-target
+            :piece-player-id :indigo
+            :orientation :west}
+           (get-in enemy-orientation-result [:error :data])))
     (is (= :target-territory-occupied-by-enemy
            (get-in enemy-territory-result [:error :code])))
+    (is (= {:target {:kind :territory
+                     :board-index 4
+                     :row 1
+                     :col 1}
+            :enemy-piece-ids [:indigo-disc-target]}
+           (get-in enemy-territory-result [:error :data])))
     (is (= :invalid-disc-replacement
            (get-in piece-replacement-result [:error :code])))
     (is (false? (:ok? off-axis-result)))

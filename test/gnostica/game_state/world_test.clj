@@ -120,7 +120,7 @@
                                   :piece-id :rose-cup-minion}]})]
     (is (= :world-copied-power-unavailable
            (get-in result [:error :code])))
-    (is (= [:cup :empress]
+    (is (= [:empress :cup]
            (get-in result [:error :data :available-powers])))
     (is (not (contains? result :state)))))
 (deftest world-territory-source-copies-magician-wild-suit

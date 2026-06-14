@@ -46,6 +46,21 @@
                      "The official starting-bid game could not be created."
                      {:error (:error result)})))}
 
+   {:pattern #"^an official starting-bid rank game where Rose bids \"([^\"]+)\" and Indigo bids \"([^\"]+)\"$"
+    :run (fn [world rose-card-id indigo-card-id]
+           (let [world (world/create-official-starting-bid-rank-game
+                        world
+                        rose-card-id
+                        indigo-card-id)
+                 result (:last-result world)]
+             (expect world
+                     (:ok? result)
+                     :game-creation-failed
+                     "The official starting-bid rank game could not be created."
+                     {:rose-card-id rose-card-id
+                      :indigo-card-id indigo-card-id
+                      :error (:error result)})))}
+
    {:pattern #"^the game state is schema valid$"
     :run (fn [world]
            (if-let [explanation (world/schema-explanation world)]
@@ -136,6 +151,21 @@
                      {:expected expected-order
                       :actual actual-order})))}
 
+   {:pattern #"^the winning bid card is \"([^\"]+)\" with (major|minor) rank (\d+)$"
+    :run (fn [world card-id arcana rank]
+           (let [expected {:winning-card-id card-id
+                           :considered-arcana (keyword arcana)
+                           :winning-rank (parse-int rank)}
+                 actual (select-keys (last (world/bid-history world))
+                                     (keys expected))]
+             (expect world
+                     (= expected actual)
+                     :unexpected-winning-bid
+                     "The winning bid card did not match."
+                     {:expected expected
+                      :actual actual
+                      :bid-history (world/bid-history world)})))}
+
    {:pattern #"^a Rod territory-source game with Rose's medium minion at board index (\d+) facing ([a-z]+)$"
     :run (fn [world board-index orientation]
            (world/create-rod-territory-source-game world
@@ -199,6 +229,14 @@
             world
             (parse-int board-index)
             (parse-keyword orientation)))}
+
+   {:pattern #"^a Wheel Cup draw-pile wasteland game with Rose's minion at board index (\d+) facing ([a-z]+) and draw-pile card \"([^\"]+)\"$"
+    :run (fn [world board-index orientation draw-pile-card-id]
+           (world/create-wheel-cup-draw-pile-wasteland-game
+            world
+            (parse-int board-index)
+            (parse-keyword orientation)
+            draw-pile-card-id))}
 
    {:pattern #"^a Disc territory-source game with Rose's ([a-z]+) minion at board index (\d+) facing ([a-z]+)$"
     :run (fn [world size board-index orientation]
@@ -396,7 +434,7 @@
     :run (fn [world]
            (world/apply-sword-territory-attack world 1 nil nil))}
 
-   {:pattern #"^Rose uses Fool to reveal (\d+) cards without playing them$"
+   {:pattern #"^Rose uses Fool to reveal and discard (\d+) cards without playing them$"
     :run (fn [world reveal-count]
            (world/apply-fool-skip-reveals world (parse-int reveal-count)))}
 
@@ -538,6 +576,23 @@
                      "The draw-major action was expected to succeed."
                      {:error (:error result)
                       :last-action (:last-action world)})))}
+
+   {:pattern #"^the Fool reveal events record skipped cards (\"[^\"]+\"(?:, \"[^\"]+\")*)$"
+    :run (fn [world card-ids]
+           (let [expected-card-ids (parse-quoted-values card-ids)
+                 events (filter #(= :fool/card-revealed (:type %))
+                                (get-in world [:last-result :events]))
+                 actual-card-ids (mapv :card-id events)
+                 actual-played (mapv :played? events)]
+             (expect world
+                     (and (= expected-card-ids actual-card-ids)
+                          (every? false? actual-played))
+                     :unexpected-fool-skip-reveals
+                     "The Fool reveal events did not record the expected skipped cards."
+                     {:expected expected-card-ids
+                      :actual actual-card-ids
+                      :played actual-played
+                      :events events})))}
 
    {:pattern #"^the draw-major action is rejected with code :([a-z0-9-]+)$"
     :run (fn [world expected-code]
@@ -704,6 +759,22 @@
                      "The piece was expected to be absent from the board."
                      {:piece-id piece-id
                       :actual piece})))}
+
+   {:pattern #"^([A-Z][a-z]+) has (\d+) ([a-z]+) pieces? in stash$"
+    :run (fn [world player-name expected-count size]
+           (let [player-id (parse-player-id player-name)
+                 expected-count (parse-int expected-count)
+                 size (parse-keyword size)
+                 actual-counts (world/player-stash-counts world player-id size)]
+             (expect world
+                     (every? #(= expected-count %)
+                             (vals actual-counts))
+                     :unexpected-player-stash-count
+                     "The player stash count did not match."
+                     {:player-id player-id
+                      :size size
+                      :expected expected-count
+                      :actual actual-counts})))}
 
    {:pattern #"^board index (\d+) is at row (-?\d+) col (-?\d+) with orientation ([a-z]+)$"
     :run (fn [world board-index row col orientation]

@@ -54,3 +54,13 @@ Feature: Cups gameplay moves
     And the history records a :cup/territory-created event
     And the game state is schema valid
     And every tarot card is accounted for exactly once
+
+  Scenario: Wheel creates a major territory from the draw pile
+    Given a Wheel Cup draw-pile wasteland game with Rose's minion at board index 3 facing west and draw-pile card "world"
+    When Rose creates a Cup territory in wasteland row 1 col -1 from the draw pile
+    Then the Cup action succeeds
+    And board index 9 is at row 1 col -1 with orientation portrait
+    And board index 9 contains card "world"
+    And the history records a :cup/territory-created event
+    And the game state is schema valid
+    And every tarot card is accounted for exactly once

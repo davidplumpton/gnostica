@@ -6,7 +6,8 @@
             [gnostica.game-state.major-power :as major-power]
             [gnostica.game-state.rod :as rod]
             [gnostica.game-state.sword-major :as sword-major]
-            [gnostica.pieces :as pieces]))
+            [gnostica.pieces :as pieces]
+            [gnostica.power-taxonomy :as taxonomy]))
 
 (defn- draw-from-piles [state draw-count shuffle-fn]
   (loop [state state
@@ -431,16 +432,17 @@
 (defn apply-judgement-move [state command]
   (apply-judgement-move-with-source-card-id state command "judgement"))
 
-(def ^:private fool-suit-powers #{:cup :rod :disc :sword})
+(def ^:private fool-suit-powers taxonomy/suit-power-set)
 
-(defn- card-power-key [card]
-  (keyword (:id card)))
+(defn- legacy-card-power? [card power]
+  (or (= power (keyword (:id card)))
+      (= power (:id card))))
 
 (defn- selected-card-power? [card power]
-  (and (= :major (:arcana card))
+  (and (taxonomy/major-card? card)
        (or (nil? power)
-           (= power (card-power-key card))
-           (= power (:id card)))))
+           (some #{power} (taxonomy/fool-play-power-ids-for-card card))
+           (legacy-card-power? card power))))
 
 (defn- fool-play-command [player-id card action]
   (let [play-command (or (:play-command action)
@@ -498,9 +500,7 @@
       (core/failure :invalid-fool-play-power
                     "Fool can route revealed cards through an implemented suit or full-card major power."
                     {:power power
-                     :supported-powers (cond-> fool-suit-powers
-                                         (= :major (:arcana card))
-                                         (conj (card-power-key card)))
+                     :supported-powers (taxonomy/fool-play-power-ids-for-card card)
                      :card-id (:id card)})
 
       :else

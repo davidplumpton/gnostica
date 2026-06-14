@@ -85,6 +85,26 @@
    2 {:id 2
       :label "Use both"}})
 
+(def ordered-major-action-count-order
+  [1 2])
+
+(def ordered-major-action-count-definitions
+  {1 {:id 1
+      :label "Use one"}
+   2 {:id 2
+      :label "Use both"}})
+
+(def moon-action-choice-order
+  [:rod-only :sword-only :both])
+
+(def moon-action-choice-definitions
+  {:rod-only {:id :rod-only
+              :label "Move only"}
+   :sword-only {:id :sword-only
+                :label "Attack only"}
+   :both {:id :both
+          :label "Use both"}})
+
 (def devil-action-count-order
   [1 2 3])
 

@@ -208,6 +208,33 @@
                             (get-in state [:pieces :on-board])))))
     (is (= ["chariot"] (mapv :id (:discard-pile state))))
     (is (game-schema/valid-game? state))))
+(deftest chariot-can-apply-one-rod-action-with-one-source-cost
+  (let [state (:state (game-state/create-game
+                       player-specs
+                       {:deck-order (deck-starting-with ["chariot"])}))
+        state (game-state/with-board-pieces state [rose-rod-minion])
+        {:keys [ok? state events]} (game-state/apply-chariot-move
+                                    state
+                                    {:player-id :rose
+                                     :source {:kind :hand-card
+                                              :card-id "chariot"}
+                                     :actions [{:power :rod
+                                                :piece-id :rose-rod-minion
+                                                :mode :move-minion
+                                                :distance 1
+                                                :orientation :up}]})
+        moved-piece (piece-by-id state :rose-rod-minion)]
+    (is ok?)
+    (is (= [:rod/minion-moved]
+           (mapv :type events)))
+    (is (= {:id :rose-rod-minion
+            :player-id :rose
+            :space-index 4
+            :size :medium
+            :orientation :up}
+           moved-piece))
+    (is (= ["chariot"] (mapv :id (:discard-pile state))))
+    (is (game-schema/valid-game? state))))
 (deftest hanged-man-applies-rod-before-targeted-hand-trade
   (let [enemy-piece {:id :indigo-hanged-target
                      :player-id :indigo
@@ -310,4 +337,33 @@
             :size :small
             :orientation :east}
            second-piece))
+    (is (game-schema/valid-game? state))))
+(deftest temperance-can-apply-one-cup-action-with-one-source-cost
+  (let [state (:state (game-state/create-game
+                       player-specs
+                       {:deck-order (deck-starting-with ["temperance"])}))
+        state (game-state/with-board-pieces state [rose-cup-minion])
+        {:keys [ok? state events]} (game-state/apply-temperance-move
+                                    state
+                                    {:player-id :rose
+                                     :source {:kind :hand-card
+                                              :card-id "temperance"}
+                                     :actions [{:power :cup
+                                                :piece-id :rose-cup-minion
+                                                :target {:kind :territory
+                                                         :board-index 4}
+                                                :orientation :north}]})
+        created-piece (piece-by-id state :rose-small-1)]
+    (is ok?)
+    (is (= [:cup/small-piece-created]
+           (mapv :type events)))
+    (is (= 1 (count (:discard-pile state))))
+    (is (= ["temperance"] (mapv :id (:discard-pile state))))
+    (is (= {:id :rose-small-1
+            :player-id :rose
+            :space-index 4
+            :size :small
+            :orientation :north}
+           created-piece))
+    (is (nil? (piece-by-id state :rose-small-2)))
     (is (game-schema/valid-game? state))))

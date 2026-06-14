@@ -161,9 +161,21 @@ jj commit -m "Commit message"
 jj new
 ```
 
-For inspect-only work, do not create or split a change. For normal code or docs
-edits, set a clear `jj describe` message before editing when the working copy
-is clean or already yours.
+For inspect-only work, use `jj status`/`jj diff` as needed and do not describe,
+commit, or split a change. For tracker-only work, update `br`, run
+`br sync --flush-only`, and keep any tracked `.beads/` file changes in the
+current Jujutsu change without describing, committing, or splitting it unless
+the user asks.
+
+For normal code or docs edits, set a clear `jj describe` message before editing
+when the working copy is clean or already yours. If the working copy already has
+user-owned changes, do not overwrite the description or split changes unless the
+user asks; keep your edits scoped and report any shared-file overlap.
+
+Use `jj commit` only when the user asks you to commit or when the repository
+workflow explicitly requires a recorded change. Use `jj new` only after a
+commit, or when the user asks you to start a separate change; do not create a
+new change just to finish a small inspection or tracker update.
 
 If the user has unrelated local changes, leave them untouched. Do not run
 destructive reset or checkout commands unless the user explicitly asks.

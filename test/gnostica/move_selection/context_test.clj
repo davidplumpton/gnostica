@@ -4,6 +4,11 @@
             [gnostica.move-selection.confirmation :as confirmation]
             [gnostica.move-selection.controls :as controls]
             [gnostica.move-selection.flow :as flow]
+            [gnostica.move-selection.flow.advancement :as flow-advancement]
+            [gnostica.move-selection.flow.requirements :as flow-requirements]
+            [gnostica.move-selection.flow.stages :as flow-stages]
+            [gnostica.move-selection.prompt :as prompt]
+            [gnostica.move-selection.target-options :as target-options]
             [gnostica.move-selection.targets :as targets]))
 
 (defn- dummy-deps [required-keys]
@@ -23,6 +28,21 @@
            ["gnostica.move-selection.flow"
             flow/make-context
             flow/required-context-keys]
+           ["gnostica.move-selection.flow.advancement"
+            flow-advancement/make-context
+            flow-advancement/required-context-keys]
+           ["gnostica.move-selection.flow.requirements"
+            flow-requirements/make-context
+            flow-requirements/required-context-keys]
+           ["gnostica.move-selection.flow.stages"
+            flow-stages/make-context
+            flow-stages/required-context-keys]
+           ["gnostica.move-selection.prompt"
+            prompt/make-context
+            prompt/required-context-keys]
+           ["gnostica.move-selection.target-options"
+            target-options/make-context
+            target-options/required-context-keys]
            ["gnostica.move-selection.confirmation"
             confirmation/make-context
             confirmation/required-context-keys]]]
@@ -56,3 +76,27 @@
           (is (= :source-unavailable-reason (:dependency data)))
           (is (re-find #"context dependency is not callable"
                        (.getMessage ex))))))))
+
+(deftest extracted-state-selectors-stay-out-of-dynamic-contexts
+  (testing "flow uses direct state selectors before dynamic callbacks"
+    (let [ctx (flow/make-context (dummy-deps flow/required-context-keys))]
+      (is (= [:source] (flow/move-missing-fields ctx {}))))
+    (doseq [key [:active-power
+                 :current-player-piece-by-id
+                 :move-selection
+                 :rod-modes
+                 :selected-power
+                 :source-card
+                 :valid-board-index?
+                 :world-copy-board-cell]]
+      (is (not (contains? flow/required-context-keys key)))
+      (is (not (contains? flow-requirements/required-context-keys key)))))
+  (testing "command builders do not depend on state selector callbacks"
+    (doseq [key [:active-card
+                 :current-player-id
+                 :selected-power
+                 :selected-rod-variant
+                 :source-command
+                 :stored-fool-reveal-actions
+                 :world-move?]]
+      (is (not (contains? commands/required-context-keys key))))))

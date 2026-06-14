@@ -138,6 +138,7 @@
     :disc-action-count
     :sword-action-count
     :devil-action-count
+    :major-action-count
     :minion-orientation
     :fool-reveal-count
     :fool-reveals

@@ -382,7 +382,7 @@
         confirmed-db (app-handlers/confirm-move-db ready-db {:shuffle-seed 20260528})
         events (get-in confirmed-db [:move-selection :last-result :events])]
     (is (= :confirm (:stage (app-state/move-selection ready-db))))
-    (is (= :hangedman (get-in command [:reveals 0 :power])))
+    (is (= :hanged-man (get-in command [:reveals 0 :power])))
     (is (= [:fool/card-revealed :hanged-man/hands-traded]
            (mapv :type events)))
     (is (= indigo-hand-before

@@ -10,6 +10,9 @@
             [gnostica.game-state.manipulation :as game-state-manipulation]
             [gnostica.game-state.placement :as game-state-placement]
             [gnostica.game-state.rod :as game-state-rod]
+            [gnostica.game-state.setup.creation :as setup-creation]
+            [gnostica.game-state.setup.redraw :as setup-redraw]
+            [gnostica.game-state.setup.starting-bid :as setup-starting-bid]
             [gnostica.game-state.sword :as game-state-sword]
             [gnostica.game-state.world :as game-state-world]
             [gnostica.pieces :as pieces]
@@ -41,6 +44,17 @@
 (defn- seeding-error [result code]
   (some #(when (= code (:code %)) %)
         (get-in result [:error :data :errors])))
+
+(defn- resolve-two-player-starting-bid [rose-card-id indigo-card-id]
+  (let [deck-order (deck-with-cards-at {0 rose-card-id
+                                        game-state/starting-hand-size
+                                        indigo-card-id})
+        {:keys [state]} (game-state/create-game player-specs
+                                                {:deck-order deck-order})]
+    (game-state/resolve-starting-bid-rounds
+     state
+     {:rounds [{:rose rose-card-id
+                :indigo indigo-card-id}]})))
 
 (deftest creates-deterministic-initial-state
   (let [hand-count (hand-card-count (count player-specs))
@@ -292,6 +306,137 @@
     (is (false? (:ok? invalid-result)))
     (is (= :invalid-target-score
            (get-in invalid-result [:error :code])))))
+(deftest focused-setup-boundaries-compose-starting-bid-redraws
+  (let [deck-order (deck-with-cards-at {0 "cupsking"
+                                        game-state/starting-hand-size "fool"})
+        {base-ok? :ok?
+         base-state :state
+         base-events :events} (setup-creation/create-base-game
+                               player-specs
+                               {:deck-order deck-order})
+        bid-result (setup-starting-bid/resolve-starting-bid-rounds
+                    base-state
+                    {:rounds [{:rose "cupsking"
+                               :indigo "fool"}]})
+        redraw-result (setup-redraw/apply-bid-redraws
+                       (:state bid-result)
+                       (:bid-cards bid-result)
+                       (:redraw-order bid-result)
+                       {:rose ["fool"]
+                        :indigo ["cupsking"]})]
+    (is base-ok?)
+    (is (= [:game/created] (mapv :type base-events)))
+    (is (nil? (get-in base-state [:setup :starting-player-id])))
+    (is (:ok? bid-result))
+    (is (= :indigo (:winner-id bid-result)))
+    (is (= ["cupsking" "fool"] (mapv :id (:bid-cards bid-result))))
+    (is (= (setup-redraw/counterclockwise-redraw-order (:players base-state)
+                                                       :indigo)
+           (:redraw-order bid-result)))
+    (is (= 5 (count (get-in bid-result
+                            [:state :players-by-id :rose :hand]))))
+    (is (:ok? redraw-result))
+    (is (= [{:player-id :rose
+             :card-ids ["fool"]}
+            {:player-id :indigo
+             :card-ids ["cupsking"]}]
+           (:redraw-history redraw-result)))
+    (is (= ["fool"]
+           (take-last 1 (player-hand-ids (:state redraw-result) :rose))))
+    (is (= ["cupsking"]
+           (take-last 1 (player-hand-ids (:state redraw-result) :indigo))))))
+(deftest official-starting-bid-ranks_major_arcana_by_number
+  (doseq [{:keys [rose-card-id indigo-card-id winner-id winning-card-id
+                  winning-rank]}
+          [{:rose-card-id "fool"
+            :indigo-card-id "magician"
+            :winner-id :indigo
+            :winning-card-id "magician"
+            :winning-rank 1}
+           {:rose-card-id "hangedman"
+            :indigo-card-id "justice"
+            :winner-id :rose
+            :winning-card-id "hangedman"
+            :winning-rank 12}
+           {:rose-card-id "judgement"
+            :indigo-card-id "world"
+            :winner-id :indigo
+            :winning-card-id "world"
+            :winning-rank 21}]]
+    (let [result (resolve-two-player-starting-bid rose-card-id indigo-card-id)
+          round (first (:bid-history result))]
+      (is (:ok? result) [rose-card-id indigo-card-id])
+      (is (true? (:resolved? result)) [rose-card-id indigo-card-id])
+      (is (= winner-id (:winner-id result)) [rose-card-id indigo-card-id])
+      (is (= {:round 1
+              :bids {:rose rose-card-id
+                     :indigo indigo-card-id}
+              :considered-arcana :major
+              :winning-rank winning-rank
+              :tied-player-ids [winner-id]
+              :tied-card-ids [winning-card-id]
+              :winner-id winner-id
+              :winning-card-id winning-card-id}
+             round)
+          [rose-card-id indigo-card-id]))))
+(deftest official-starting-bid-ranks_full_minor_ladder
+  (doseq [[higher-rank lower-rank winning-rank]
+          [["king" "queen" 14]
+           ["queen" "knight" 13]
+           ["knight" "page" 12]
+           ["page" "10" 11]
+           ["10" "9" 10]
+           ["9" "8" 9]
+           ["8" "7" 8]
+           ["7" "6" 7]
+           ["6" "5" 6]
+           ["5" "4" 5]
+           ["4" "3" 4]
+           ["3" "2" 3]
+           ["2" "ace" 2]]
+          :let [higher-card-id (str "cups" higher-rank)
+                lower-card-id (str "swords" lower-rank)
+                result (resolve-two-player-starting-bid higher-card-id
+                                                        lower-card-id)
+                round (first (:bid-history result))]]
+    (is (:ok? result) [higher-card-id lower-card-id])
+    (is (= :rose (:winner-id result)) [higher-card-id lower-card-id])
+    (is (= :minor (:considered-arcana round)) [higher-card-id lower-card-id])
+    (is (= winning-rank (:winning-rank round)) [higher-card-id lower-card-id])
+    (is (= higher-card-id (:winning-card-id round))
+        [higher-card-id lower-card-id])))
+(deftest official-starting-bid-ties_same_minor_rank_across_suits
+  (doseq [[rank-key winning-rank]
+          [["ace" 1]
+           ["2" 2]
+           ["3" 3]
+           ["4" 4]
+           ["5" 5]
+           ["6" 6]
+           ["7" 7]
+           ["8" 8]
+           ["9" 9]
+           ["10" 10]
+           ["page" 11]
+           ["knight" 12]
+           ["queen" 13]
+           ["king" 14]]
+          :let [rose-card-id (str "cups" rank-key)
+                indigo-card-id (str "swords" rank-key)
+                result (resolve-two-player-starting-bid rose-card-id
+                                                        indigo-card-id)
+                round (first (:bid-history result))]]
+    (is (:ok? result) [rose-card-id indigo-card-id])
+    (is (false? (:resolved? result)) [rose-card-id indigo-card-id])
+    (is (= {:round 1
+            :bids {:rose rose-card-id
+                   :indigo indigo-card-id}
+            :considered-arcana :minor
+            :winning-rank winning-rank
+            :tied-player-ids [:rose :indigo]
+            :tied-card-ids [rose-card-id indigo-card-id]}
+           round)
+        [rose-card-id indigo-card-id])))
 (deftest official-starting-bid-can-make_a_major_bidder_start
   (let [deck-order (deck-with-cards-at {0 "cupsking"
                                         game-state/starting-hand-size "fool"})
@@ -350,15 +495,37 @@
                          {:rounds [{:rose "cupsking"
                                     :indigo "swordsking"}
                                    {:rose "cupsqueen"
-                                    :indigo "swords10"}]})]
+                                    :indigo "swords10"}]})
+        rebid-with-set-aside-cards-result
+        (game-state/resolve-starting-bid-rounds
+         state
+         {:rounds [{:rose "cupsking"
+                    :indigo "swordsking"}
+                   {:rose "cupsking"
+                    :indigo "swordsking"}]})]
     (is (:ok? tied-result))
     (is (false? (:resolved? tied-result)))
     (is (= [:rose :indigo]
            (get-in tied-result [:bid-history 0 :tied-player-ids])))
+    (is (= ["cupsking" "swordsking"]
+           (mapv :id (:bid-cards tied-result))))
     (is (= 5 (count (get-in tied-result
                             [:state :players-by-id :rose :hand]))))
     (is (not (some #{"cupsking"}
                    (player-hand-ids (:state tied-result) :rose))))
+    (is (not (some #{"swordsking"}
+                   (player-hand-ids (:state tied-result) :indigo))))
+    (is (false? (:ok? rebid-with-set-aside-cards-result)))
+    (is (= :invalid-bid-card
+           (get-in rebid-with-set-aside-cards-result [:error :code])))
+    (is (= {:round 2
+            :player-id :rose
+            :card-id "cupsking"}
+           (select-keys (get-in rebid-with-set-aside-cards-result [:error :data])
+                        [:round :player-id :card-id])))
+    (is (not (some #{"cupsking"}
+                   (get-in rebid-with-set-aside-cards-result
+                           [:error :data :hand-card-ids]))))
     (is (:ok? resolved-result))
     (is (true? (:resolved? resolved-result)))
     (is (= :rose (:winner-id resolved-result)))
@@ -421,6 +588,12 @@
             {:player-id :gold
              :card-ids ["coins2" "cups3"]}]
            (get-in state [:setup :bid-redraws])))
+    (is (= ["swordsking" "wandsqueen"]
+           (take-last 2 (player-hand-ids state :rose))))
+    (is (= ["world" "cupsking"]
+           (take-last 2 (player-hand-ids state :indigo))))
+    (is (= ["coins2" "cups3"]
+           (take-last 2 (player-hand-ids state :gold))))
     (is (every? #(= game-state/starting-hand-size (count (:hand %)))
                 (:players state)))
     (is (= (count cards/deck) (count (all-card-ids state))))

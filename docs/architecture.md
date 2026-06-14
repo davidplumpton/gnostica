@@ -4,15 +4,17 @@ This is the canonical prose map for Gnostica subsystem ownership. Keep
 `README.md` as a quick-start document, `AGENTS.md` as local workflow guidance,
 and `MIND_MAP.md` as a compact navigation index.
 
-The exact game rules are in `docs/rules.txt`. The exact command shapes are in
-`src/main/gnostica/game_state/command_contracts.cljc`. The exact semantic
-behavior is in the owning source namespace and its tests.
+The exact game rules are in `docs/rules.txt`. The exact command shapes are
+exposed through `src/main/gnostica/game_state/command_contracts.cljc`, with
+focused schema ownership under `game_state/command_contracts/`. The exact
+semantic behavior is in the owning source namespace and its tests.
 
 ## Public Boundaries
 
 - `gnostica.game-state` is the stable browser-free gameplay facade.
 - `gnostica.app-state` is the stable browser-free app-db facade.
 - `gnostica.move-selection` stages browser move choices and commands.
+- `gnostica.power-taxonomy` owns shared browser-free card power taxonomy.
 - `gnostica.gesture-intent` adapts direct gestures into staged moves.
 - `gnostica.app.ids` owns stable `:gnostica.app/...` keyword ids.
 - `gnostica.app.events` re-exports public UI event and subscription ids.
@@ -25,7 +27,29 @@ behavior is in the owning source namespace and its tests.
 `src/main/gnostica/game_state.cljc` re-exports public gameplay APIs. Focused
 implementation namespaces live under `src/main/gnostica/game_state/`.
 
-- `core` owns setup, deck accounting, players, turns, scores, and challenges.
+- `core` keeps compatibility aliases for existing gameplay helper callers.
+- `constants` owns browser-free player, hand, piece, phase, target-score, and
+  required-field constants.
+- `collections` owns generic collection helpers used across gameplay setup and
+  validation.
+- `players` owns player lookup, player-map rebuilding, player updates, history,
+  turn seeding, and current-player checks.
+- `hands` owns hand lookup, hand mutation, and discard-pile mutation.
+- `sources` owns compact source summaries and source-card cost application.
+- `pieces` owns stash accounting plus active-piece lookup, coordinates, and
+  mutation.
+- `shared` re-exports compatibility aliases for older focused helper callers.
+- `result` and `score` own structured result maps and score derivation.
+- `setup` keeps the public setup facade and game creation orchestration.
+- `setup.creation` owns player validation, base game construction, and the
+  initial hand and board deal.
+- `setup.starting-bid` owns official starting-bid ranking, ties, rebids, and
+  setup history.
+- `setup.redraw` owns bid-card redraw order, hand refill accounting, and
+  starting-player rotation.
+- `deck` owns deck validation, ordering, and draw-pile refresh validation.
+- `board-pieces` owns seeded board-piece validation and stash mirror rebuilding.
+- `turn` owns turn availability, challenge resolution, elimination, and endgame.
 - `placement` owns initial small-piece placement and orient-piece moves.
 - `draw` owns standalone draw/discard plus Fool, High Priestess, and Judgement.
 - `cup`, `rod`, `disc`, and `sword` own base suit validation and transitions.
@@ -35,8 +59,15 @@ implementation namespaces live under `src/main/gnostica/game_state/`.
 - `composite` owns Empress, Emperor, Lovers, Chariot, Hanged Man, Temperance.
 - `manipulation` owns Hierophant, Hermit, and Devil.
 - `world` delegates World copies to existing implemented powers.
-- `spatial` and `card_source` hold shared targeting and card-source helpers.
-- `command_contracts` owns Malli command and result schemas.
+- `spatial` owns coordinate math, board lookup, wasteland legality, territory
+  movement, and piece-space application.
+- `card_source` and `suit-target` hold shared move-resolution helpers.
+- `command_contracts` is the public Malli contract facade; its focused
+  subnamespaces own primitive/source/target schemas, suit schemas, full-card
+  schemas, delegated World/Fool validation, basic draw/orient/placement
+  commands, and result validation.
+- `gnostica.power-taxonomy` owns suit powers, implemented full-card powers,
+  card-id mapping, and World/Fool copied-play eligibility.
 
 Gameplay transitions should stay browser-free, return structured result maps,
 append compact history events, and preserve schema, deck, piece, and stash
@@ -51,7 +82,8 @@ and calls `gnostica.board/initial-board` with `identity` for the remaining board
 slice.
 
 Player ids come from `gnostica.pieces/players`. Target scores are 8, 9, or 10.
-Starting bids, hand refill, winner-first turn rotation, scores, challenge
+Optional starting bids are resolved by `setup.starting-bid`; bid-card refill and
+winner-first turn rotation are handled by `setup.redraw`. Scores, challenge
 resolution, failed-challenge elimination, and last-active-player wins are pure
 game-state behavior.
 
@@ -79,14 +111,22 @@ randomness inside `reg-event-db` paths.
 ## Move Selection and Gestures
 
 `gnostica.move-selection` is the staged browser-free move facade. Focused
-namespaces under `src/main/gnostica/move_selection/` own the registry, staging,
-flow, options, controls, legal targets, command building, confirmation, action
-ribbon, previews, and helper contexts.
+namespaces under `src/main/gnostica/move_selection/` own state selectors,
+active power context, source availability, prompt text, target option derivation,
+High Priestess redraw staging, target validation, selection update handlers, the
+registry, staging, flow requirements, stage mapping, sequence advancement,
+options, controls, legal targets, command building, confirmation, action ribbon,
+previews, and helper contexts.
 
-Keep power labels, card-to-power mapping, control kinds, command builder keys,
-transition facades, previewability, and renderer control keys in the registry.
-Detailed controls, direct gestures, CSS fallback, Three.js picking, card zones,
-and the pending tray should share `move-legal-targets` descriptors.
+Keep power labels, control kinds, command builder keys, transition facades,
+previewability, and renderer control keys in the registry. Card-to-power mapping
+and World/Fool copied-play eligibility come from `gnostica.power-taxonomy`.
+Move-panel control rendering is split across focused UI renderer namespaces under
+`gnostica.ui.move-panel.controls.*`, assembled by
+`gnostica.ui.move-panel.controls.registry`, and checked against
+`gnostica.ui.move-panel.renderer-registry`. Detailed controls, direct gestures,
+CSS fallback, Three.js picking, card zones, and the pending tray should share
+`move-legal-targets` descriptors.
 
 Direct manipulation follows `docs/direct_move_entry_spec.md`. Gestures stage
 choices without mutating `:game`; only confirmation applies gameplay results.

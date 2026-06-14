@@ -409,6 +409,87 @@
     (is (nil? (piece-by-id confirmed-db :indigo-rod-target)))
     (is (= ["moon"] (mapv :id (:discard-pile zones))))
     (is (game-schema/valid-game? (app-state/game confirmed-db)))))
+(deftest moon-hand-card-can-stage-rod-only
+  (let [db (app-state/initialize {:player-specs test-player-specs
+                                  :game-options {:deck-order (deck-starting-with ["moon"])}
+                                  :demo-board-pieces [rose-rod-minion
+                                                      indigo-rod-target]})
+        power-db (-> db
+                     (app-state/select-move-source :play-hand-card)
+                     (app-state/select-move-hand-card "moon")
+                     (app-state/select-move-piece :rose-rod-minion)
+                     (app-state/select-move-power :moon))
+        ready-db (-> power-db
+                     (app-state/set-move-major-action-count :rod-only)
+                     (app-state/select-move-rod-mode :move-minion)
+                     (app-state/set-move-distance 1)
+                     (app-state/set-move-orientation :up))
+        confirmed-db (app-state/confirm-move ready-db)
+        moved-piece (piece-by-id confirmed-db :rose-rod-minion)
+        zones (app-state/card-zones confirmed-db)]
+    (is (= [{:id :rod-only :label "Move only"}
+            {:id :sword-only :label "Attack only"}
+            {:id :both :label "Use both"}]
+           (get-in (app-state/move-panel-view power-db)
+                   [:controls :major-action-count-options])))
+    (is (= :both (get-in (app-state/move-panel-view power-db)
+                         [:controls :major-action-count])))
+    (is (= :confirm (:stage (app-state/move-selection ready-db))))
+    (is (= {:player-id :rose
+            :source {:kind :hand-card
+                     :card-id "moon"
+                     :piece-id :rose-rod-minion}
+            :rod {:mode :move-minion
+                  :distance 1
+                  :orientation :up
+                  :piece-id :rose-rod-minion}}
+           (app-state/move-command ready-db)))
+    (is (:ok? (get-in confirmed-db [:move-selection :last-result])))
+    (is (= {:id :rose-rod-minion
+            :player-id :rose
+            :space-index 4
+            :size :medium
+            :orientation :up}
+           moved-piece))
+    (is (some? (piece-by-id confirmed-db :indigo-rod-target)))
+    (is (= ["moon"] (mapv :id (:discard-pile zones))))
+    (is (game-schema/valid-game? (app-state/game confirmed-db)))))
+(deftest moon-hand-card-can-stage-sword-only
+  (let [db (app-state/initialize {:player-specs test-player-specs
+                                  :game-options {:deck-order (deck-starting-with ["moon"])}
+                                  :demo-board-pieces [rose-rod-minion
+                                                      indigo-rod-target]})
+        ready-db (-> db
+                     (app-state/select-move-source :play-hand-card)
+                     (app-state/select-move-hand-card "moon")
+                     (app-state/select-move-piece :rose-rod-minion)
+                     (app-state/select-move-power :moon)
+                     (app-state/set-move-major-action-count :sword-only)
+                     (app-state/select-move-sword-target-kind :piece)
+                     (app-state/select-move-target-piece :indigo-rod-target)
+                     (app-state/set-move-damage 1))
+        confirmed-db (app-state/confirm-move ready-db)
+        zones (app-state/card-zones confirmed-db)]
+    (is (= :confirm (:stage (app-state/move-selection ready-db))))
+    (is (= {:player-id :rose
+            :source {:kind :hand-card
+                     :card-id "moon"
+                     :piece-id :rose-rod-minion}
+            :sword {:target {:kind :piece
+                             :piece-id :indigo-rod-target}
+                    :damage 1
+                    :piece-id :rose-rod-minion}}
+           (app-state/move-command ready-db)))
+    (is (:ok? (get-in confirmed-db [:move-selection :last-result])))
+    (is (= {:id :rose-rod-minion
+            :player-id :rose
+            :space-index 3
+            :size :medium
+            :orientation :east}
+           (piece-by-id confirmed-db :rose-rod-minion)))
+    (is (nil? (piece-by-id confirmed-db :indigo-rod-target)))
+    (is (= ["moon"] (mapv :id (:discard-pile zones))))
+    (is (game-schema/valid-game? (app-state/game confirmed-db)))))
 (deftest rejected-sword-confirmation-keeps-staged-selection
   (let [deck-order (deck-with-cards-at {0 "swords2"
                                         1 "cups2"

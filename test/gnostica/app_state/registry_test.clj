@@ -1,6 +1,5 @@
 (ns gnostica.app-state.registry-test
-  (:require [clojure.java.io :as io]
-            [clojure.set :as set]
+  (:require [clojure.set :as set]
             [clojure.test :refer [deftest is testing]]
             [gnostica.app.handlers :as app-handlers]
             [gnostica.app.subscriptions :as app-subscriptions]
@@ -15,6 +14,7 @@
             [gnostica.gesture-input :as gesture-input]
             [gnostica.move-selection.registry :as move-registry]
             [gnostica.pieces :as pieces]
+            [gnostica.ui.move-panel.renderer-registry :as renderer-registry]
             [gnostica.test-support.app-db :refer [board-cell-by-index
                                                   discard-card-target
                                                   hand-card-target
@@ -29,17 +29,6 @@
                                                 deck-starting-with
                                                 deck-with-card-at
                                                 deck-with-cards-at]]))
-
-(defn- source-file [& path]
-  (apply io/file path))
-
-(defn- move-panel-control-renderer-keys []
-  (let [source (slurp (source-file "src/main/gnostica/ui/move_panel/controls.cljs"))
-        renderer-map-source (second (re-find #"(?s)\(def control-renderers\s+\{(.*?)\}\)"
-                                             source))]
-    (->> (re-seq #":([A-Za-z0-9*+!_\-?]+)\s+render-" renderer-map-source)
-         (map (comp keyword second))
-         set)))
 
 (deftest move-power-registry-covers-implemented-browser-powers
   (is (= (set move-registry/move-power-order)
@@ -126,7 +115,22 @@
 
 (deftest move-panel-ui-renderers-cover-registry-renderer-keys
   (let [registry-renderer-keys (move-registry/control-renderer-types)
-        ui-renderer-keys (move-panel-control-renderer-keys)]
+        ui-renderer-keys (renderer-registry/control-renderer-types)]
     (is (seq ui-renderer-keys))
     (is (= #{} (set/difference registry-renderer-keys ui-renderer-keys)))
     (is (= #{} (set/difference ui-renderer-keys registry-renderer-keys)))))
+
+(deftest move-panel-ui-renderer-registry-validates-renderer-map-shape
+  (let [renderer-map (zipmap renderer-registry/control-renderer-order
+                             (repeat identity))]
+    (is (= renderer-map
+           (renderer-registry/assert-control-renderers renderer-map)))
+    (is (= {:missing #{:target-space}
+            :unexpected #{}}
+           (renderer-registry/renderer-key-diff
+            (dissoc renderer-map :target-space))))
+    (is (thrown-with-msg?
+         clojure.lang.ExceptionInfo
+         #"Move panel renderer map does not match renderer registry"
+         (renderer-registry/assert-control-renderers
+          (assoc renderer-map :unexpected identity))))))

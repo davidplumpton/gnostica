@@ -1,0 +1,70 @@
+(ns gnostica.game-state.shared
+  (:require [gnostica.game-state.collections :as collections]
+            [gnostica.game-state.constants :as constants]
+            [gnostica.game-state.hands :as hands]
+            [gnostica.game-state.pieces :as piece-state]
+            [gnostica.game-state.players :as players]
+            [gnostica.game-state.sources :as sources]
+            [gnostica.game-state.spatial :as spatial]))
+
+(def min-players constants/min-players)
+(def max-players constants/max-players)
+(def starting-hand-size constants/starting-hand-size)
+(def pieces-per-size-in-stash constants/pieces-per-size-in-stash)
+(def initial-phase constants/initial-phase)
+(def finished-phase constants/finished-phase)
+(def default-target-score constants/default-target-score)
+(def allowed-target-scores constants/allowed-target-scores)
+(def required-player-fields constants/required-player-fields)
+(def required-card-fields constants/required-card-fields)
+
+(def valid-player-count? players/valid-player-count?)
+(def initial-stash piece-state/initial-stash)
+(def initial-stashes piece-state/initial-stashes)
+(def initial-turn players/initial-turn)
+(def rotate-vector-from-index collections/rotate-vector-from-index)
+(def current-player players/current-player)
+(def append-history players/append-history)
+(def rebuild-players-by-id players/rebuild-players-by-id)
+(def update-player players/update-player)
+(def duplicate-values collections/duplicate-values)
+
+(def board-cell-by-index spatial/board-cell-by-index)
+(def board-cell-at spatial/board-cell-at)
+(def wasteland-target spatial/wasteland-target)
+(def wasteland-target? spatial/wasteland-target?)
+(def legal-piece-coordinate? spatial/legal-piece-coordinate?)
+(def next-board-index spatial/next-board-index)
+(def move-territory-cell spatial/move-territory-cell)
+
+(def piece-by-id piece-state/piece-by-id)
+(def pieces-at-board-index piece-state/pieces-at-board-index)
+(def piece-coordinate piece-state/piece-coordinate)
+(def stash-count piece-state/stash-count)
+(def update-stash-count piece-state/update-stash-count)
+(def increment-stash piece-state/increment-stash)
+(def decrement-stash piece-state/decrement-stash)
+(def small-stash-count piece-state/small-stash-count)
+(def decrement-small-stash piece-state/decrement-small-stash)
+(def next-piece-id piece-state/next-piece-id)
+(def void-pieces piece-state/void-pieces)
+(def enemy-pieces-at-coordinate piece-state/enemy-pieces-at-coordinate)
+(def move-wasteland-pieces-to-board-index piece-state/move-wasteland-pieces-to-board-index)
+(def move-board-index-pieces-to-wasteland piece-state/move-board-index-pieces-to-wasteland)
+(def pieces-at-coordinate piece-state/pieces-at-coordinate)
+(def target-piece-territory-cell piece-state/target-piece-territory-cell)
+(def remove-piece-by-id piece-state/remove-piece-by-id)
+(def replace-piece-by-id piece-state/replace-piece-by-id)
+(def replace-piece piece-state/replace-piece)
+(def player-pieces piece-state/player-pieces)
+
+(def player-hand-card hands/player-hand-card)
+(def remove-card-from-hand hands/remove-card-from-hand)
+(def remove-cards-from-hand hands/remove-cards-from-hand)
+(def discard-card hands/discard-card)
+(def discard-cards hands/discard-cards)
+(def append-cards-to-hand hands/append-cards-to-hand)
+
+(def source-summary sources/source-summary)
+(def apply-source-cost sources/apply-source-cost)
+(def current-player-id? players/current-player-id?)

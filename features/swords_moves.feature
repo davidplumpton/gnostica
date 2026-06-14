@@ -39,6 +39,8 @@ Feature: Swords gameplay moves
     And there is no territory at row 0 col 0
     And piece rose-sword-territory-guard is in wasteland row 0 col 0 facing south
     And piece rose-outboard-minion is not on the board
+    And Rose has 4 small pieces in stash
+    And Rose has 4 medium pieces in stash
     And the discard pile contains exactly "cups2"
     And the history records a :sword/territory-destroyed event
     And the game state is schema valid

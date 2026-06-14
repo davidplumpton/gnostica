@@ -308,6 +308,12 @@
            (get-in invalid-source-result [:error :code])))
     (is (= :invalid-sword-target
            (get-in off-axis-result [:error :code])))
+    (is (= {:piece-id :indigo-off-axis-sword-target
+            :orientation :east
+            :source-coordinate {:row 1 :col 0}
+            :target-coordinate {:row 0 :col 0}
+            :expected-coordinate {:row 1 :col 1}}
+           (get-in off-axis-result [:error :data])))
     (is (= :invalid-sword-damage
            (get-in zero-damage-result [:error :code])))
     (is (= :invalid-sword-damage
@@ -316,8 +322,17 @@
            (get-in over-target-result [:error :code])))
     (is (= :invalid-orientation
            (get-in enemy-orientation-result [:error :code])))
+    (is (= {:piece-id :indigo-sword-target
+            :orientation :west}
+           (get-in enemy-orientation-result [:error :data])))
     (is (= :target-territory-occupied-by-enemy
            (get-in enemy-territory-result [:error :code])))
+    (is (= {:target {:kind :territory
+                     :board-index 4
+                     :row 1
+                     :col 1}
+            :enemy-piece-ids [:indigo-sword-target]}
+           (get-in enemy-territory-result [:error :data])))
     (is (= :invalid-sword-replacement
            (get-in piece-replacement-result [:error :code])))
     (is (= :invalid-orientation

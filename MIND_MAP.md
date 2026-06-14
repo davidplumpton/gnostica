@@ -18,7 +18,7 @@
 
 [7] **Rules and Authority** - Rules live in `docs/rules.txt`; command schemas, source, tests, and direct-move spec own implementation details [11][13][16][17].
 
-[8] **Gameplay State** - `gnostica.game-state` is the facade for setup, turns, scores, draw, suits, majors, schemas, and command contracts [11][13][14].
+[8] **Gameplay State** - `gnostica.game-state` is the facade; `core` keeps compatibility aliases while foundation namespaces (`constants`, `collections`, `players`, `hands`, `sources`, `pieces`, `spatial`, `shared`, `score`, `result`, `setup`, `deck`, `board-pieces`, `turn`, `suit-target`, `command-contracts.*`) own browser-free helpers/contracts; transition work belongs in owning namespaces (`placement`, `draw`, `cup`, `rod`, `disc`, `disc-major`, `sword`, `sword-major`, `major`, `composite`, `manipulation`, `world`, `card-source`) and matching tests [11][13][14][17].
 
 [9] **App State and UI** - `gnostica.app-state` is the app-db facade for ids, subscriptions, lobby, gestures, moves, panels, card zones, and handlers [11][13].
 
@@ -28,18 +28,18 @@
 
 [12] **Board and Rendering** - `board`, `board-layout`, `pieces`, `ui.board`, and `three-board` share stable board indexes and renderer data [9][11][15].
 
-[13] **Move Selection and Commands** - `move-selection`, registry, legal targets, builders, and schemas keep staged moves aligned with game facades [8][9][11].
+[13] **Move Selection and Commands** - `move-selection`, state selectors, active power context, source availability, prompts, target options, targeting, selection updates, High Priestess redraw staging, registry metadata, flow requirements/stages/advancement, legal targets, builders, schemas, `power-taxonomy`, focused `ui.move-panel.controls.*` renderers, and `ui.move-panel.renderer-registry` keep staged moves and move-panel renderers aligned with game facades; optional paired majors use generalized `:major-action-count`, Devil tests cover one/two/three orientation counts, and Moon target validation must allow sword-only commands without a prior Rod action [8][9][11][17].
 
-[14] **Setup, Scores, and Turns** - `create-game` deals hands before board setup, preserves deck accounting, supports bids, and keeps score/turns pure [7][8].
+[14] **Setup, Scores, and Turns** - `setup/create-game` orchestrates `setup.creation`, optional `setup.starting-bid`, and bid-card `setup.redraw`; `deck` preserves card accounting, `players`/`hands`/`pieces` own state mirrors, `score` derives control points, and `turn` keeps challenge/endgame flow pure [7][8].
 
 [15] **Fixtures and Smoke Modes** - `gnostica.fixtures` owns lobby/demo defaults, smoke data, query-param init; keep fixtures out of pure setup [9].
 
 [16] **Direct Move Entry** - The direct move spec is the manipulation contract; gestures stage data and preserve `:game` until confirmation [9][13].
 
-[17] **Tests and Features** - Tests live under `test/gnostica`, features under `features/`, and smoke runs the released browser app after release [8][10][15].
+[17] **Tests and Features** - Tests live under `test/gnostica`, features under `features/`; starting-bid coverage locks major ordering, the full minor ladder, same-rank ties, set-aside rebids, and redraw order; Magician wildcard regressions cover hand-source Cup/Rod/Disc/Sword plus territory activation with source accounting; Fool skipped reveal coverage locks skipped draw-pile cards to discard; Wheel draw-pile Cup Cucumber coverage includes a major territory result; void cleanup coverage locks stash return for non-minion pieces stranded by Sword territory destruction and Hermit relocation; smoke starts Ring over existing released assets by default, or targets `SMOKE_URL`, and never rebuilds JS [8][10][14][15].
 
 [18] **Documentation Ownership** - Docs: README quick start, AGENTS workflow, MIND_MAP navigation, architecture prose, and rules authority [6][7][10][11].
 
 [19] **Issue Tracking** - br-only tracker: start with `br ready`/`br show`, sync with `br sync --flush-only`, and keep `.beads/embeddeddolt` regular [10][20].
 
-[20] **Jujutsu Workflow** - Prefer `jj status`, `jj diff`, `jj describe`, `jj commit`, and `jj new`; avoid git-only flows unless requested or required [10][19].
+[20] **Jujutsu Workflow** - Prefer Jujutsu; inspect-only and tracker-only work should not create/split changes, while normal edits get a clear description before scoped work [10][19].

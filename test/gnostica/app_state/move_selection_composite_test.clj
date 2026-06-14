@@ -141,6 +141,50 @@
     (is (= ["lovers"] (mapv :id (:discard-pile zones))))
     (is (not (some #{"lovers"} (map :id (:hand zones)))))
     (is (game-schema/valid-game? (app-state/game confirmed-db)))))
+(deftest chariot-hand-card-can-stage-one-rod-action
+  (let [db (app-state/initialize
+            {:player-specs test-player-specs
+             :game-options {:deck-order (deck-starting-with ["chariot"])}
+             :demo-board-pieces [rose-rod-minion]})
+        power-db (-> db
+                     (app-state/select-move-source :play-hand-card)
+                     (app-state/select-move-hand-card "chariot")
+                     (app-state/select-move-piece :rose-rod-minion)
+                     (app-state/select-move-power :chariot))
+        one-action-db (app-state/set-move-major-action-count power-db 1)
+        ready-db (-> one-action-db
+                     (app-state/select-move-rod-mode :move-minion)
+                     (app-state/set-move-distance 1)
+                     (app-state/set-move-orientation :up))
+        confirmed-db (app-state/confirm-move ready-db)
+        moved-piece (piece-by-id confirmed-db :rose-rod-minion)
+        zones (app-state/card-zones confirmed-db)]
+    (is (= [{:id 1 :label "Use one"}
+            {:id 2 :label "Use both"}]
+           (get-in (app-state/move-panel-view power-db)
+                   [:controls :major-action-count-options])))
+    (is (= 2 (get-in (app-state/move-panel-view power-db)
+                     [:controls :major-action-count])))
+    (is (= :confirm (:stage (app-state/move-selection ready-db))))
+    (is (= {:player-id :rose
+            :source {:kind :hand-card
+                     :card-id "chariot"
+                     :piece-id :rose-rod-minion}
+            :actions [{:power :rod
+                       :mode :move-minion
+                       :distance 1
+                       :orientation :up
+                       :piece-id :rose-rod-minion}]}
+           (app-state/move-command ready-db)))
+    (is (:ok? (get-in confirmed-db [:move-selection :last-result])))
+    (is (= {:id :rose-rod-minion
+            :player-id :rose
+            :space-index 4
+            :size :medium
+            :orientation :up}
+           moved-piece))
+    (is (= ["chariot"] (mapv :id (:discard-pile zones))))
+    (is (game-schema/valid-game? (app-state/game confirmed-db)))))
 (deftest temperance-hand-card-filters-each-cup-action-to-the-target-space
   (let [db (app-state/initialize
             {:player-specs test-player-specs
@@ -171,6 +215,48 @@
     (is (= :invalid-cup-target
            (get-in invalid-second-db [:move-selection :error :code])))
     (is (= :target (:stage (app-state/move-selection invalid-second-db))))))
+(deftest temperance-hand-card-can-stage-one-cup-action
+  (let [db (app-state/initialize
+            {:player-specs test-player-specs
+             :game-options {:deck-order (deck-starting-with ["temperance"])}
+             :demo-board-pieces [rose-hand-cup-enemy-piece]})
+        power-db (-> db
+                     (app-state/select-move-source :play-hand-card)
+                     (app-state/select-move-hand-card "temperance")
+                     (app-state/select-move-piece :rose-striker)
+                     (app-state/select-move-power :temperance))
+        ready-db (-> power-db
+                     (app-state/set-move-major-action-count 1)
+                     (app-state/select-board-card 4)
+                     (app-state/set-move-orientation :north))
+        confirmed-db (app-state/confirm-move ready-db)
+        created-piece (piece-by-id confirmed-db :rose-small-1)
+        zones (app-state/card-zones confirmed-db)]
+    (is (= [{:id 1 :label "Use one"}
+            {:id 2 :label "Use both"}]
+           (get-in (app-state/move-panel-view power-db)
+                   [:controls :major-action-count-options])))
+    (is (= :confirm (:stage (app-state/move-selection ready-db))))
+    (is (= {:player-id :rose
+            :source {:kind :hand-card
+                     :card-id "temperance"
+                     :piece-id :rose-striker}
+            :actions [{:power :cup
+                       :piece-id :rose-striker
+                       :target {:kind :territory
+                                :board-index 4}
+                       :orientation :north}]}
+           (app-state/move-command ready-db)))
+    (is (:ok? (get-in confirmed-db [:move-selection :last-result])))
+    (is (= {:id :rose-small-1
+            :player-id :rose
+            :space-index 4
+            :size :small
+            :orientation :north}
+           created-piece))
+    (is (nil? (piece-by-id confirmed-db :rose-small-2)))
+    (is (= ["temperance"] (mapv :id (:discard-pile zones))))
+    (is (game-schema/valid-game? (app-state/game confirmed-db)))))
 (deftest hanged-man-hand-card-can-stage-hand-trade-only
   (let [hanged-target {:id :indigo-hanged-target
                        :player-id :indigo

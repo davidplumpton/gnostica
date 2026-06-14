@@ -1,6 +1,6 @@
 (ns gnostica.move-selection.registry
-  (:require [gnostica.cards :as cards]
-            [gnostica.game-state :as game-state]))
+  (:require [gnostica.game-state :as game-state]
+            [gnostica.power-taxonomy :as taxonomy]))
 
 (def move-source-order
   [:activate-territory
@@ -37,27 +37,19 @@
     :requirements [:target-space :orientation]}})
 
 (def copied-suit-powers
-  #{:cup :rod :disc :sword})
+  taxonomy/suit-power-set)
 
 (def composite-major-card-powers
-  {"empress" :empress
-   "emperor" :emperor
-   "lovers" :lovers
-   "chariot" :chariot
-   "hangedman" :hanged-man
-   "temperance" :temperance})
+  taxonomy/composite-major-card-powers)
 
 (def composite-major-powers
-  (set (vals composite-major-card-powers)))
+  taxonomy/composite-major-power-set)
 
 (def sword-major-card-powers
-  {"justice" :justice
-   "death" :death
-   "tower" :tower
-   "moon" :moon})
+  taxonomy/sword-major-card-powers)
 
 (def sword-major-powers
-  (set (vals sword-major-card-powers)))
+  taxonomy/sword-major-power-set)
 
 (def move-power-order
   [:empress :emperor :lovers :chariot :hanged-man :temperance
@@ -239,27 +231,13 @@
   (true? (:preview? (power-definition power))))
 
 (defn power-ids-for-card [card]
-  (when card
-    (cond-> []
-      (contains? composite-major-card-powers (:id card))
-      (conj (get composite-major-card-powers (:id card)))
-      (contains? sword-major-card-powers (:id card))
-      (conj (get sword-major-card-powers (:id card)))
-      (cards/cup-card? card) (conj :cup)
-      (cards/rod-card? card) (conj :rod)
-      (cards/disc-card? card) (conj :disc)
-      (= "sun" (:id card)) (conj :sun)
-      (cards/sword-card? card) (conj :sword)
-      (= "fool" (:id card)) (conj :fool)
-      (= "high-priestess" (:id card)) (conj :high-priestess)
-      (= "judgement" (:id card)) (conj :judgement)
-      (= "hierophant" (:id card)) (conj :hierophant)
-      (= "hermit" (:id card)) (conj :hermit)
-      (= "devil" (:id card)) (conj :devil)
-      (= "world" (:id card)) (conj :world))))
+  (taxonomy/powers-for-card card))
 
 (defn copied-power-ids-for-card [card]
-  (vec (remove #{:world} (power-ids-for-card card))))
+  (taxonomy/world-copied-power-ids-for-card card))
+
+(defn fool-play-power-ids-for-card [card]
+  (taxonomy/fool-play-power-ids-for-card card))
 
 (def control-renderer-order
   [:source-board

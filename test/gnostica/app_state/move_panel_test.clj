@@ -28,6 +28,9 @@
                                                 deck-with-card-at
                                                 deck-with-cards-at]]))
 
+(defn- control-group-types [view]
+  (mapv :type (:control-groups view)))
+
 (deftest move-panel-view-control-groups-track-staged-powers
   (let [composite-db (app-state/initialize
                       {:player-specs test-player-specs
@@ -94,6 +97,8 @@
     (is (= [{:type :hand-card}
             {:type :piece}
             {:type :power}
+            {:type :major-action-count
+             :power :moon}
             {:type :rod
              :power :moon
              :action-power :rod}]
@@ -101,6 +106,8 @@
     (is (= [{:type :hand-card}
             {:type :piece}
             {:type :power}
+            {:type :major-action-count
+             :power :moon}
             {:type :sword
              :power :moon
              :action-power :sword}]
@@ -147,6 +154,52 @@
              :power :empress
              :action-power :cup}]
            (move-control-group-summary world-cup-db)))))
+
+(deftest move-panel-view-supplies-renderable-control-data-by-renderer-category
+  (let [static-db (-> (app-state/initialize
+                       {:player-specs test-player-specs
+                        :game-options {:deck-order (deck-starting-with ["empress"])}
+                        :demo-board-pieces [rose-hand-piece]})
+                      (app-state/select-move-source :play-hand-card))
+        static-view (app-state/move-panel-view static-db)
+        compound-db (-> (app-state/initialize
+                         {:player-specs test-player-specs
+                          :game-options {:deck-order (deck-starting-with ["sun"])}
+                          :demo-board-pieces [rose-hand-cup-enemy-piece
+                                              rose-rod-target
+                                              indigo-rod-target]})
+                        (app-state/select-move-source :play-hand-card)
+                        (app-state/select-move-hand-card "sun")
+                        (app-state/select-move-piece :rose-striker)
+                        (app-state/select-move-power :sun)
+                        (app-state/select-move-target-piece :indigo-rod-target))
+        compound-view (app-state/move-panel-view compound-db)
+        world-db (app-state/initialize
+                  {:player-specs test-player-specs
+                   :game-options
+                   {:deck-order
+                    (deck-with-cards-at
+                     {0 "world"
+                      (board-card-position test-player-specs 3) "empress"})}
+                   :demo-board-pieces [(assoc rose-source-piece
+                                              :orientation :north)]})
+        world-copy-db (-> world-db
+                          (app-state/select-move-source :play-hand-card)
+                          (app-state/select-move-hand-card "world")
+                          (app-state/select-move-piece :rose-scout))
+        world-copy-view (app-state/move-panel-view world-copy-db)
+        world-power-view (app-state/move-panel-view
+                          (app-state/select-move-world-copy world-copy-db 3))]
+    (is (some #{:hand-card} (control-group-types static-view)))
+    (is (seq (get-in static-view [:controls :hand-options])))
+    (is (some #{:sun} (control-group-types compound-view)))
+    (is (seq (get-in compound-view [:controls :target-piece-options])))
+    (is (seq (get-in compound-view [:controls :target-board-options])))
+    (is (seq (get-in compound-view [:controls :sun-disc-mode-options])))
+    (is (some #{:world-copy} (control-group-types world-copy-view)))
+    (is (seq (get-in world-copy-view [:controls :world-copy-options])))
+    (is (some #{:world-copied-power} (control-group-types world-power-view)))
+    (is (seq (get-in world-power-view [:controls :world-copied-power-options])))))
 (deftest move-panel-subscription-view-matches-app-state-facade
   (let [composite-db (app-state/initialize
                       {:player-specs test-player-specs
@@ -292,7 +345,28 @@
                                  (app-state/select-move-hand-card "hangedman")
                                  (app-state/select-move-piece :rose-rod-minion)
                                  (app-state/select-move-power :hanged-man)
-                                 (app-state/set-move-major-action-count 1))]
+                                 (app-state/set-move-major-action-count 1))
+        chariot-db (app-state/initialize
+                    {:player-specs test-player-specs
+                     :game-options {:deck-order (deck-starting-with ["chariot"])}
+                     :demo-board-pieces [rose-rod-minion]})
+        chariot-one-action-db (-> chariot-db
+                                  (app-state/select-move-source :play-hand-card)
+                                  (app-state/select-move-hand-card "chariot")
+                                  (app-state/select-move-piece :rose-rod-minion)
+                                  (app-state/select-move-power :chariot)
+                                  (app-state/set-move-major-action-count 1))
+        moon-db (app-state/initialize
+                 {:player-specs test-player-specs
+                  :game-options {:deck-order (deck-starting-with ["moon"])}
+                  :demo-board-pieces [rose-rod-minion
+                                      indigo-rod-target]})
+        moon-sword-only-db (-> moon-db
+                               (app-state/select-move-source :play-hand-card)
+                               (app-state/select-move-hand-card "moon")
+                               (app-state/select-move-piece :rose-rod-minion)
+                               (app-state/select-move-power :moon)
+                               (app-state/set-move-major-action-count :sword-only))]
     (is (= [{:power :trade-hand
              :status :active}
             {:power :sword
@@ -311,6 +385,18 @@
              :status :active}]
            (action-ribbon-step-summary
             (app-state/move-panel-view hanged-trade-only-db))))
+    (is (= [{:power :rod
+             :status :active}
+            {:power :rod
+             :status :skipped}]
+           (action-ribbon-step-summary
+            (app-state/move-panel-view chariot-one-action-db))))
+    (is (= [{:power :rod
+             :status :skipped}
+            {:power :sword
+             :status :active}]
+           (action-ribbon-step-summary
+            (app-state/move-panel-view moon-sword-only-db))))
     (is (= [{:id 1 :label "Trade only"}
             {:id 2 :label "Use both"}]
            (get-in (app-state/move-panel-view justice-power-db)

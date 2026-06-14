@@ -1,4 +1,6 @@
-(ns gnostica.game-state.spatial)
+(ns gnostica.game-state.spatial
+  (:require [gnostica.board :as board]
+            [gnostica.board-layout :as board-layout]))
 
 (def cardinal-direction-offsets
   {:north [-1 0]
@@ -51,6 +53,54 @@
 
 (defn target-summary [target]
   (select-keys target [:kind :piece-id :board-index :row :col]))
+
+(defn board-cell-by-index [state board-index]
+  (some (fn [cell]
+          (when (= board-index (:index cell))
+            cell))
+        (:board state)))
+
+(defn board-cell-at [state row col]
+  (some (fn [cell]
+          (when (and (= row (:row cell))
+                     (= col (:col cell)))
+            cell))
+        (:board state)))
+
+(defn wasteland-target [target]
+  (when (and (map? target)
+             (= :wasteland (:kind target))
+             (int? (:row target))
+             (int? (:col target)))
+    (select-keys target [:kind :row :col])))
+
+(defn wasteland-target? [state target]
+  (boolean
+   (some (fn [space]
+           (and (= (:row target) (:row space))
+                (= (:col target) (:col space))))
+         (board-layout/wasteland-spaces (:board state)))))
+
+(defn legal-piece-coordinate? [state [row col]]
+  (or (some? (board-cell-at state row col))
+      (wasteland-target? state {:kind :wasteland
+                                :row row
+                                :col col})))
+
+(defn next-board-index [state]
+  (inc (apply max -1 (map :index (:board state)))))
+
+(defn move-territory-cell [state board-index row col]
+  (update state :board
+          (fn [cells]
+            (mapv (fn [cell]
+                    (if (= board-index (:index cell))
+                      (assoc cell
+                             :row row
+                             :col col
+                             :orientation (board/orientation-for row col))
+                      cell))
+                  cells))))
 
 (defn move-piece-to-space [piece piece-space orientation]
   (let [piece (cond-> piece

@@ -71,6 +71,24 @@
                    :last-result result)
       (:ok? result) (assoc :state (:state result)))))
 
+(defn create-official-starting-bid-rank-game
+  [world rose-card-id indigo-card-id]
+  (let [specs (player-specs 2)
+        result (game-state/create-game
+                specs
+                {:deck-order (deck-with-cards-at {0 rose-card-id
+                                                  game-state/starting-hand-size
+                                                  indigo-card-id})
+                 :starting-bids
+                 {:rounds [{:rose rose-card-id
+                            :indigo indigo-card-id}]
+                  :redraws {:rose [indigo-card-id]
+                            :indigo [rose-card-id]}}})]
+    (cond-> (assoc world
+                   :player-specs specs
+                   :last-result result)
+      (:ok? result) (assoc :state (:state result)))))
+
 (defn deck-with-board-card [player-count board-index card-id]
   (let [card (cards/card-by-id card-id)
         other-cards (vec (remove #(= card-id (:id %)) cards/deck))
@@ -744,25 +762,32 @@
                            :target-board-index 4
                            :cup-variant :cup-unbounded}))))
 
-(defn create-wheel-cup-draw-pile-wasteland-game [world board-index orientation]
-  (let [draw-start (board-deck-position 2 9)
-        world (create-game-with-options
-               world
-               {:deck-order (deck-with-cards-at
-                             {(board-deck-position 2 board-index) "wheeloffortune"
-                              draw-start "coins2"})})
-        draw-card (first (get-in world [:state :draw-pile]))
-        minion (assoc rose-cup-minion
-                      :space-index board-index
-                      :orientation orientation)]
-    (-> world
-        (put-pieces [minion])
-        (with-cup-fixture {:source-kind :territory
-                           :source-board-index board-index
-                           :source-card-id "wheeloffortune"
-                           :piece-id :rose-cup-minion
-                           :cup-variant :wheel-cup
-                           :draw-pile-card-id (:id draw-card)}))))
+(defn create-wheel-cup-draw-pile-wasteland-game
+  ([world board-index orientation]
+   (create-wheel-cup-draw-pile-wasteland-game
+    world
+    board-index
+    orientation
+    "coins2"))
+  ([world board-index orientation draw-pile-card-id]
+   (let [draw-start (board-deck-position 2 9)
+         world (create-game-with-options
+                world
+                {:deck-order (deck-with-cards-at
+                              {(board-deck-position 2 board-index) "wheeloffortune"
+                               draw-start draw-pile-card-id})})
+         draw-card (first (get-in world [:state :draw-pile]))
+         minion (assoc rose-cup-minion
+                       :space-index board-index
+                       :orientation orientation)]
+     (-> world
+         (put-pieces [minion])
+         (with-cup-fixture {:source-kind :territory
+                            :source-board-index board-index
+                            :source-card-id "wheeloffortune"
+                            :piece-id :rose-cup-minion
+                            :cup-variant :wheel-cup
+                            :draw-pile-card-id (:id draw-card)})))))
 
 (defn create-sword-hand-card-piece-game
   [world minion-board-index minion-orientation target-size target-board-index target-orientation]
@@ -1177,6 +1202,10 @@
 (defn player-piece-count [world player-id]
   (count (filter #(= player-id (:player-id %))
                  (state-at world [:pieces :on-board]))))
+
+(defn player-stash-counts [world player-id size]
+  {:player-stash (get-in (:state world) [:players-by-id player-id :stash size])
+   :piece-stash (get-in (:state world) [:pieces :stashes player-id size])})
 
 (defn discard-ids [world]
   (mapv :id (state-at world [:discard-pile])))

@@ -1,36 +1,21 @@
 (ns gnostica.move-selection.commands
   (:require [gnostica.move-selection.context :as context]
-            [gnostica.move-selection.registry :as registry]))
+            [gnostica.move-selection.registry :as registry]
+            [gnostica.move-selection.power-context :as power]
+            [gnostica.move-selection.state :as selection]))
 
 (def required-context-keys
-  #{:active-card
-    :active-power
-    :completed-major-actions
-    :composite-current-action
-    :current-player-id
+  #{:composite-current-action
     :devil-current-action
     :fool-command-map
-    :move-selection
     :normalize-high-priestess-redraws
-    :selected-cup-variant
-    :selected-disc-action-count
     :selected-disc-replacement-card-source
-    :selected-disc-variant
-    :selected-power
-    :selected-rod-variant
     :selected-sword-replacement-card-source
-    :selected-sword-variant
-    :selected-world-copied-power
-    :source-command
-    :star-disc-source?
-    :stored-fool-reveal-actions
-    :strength-disc-source?
     :sword-major-current-action
     :sword-orientation-available?
     :sword-replacement-card-source-option-ids
     :valid-discard-card-ids
-    :valid-judgement-card-ids
-    :world-move?})
+    :valid-judgement-card-ids})
 
 (defn make-context [deps]
   (context/make "gnostica.move-selection.commands" required-context-keys deps))
@@ -59,9 +44,9 @@
               :board-index (:target-board-index params)}
      :orientation (:orientation params)}))
 
-(defn- cup-command [ctx db source params]
+(defn- cup-command [_ctx db source params]
   (assoc (cup-target-command params)
-         :cup-variant (call ctx :selected-cup-variant db source params)))
+         :cup-variant (power/selected-cup-variant db source params)))
 
 (defn- sun-cup-command [params]
   (let [cup-target (cup-target-command params)]
@@ -138,8 +123,8 @@
     :push-territory {:target {:kind :territory
                               :board-index (:target-board-index params)}}))
 
-(defn rod-command [ctx db source params]
-  (let [rod-variant (call ctx :selected-rod-variant db source params)]
+(defn rod-command [_ctx db source params]
+  (let [rod-variant (power/selected-rod-variant db source params)]
     (cond-> (merge {:mode (:rod-mode params)
                     :distance (:distance params)}
                    (rod-target-command params))
@@ -173,16 +158,16 @@
 
 (defn- strength-disc-command [ctx db source params]
   (let [action (disc-target-command ctx db source params)
-        action-count (call ctx :selected-disc-action-count db source params)]
-    {:disc-variant (call ctx :selected-disc-variant db source params)
+        action-count (power/selected-disc-action-count db source params)]
+    {:disc-variant (power/selected-disc-variant db source params)
      :disc-actions (vec (repeat action-count action))}))
 
 (defn- disc-command [ctx db source params]
-  (if (call ctx :strength-disc-source? db source params)
+  (if (power/strength-disc-source? db source params)
     (strength-disc-command ctx db source params)
     (cond-> (assoc (disc-target-command ctx db source params)
-                   :disc-variant (call ctx :selected-disc-variant db source params))
-      (and (call ctx :star-disc-source? db source params)
+                   :disc-variant (power/selected-disc-variant db source params))
+      (and (power/star-disc-source? db source params)
            (:minion-orientation params))
       (assoc :minion-orientation (:minion-orientation params)))))
 
@@ -210,18 +195,18 @@
     {}))
 
 (defn sword-command [ctx db source params]
-  (let [sword-variant (call ctx :selected-sword-variant db source params)]
+  (let [sword-variant (power/selected-sword-variant db source params)]
     (cond-> (sword-target-command ctx db source params)
       sword-variant
       (assoc :sword-variant sword-variant))))
 
 (defn- sword-major-command [ctx db source params]
   (let [actions (vec (remove nil?
-                             (conj (call ctx :completed-major-actions params)
+                             (conj (power/completed-major-actions params)
                                    (call ctx :sword-major-current-action db source params))))
         action-by-power (fn [power]
                           (some #(when (= power (:power %)) %) actions))]
-    (case (call ctx :active-power db source params)
+    (case (power/active-power db source params)
       :justice
       (cond-> {:hand-trade-target (:target (action-by-power :trade-hand))}
         (action-by-power :sword)
@@ -235,14 +220,18 @@
              (sword-command ctx db source params))
 
       :moon
-      {:rod (dissoc (action-by-power :rod) :power)
-       :sword (dissoc (call ctx :sword-major-current-action db source params) :power)}
+      (cond-> {}
+        (action-by-power :rod)
+        (assoc :rod (dissoc (action-by-power :rod) :power))
+
+        (action-by-power :sword)
+        (assoc :sword (dissoc (action-by-power :sword) :power)))
 
       {})))
 
 (defn- fool-command [ctx _db _source params]
   ((value ctx :fool-command-map) params
-                                 (call ctx :stored-fool-reveal-actions params)))
+                                 (power/stored-fool-reveal-actions params)))
 
 (defn- high-priestess-command [ctx db source params]
   {:redraws (vec (:redraws (call ctx :normalize-high-priestess-redraws
@@ -256,21 +245,21 @@
 
 (defn- devil-command [ctx db source params]
   (let [actions (vec (remove nil?
-                             (conj (call ctx :completed-major-actions params)
+                             (conj (power/completed-major-actions params)
                                    (call ctx :devil-current-action db source params))))]
     (if (< 1 (count actions))
       {:actions actions}
       (piece-orientation-command params))))
 
-(defn- unavailable-power-command [ctx db _source params power]
-  (let [card (call ctx :active-card db _source params)]
+(defn- unavailable-power-command [_ctx db _source params power]
+  (let [card (power/active-card db _source params)]
     (cond-> {:power power}
       card
       (assoc :card-id (:id card)))))
 
 (defn- composite-major-command [ctx db source params]
   {:actions (vec (remove nil?
-                         (conj (call ctx :completed-major-actions params)
+                         (conj (power/completed-major-actions params)
                                (call ctx :composite-current-action db source params))))})
 
 (def ^:private power-command-builders
@@ -297,7 +286,7 @@
 
 (defn- world-command-for-power [ctx db source params power]
   (let [power (or power
-                  (call ctx :selected-world-copied-power db source params))
+                  (power/selected-world-copied-power db source params))
         command (gameplay-power-command-for-power ctx db source params power)]
     (cond-> (assoc command :copied-board-index (:copied-board-index params))
       power
@@ -307,26 +296,26 @@
   (world-command-for-power ctx db source params nil))
 
 (defn- gameplay-power-command [ctx db source params]
-  (if (call ctx :world-move? db source params)
+  (if (power/world-move? db source params)
     (world-command ctx db source params)
     (gameplay-power-command-for-power ctx
                                       db
                                       source
                                       params
-                                      (call ctx :selected-power db source params))))
+                                      (power/selected-power db source params))))
 
 (defn gameplay-command-for-power [ctx db source params power]
   (when source
-    (merge {:player-id (call ctx :current-player-id db)
-            :source (call ctx :source-command source params)}
-           (if (call ctx :world-move? db source params)
+    (merge {:player-id (selection/current-player-id db)
+            :source (selection/source-command source params)}
+           (if (power/world-move? db source params)
              (world-command-for-power ctx db source params power)
              (gameplay-power-command-for-power ctx db source params power)))))
 
 (defn gameplay-command [ctx db source params]
   (when source
-    (merge {:player-id (call ctx :current-player-id db)
-            :source (call ctx :source-command source params)}
+    (merge {:player-id (selection/current-player-id db)
+            :source (selection/source-command source params)}
            (gameplay-power-command ctx db source params))))
 
 (defn rod-resolver-command [ctx db source params]
@@ -344,7 +333,7 @@
       command)))
 
 (defn sword-resolver-command [ctx db source params]
-  (let [power (call ctx :active-power db source params)
+  (let [power (power/active-power db source params)
         command (gameplay-command-for-power
                  ctx
                  db
@@ -362,15 +351,15 @@
              action)
       command)))
 
-(defn sun-disc-resolver-command [ctx db source params]
+(defn sun-disc-resolver-command [_ctx db source params]
   (when-let [disc-command (sun-disc-command params)]
-    (merge {:player-id (call ctx :current-player-id db)
-            :source (call ctx :source-command source params)
+    (merge {:player-id (selection/current-player-id db)
+            :source (selection/source-command source params)
             :disc-variant :disc}
            disc-command)))
 
 (defn move-command [ctx db]
-  (let [{:keys [source params]} (call ctx :move-selection db)]
+  (let [{:keys [source params]} (selection/move-selection db)]
     (when source
       (case source
         :activate-territory
@@ -381,22 +370,22 @@
 
         :draw-cards
         {:source :draw-cards
-         :player-id (call ctx :current-player-id db)
+         :player-id (selection/current-player-id db)
          :discard-card-ids (call ctx :valid-discard-card-ids db (:discard-card-ids params))
          :draw-count (:draw-count params)}
 
         :orient-piece
         {:source :orient-piece
-         :player-id (call ctx :current-player-id db)
+         :player-id (selection/current-player-id db)
          :piece-id (:piece-id params)
          :orientation (:orientation params)}
 
         :place-initial-small
         {:source :place-initial-small
-         :player-id (call ctx :current-player-id db)
+         :player-id (selection/current-player-id db)
          :target (initial-placement-target-command params)
          :orientation (:orientation params)}
 
         {:source source
-         :player-id (call ctx :current-player-id db)
+         :player-id (selection/current-player-id db)
          :params params}))))

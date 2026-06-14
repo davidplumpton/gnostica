@@ -26,3 +26,20 @@ Feature: Initial game setup
     And the bid redraw order is "Indigo", "Rose", "Gold"
     And each player has 6 cards in hand
     And every tarot card is accounted for exactly once
+
+  Scenario Outline: Official starting bid ranking follows the tarot ladder
+    Given an official starting-bid rank game where Rose bids "<rose-bid>" and Indigo bids "<indigo-bid>"
+    Then the game state is schema valid
+    And <winner> is the starting player
+    And the winning bid card is "<winning-bid>" with <arcana> rank <rank>
+    And the bid redraw order is "<redraw-first>", "<winner>"
+    And each player has 6 cards in hand
+    And every tarot card is accounted for exactly once
+
+    Examples:
+      | rose-bid  | indigo-bid  | winner | winning-bid | arcana | rank | redraw-first |
+      | fool      | magician    | Indigo | magician    | major  | 1    | Rose         |
+      | hangedman | justice     | Rose   | hangedman   | major  | 12   | Indigo       |
+      | judgement | world       | Indigo | world       | major  | 21   | Rose         |
+      | cupsqueen | swordsknight | Rose   | cupsqueen   | minor  | 13   | Indigo       |
+      | cupsace   | swords2     | Indigo | swords2     | minor  | 2    | Rose         |

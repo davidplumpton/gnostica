@@ -2,7 +2,7 @@
   (:require [gnostica.cards :as cards]
             [gnostica.game-state.card-source :as card-source]
             [gnostica.game-state.core :as core]
-            [gnostica.game-state.spatial :as spatial]
+            [gnostica.game-state.suit-target :as suit-target]
             [gnostica.pieces :as pieces]))
 
 (def disc-territory-card-sources #{:hand :discard-pile})
@@ -52,15 +52,7 @@
          (= (+ original-value action-count) replacement-value))))
 
 (defn disc-target-coordinate [coordinate orientation]
-  (spatial/target-coordinate coordinate orientation))
-
-(defn- disc-targetable-coordinate? [actor-coordinate target-coordinate orientation target-self?]
-  (or target-self?
-      (spatial/same-coordinate? target-coordinate
-                                (disc-target-coordinate actor-coordinate orientation))))
-
-(defn- territory-target-cell [state target]
-  (card-source/territory-target-cell state target disc-source-config))
+  (suit-target/target-coordinate coordinate orientation))
 
 (defn- resolve-disc-source
   ([state player-id source disc-variant]
@@ -96,129 +88,51 @@
     {:ok? true
      :orientation orientation}))
 
-(defn- normalize-disc-piece-target [state player-id source-result target-piece requested-orientation]
-  (let [{:keys [piece]
-         source-orientation :orientation
-         source-coordinate :piece-coordinate} source-result
-        target-coordinate (spatial/coordinate-map (core/piece-coordinate state target-piece))
-        target-self? (= (:id piece) (:id target-piece))]
-    (cond
-      (nil? target-coordinate)
-      (core/failure :invalid-piece-space
-                    "Disc piece targets must have a board coordinate."
-                    {:piece-id (:id target-piece)
-                     :space-index (:space-index target-piece)
-                     :space (:space target-piece)})
-
-      (not (disc-targetable-coordinate? source-coordinate
-                                        target-coordinate
-                                        source-orientation
-                                        target-self?))
-      (core/failure :invalid-disc-target
-                    "Disc piece targets must be the minion itself, occupy the current space for upright minions, or occupy the adjacent space in the minion direction."
-                    {:piece-id (:id target-piece)
-                     :orientation source-orientation
-                     :source-coordinate source-coordinate
-                     :target-coordinate target-coordinate
-                     :expected-coordinate (disc-target-coordinate source-coordinate source-orientation)})
-
-      :else
-      (let [orientation-result (resolve-disc-orientation player-id target-piece requested-orientation)
-            target-cell (core/target-piece-territory-cell state target-piece)]
+(def disc-target-config
+  (merge
+   (select-keys disc-source-config [:suit-label :invalid-target-code])
+   {:target-coordinate-fn disc-target-coordinate
+    :target-map-error-message "Disc moves require a target map."
+    :piece-id-error-message "Disc piece targets require a target piece id."
+    :piece-missing-error-message
+    "Disc piece targets must reference a piece on the board."
+    :piece-space-error-message
+    "Disc piece targets must have a board coordinate."
+    :piece-coordinate-error-message
+    "Disc piece targets must be the minion itself, occupy the current space for upright minions, or occupy the adjacent space in the minion direction."
+    :territory-orientation-error-message
+    "Disc territory growth does not take a piece orientation."
+    :territory-coordinate-error-message
+    "Disc territory targets must be the current space for upright minions or the adjacent space in the minion direction."
+    :territory-occupied-error-message
+    "Disc territory growth cannot target a territory occupied by enemy pieces."
+    :target-kind-error-message "Disc move targets must be :piece or :territory."
+    :piece-success-fn
+    (fn [{:keys [player-id target-piece target-map target-options]}]
+      (let [orientation-result (resolve-disc-orientation
+                                player-id
+                                target-piece
+                                (:orientation target-options))]
         (if (:ok? orientation-result)
           {:ok? true
-           :target (cond-> {:kind :piece
-                            :piece-id (:id target-piece)
-                            :player-id (:player-id target-piece)
-                            :row (:row target-coordinate)
-                            :col (:col target-coordinate)}
-                     target-cell
-                     (assoc :board-index (:index target-cell))
-
+           :target (cond-> target-map
                      (:orientation orientation-result)
                      (assoc :orientation (:orientation orientation-result)))
            :target-piece target-piece}
-          orientation-result)))))
-
-(defn- normalize-disc-territory-target [state player-id source-result target requested-orientation]
-  (if (some? requested-orientation)
-    (core/failure :invalid-orientation
-                  "Disc territory growth does not take a piece orientation."
-                  {:orientation requested-orientation
-                   :target target})
-    (let [cell-result (territory-target-cell state target)]
-      (if (:ok? cell-result)
-        (let [cell (:cell cell-result)
-              cell-coordinate (select-keys cell [:row :col])
-              {:keys [piece-coordinate]
-               source-orientation :orientation} source-result
-              enemy-pieces (core/enemy-pieces-at-coordinate state
-                                                            player-id
-                                                            (:row cell)
-                                                            (:col cell))]
-          (cond
-            (not (disc-targetable-coordinate? piece-coordinate
-                                              cell-coordinate
-                                              source-orientation
-                                              false))
-            (core/failure :invalid-disc-target
-                          "Disc territory targets must be the current space for upright minions or the adjacent space in the minion direction."
-                          {:target target
-                           :orientation source-orientation
-                           :source-coordinate piece-coordinate
-                           :target-coordinate cell-coordinate
-                           :expected-coordinate (disc-target-coordinate piece-coordinate source-orientation)})
-
-            (seq enemy-pieces)
-            (core/failure :target-territory-occupied-by-enemy
-                          "Disc territory growth cannot target a territory occupied by enemy pieces."
-                          {:target {:kind :territory
-                                    :board-index (:index cell)
-                                    :row (:row cell)
-                                    :col (:col cell)}
-                           :enemy-piece-ids (mapv :id enemy-pieces)})
-
-            :else
-            {:ok? true
-             :target {:kind :territory
-                      :board-index (:index cell)
-                      :row (:row cell)
-                      :col (:col cell)}
-             :target-cell cell}))
-        cell-result))))
+          orientation-result)))
+    :territory-success-fn
+    (fn [{:keys [target-cell target-map]}]
+      {:ok? true
+       :target target-map
+       :target-cell target-cell})}))
 
 (defn- resolve-disc-target [state player-id source-result target orientation]
-  (cond
-    (not (map? target))
-    (core/failure :invalid-disc-target
-                  "Disc moves require a target map."
-                  {:target target})
-
-    (= :piece (:kind target))
-    (cond
-      (nil? (:piece-id target))
-      (core/failure :invalid-disc-target
-                    "Disc piece targets require a target piece id."
-                    {:target target})
-
-      :else
-      (if-let [target-piece (core/piece-by-id state (:piece-id target))]
-        (normalize-disc-piece-target state
-                                     player-id
-                                     source-result
-                                     target-piece
-                                     orientation)
-        (core/failure :invalid-target-piece
-                      "Disc piece targets must reference a piece on the board."
-                      {:target target})))
-
-    (= :territory (:kind target))
-    (normalize-disc-territory-target state player-id source-result target orientation)
-
-    :else
-    (core/failure :invalid-disc-target
-                  "Disc move targets must be :piece or :territory."
-                  {:target (spatial/target-summary target)})))
+  (suit-target/resolve-target state
+                              player-id
+                              source-result
+                              target
+                              {:orientation orientation}
+                              disc-target-config))
 
 (defn- resolve-replacement-card-options
   [source-result target replacement-card-source replacement-card-id]

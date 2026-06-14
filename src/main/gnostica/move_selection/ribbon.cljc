@@ -32,6 +32,7 @@
     :selected-fool-reveal-count
     :selected-hand-trade-major-action-count
     :selected-high-priestess-redraw-count
+    :selected-major-action-count
     :selected-power
     :selected-sun-disc-mode
     :selected-world-copied-power
@@ -145,6 +146,15 @@
            [[] 0]
            items)))
 
+(defn- optional-paired-action-plan [power selected detail]
+  (if (= 1 selected)
+    [{:power power}
+     {:power power
+      :skipped? true
+      :detail detail}]
+    [{:power power}
+     {:power power}]))
+
 (defn- composite-action-plan [ctx db source-id params]
   (indexed-action-plan
    (case (call ctx :active-power db source-id params)
@@ -154,8 +164,10 @@
                {:power :rod}]
      :lovers [{:power :rod}
               {:power :cup}]
-     :chariot [{:power :rod}
-               {:power :rod}]
+     :chariot (optional-paired-action-plan
+               :rod
+               (call ctx :selected-major-action-count db source-id params)
+               "Use one")
      :hanged-man (if (= 1 (call ctx
                                 :selected-hand-trade-major-action-count
                                 db
@@ -167,9 +179,26 @@
                     {:power :trade-hand}]
                    [{:power :rod}
                     {:power :trade-hand}])
-     :temperance [{:power :cup}
-                  {:power :cup}]
+     :temperance (optional-paired-action-plan
+                  :cup
+                  (call ctx :selected-major-action-count db source-id params)
+                  "Use one")
      [])))
+
+(defn- moon-action-plan [ctx db source-id params]
+  (case (call ctx :selected-major-action-count db source-id params)
+    :rod-only [{:power :rod}
+               {:power :sword
+                :skipped? true
+                :detail "Move only"}]
+    :sword-only [{:power :rod
+                  :skipped? true
+                  :detail "Attack only"}
+                 {:power :sword}]
+    :both [{:power :rod}
+           {:power :sword}]
+    [{:power :rod}
+     {:power :sword}]))
 
 (defn- sword-major-action-plan [ctx db source-id params]
   (indexed-action-plan
@@ -189,8 +218,7 @@
                          {:power :sword}))
      :tower [{:power :orient-minion}
              {:power :sword}]
-     :moon [{:power :rod}
-            {:power :sword}]
+     :moon (moon-action-plan ctx db source-id params)
      [])))
 
 (defn- devil-action-plan [ctx params]

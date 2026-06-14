@@ -9,52 +9,27 @@
             [gnostica.game-state.major-power :as major-power]
             [gnostica.game-state.manipulation :as manipulation]
             [gnostica.game-state.rod :as rod]
-            [gnostica.game-state.sword-major :as sword-major]))
+            [gnostica.game-state.sword-major :as sword-major]
+            [gnostica.power-taxonomy :as taxonomy]))
 
 (def world-card-id "world")
 
-(def suit-powers #{:cup :rod :disc :sword})
+(def ^:private suit-powers taxonomy/suit-power-set)
 
-(def default-suit-copy-card-ids
-  #{"wheeloffortune"
-    "strength"
-    "justice"
-    "death"
-    "tower"
-    "star"})
+(def ^:private default-suit-copy-card-ids
+  taxonomy/default-world-suit-copy-card-ids)
 
-(def full-card-powers
-  {"fool" :fool
-   "high-priestess" :high-priestess
-   "empress" :empress
-   "emperor" :emperor
-   "hierophant" :hierophant
-   "lovers" :lovers
-   "chariot" :chariot
-   "hermit" :hermit
-   "hangedman" :hanged-man
-   "temperance" :temperance
-   "devil" :devil
-   "moon" :moon
-   "sun" :sun
-   "judgement" :judgement
-   "justice" :justice
-   "death" :death
-   "tower" :tower})
-
-(def full-card-power-set
-  (set (vals full-card-powers)))
+(def ^:private full-card-power-set
+  taxonomy/world-copied-full-card-power-set)
 
 (defn- major-card? [card]
-  (= :major (:arcana card)))
+  (taxonomy/major-card? card))
 
 (defn- world-card? [card]
   (= world-card-id (:id card)))
 
 (defn- eligible-copied-cell? [cell]
-  (let [card (:card cell)]
-    (and (major-card? card)
-         (not (world-card? card)))))
+  (taxonomy/world-copy-card? (:card cell)))
 
 (defn world-major-territories [state]
   (->> (:board state)
@@ -146,19 +121,13 @@
       (:power command)))
 
 (defn- suit-powers-for-card [card]
-  (cond-> []
-    (cards/cup-card? card) (conj :cup)
-    (cards/rod-card? card) (conj :rod)
-    (cards/disc-card? card) (conj :disc)
-    (cards/sword-card? card) (conj :sword)))
+  (taxonomy/suit-powers-for-card card))
 
 (defn- full-card-power [card]
-  (get full-card-powers (:id card)))
+  (taxonomy/full-card-power card))
 
 (defn- powers-for-card [card]
-  (cond-> (suit-powers-for-card card)
-    (full-card-power card)
-    (conj (full-card-power card))))
+  (taxonomy/world-copied-power-ids-for-card card))
 
 (defn- resolve-suit-power [command copied-card]
   (let [requested (copied-power command)

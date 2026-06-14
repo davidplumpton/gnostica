@@ -2,7 +2,7 @@
   (:require [gnostica.cards :as cards]
             [gnostica.game-state.card-source :as card-source]
             [gnostica.game-state.core :as core]
-            [gnostica.game-state.spatial :as spatial]
+            [gnostica.game-state.suit-target :as suit-target]
             [gnostica.pieces :as pieces]))
 
 (def sword-territory-card-sources #{:hand :discard-pile})
@@ -57,16 +57,7 @@
           damage)))
 
 (defn sword-target-coordinate [coordinate orientation]
-  (spatial/target-coordinate coordinate orientation))
-
-(defn- sword-targetable-coordinate?
-  [actor-coordinate target-coordinate orientation target-self?]
-  (or target-self?
-      (spatial/same-coordinate? target-coordinate
-                                (sword-target-coordinate actor-coordinate orientation))))
-
-(defn- territory-target-cell [state target]
-  (card-source/territory-target-cell state target sword-source-config))
+  (suit-target/target-coordinate coordinate orientation))
 
 (defn- resolve-sword-source
   ([state player-id source sword-variant]
@@ -143,54 +134,49 @@
       {:ok? true
        :orientation orientation})))
 
-(defn- normalize-sword-piece-target
-  [state player-id source-result target-piece damage requested-orientation]
-  (let [{:keys [piece]
-         source-orientation :orientation
-         source-coordinate :piece-coordinate} source-result
-        target-coordinate (spatial/coordinate-map (core/piece-coordinate state target-piece))
-        target-self? (= (:id piece) (:id target-piece))
-        max-damage (get sword-piece-size-ranks (:size piece))
-        target-pips (get sword-piece-size-ranks (:size target-piece))]
-    (cond
-      (nil? target-coordinate)
-      (core/failure :invalid-piece-space
-                    "Sword piece targets must have a board coordinate."
-                    {:piece-id (:id target-piece)
-                     :space-index (:space-index target-piece)
-                     :space (:space target-piece)})
-
-      (nil? target-pips)
-      (core/failure :invalid-target-piece
-                    "Sword piece targets must have a legal size."
-                    {:piece-id (:id target-piece)
-                     :size (:size target-piece)})
-
-      (not (sword-targetable-coordinate? source-coordinate
-                                         target-coordinate
-                                         source-orientation
-                                         target-self?))
-      (core/failure :invalid-sword-target
-                    "Sword piece targets must be the minion itself, occupy the current space for upright minions, or occupy the adjacent space in the minion direction."
-                    {:piece-id (:id target-piece)
-                     :orientation source-orientation
-                     :source-coordinate source-coordinate
-                     :target-coordinate target-coordinate
-                     :expected-coordinate (sword-target-coordinate source-coordinate
-                                                                   source-orientation)})
-
-      :else
-      (let [damage-result (resolve-damage damage
+(def sword-target-config
+  (merge
+   (select-keys sword-source-config [:suit-label :invalid-target-code])
+   {:target-coordinate-fn sword-target-coordinate
+    :target-map-error-message "Sword moves require a target map."
+    :piece-id-error-message "Sword piece targets require a target piece id."
+    :piece-missing-error-message
+    "Sword piece targets must reference a piece on the board."
+    :piece-space-error-message
+    "Sword piece targets must have a board coordinate."
+    :piece-coordinate-error-message
+    "Sword piece targets must be the minion itself, occupy the current space for upright minions, or occupy the adjacent space in the minion direction."
+    :territory-orientation-error-message
+    "Sword territory attacks do not take a piece orientation."
+    :territory-coordinate-error-message
+    "Sword territory targets must be the current space for upright minions or the adjacent space in the minion direction."
+    :territory-occupied-error-message
+    "Sword territory attacks cannot target a territory occupied by enemy pieces."
+    :target-kind-error-message "Sword move targets must be :piece or :territory."
+    :piece-error-fn
+    (fn [{:keys [target-piece]}]
+      (when (nil? (get sword-piece-size-ranks (:size target-piece)))
+        (core/failure :invalid-target-piece
+                      "Sword piece targets must have a legal size."
+                      {:piece-id (:id target-piece)
+                       :size (:size target-piece)})))
+    :piece-success-fn
+    (fn [{:keys [player-id source-piece target-piece target-map
+                 target-options]}]
+      (let [damage (:damage target-options)
+            max-damage (get sword-piece-size-ranks (:size source-piece))
+            target-pips (get sword-piece-size-ranks (:size target-piece))
+            damage-result (resolve-damage damage
                                           max-damage
                                           target-pips
                                           {:kind :piece
                                            :piece-id (:id target-piece)})
             orientation-result (when (:ok? damage-result)
-                                 (resolve-piece-orientation player-id
-                                                            target-piece
-                                                            damage
-                                                            requested-orientation))
-            target-cell (core/target-piece-territory-cell state target-piece)]
+                                 (resolve-piece-orientation
+                                  player-id
+                                  target-piece
+                                  (:damage damage-result)
+                                  (:orientation target-options)))]
         (cond
           (not (:ok? damage-result))
           damage-result
@@ -202,123 +188,41 @@
           {:ok? true
            :damage (:damage damage-result)
            :destroyed? (:destroyed? damage-result)
-           :target (cond-> {:kind :piece
-                            :piece-id (:id target-piece)
-                            :player-id (:player-id target-piece)
-                            :row (:row target-coordinate)
-                            :col (:col target-coordinate)}
-                     target-cell
-                     (assoc :board-index (:index target-cell))
-
+           :target (cond-> target-map
                      (:orientation orientation-result)
                      (assoc :orientation (:orientation orientation-result)))
-           :target-piece target-piece})))))
-
-(defn- normalize-sword-territory-target
-  [state player-id source-result target damage requested-orientation]
-  (if (some? requested-orientation)
-    (core/failure :invalid-orientation
-                  "Sword territory attacks do not take a piece orientation."
-                  {:orientation requested-orientation
-                   :target target})
-    (let [cell-result (territory-target-cell state target)]
-      (if (:ok? cell-result)
-        (let [cell (:cell cell-result)
-              cell-coordinate (select-keys cell [:row :col])
-              {:keys [piece-coordinate]
-               source-orientation :orientation
-               piece :piece} source-result
-              enemy-pieces (core/enemy-pieces-at-coordinate state
-                                                            player-id
-                                                            (:row cell)
-                                                            (:col cell))
-              target-pips (cards/card-point-value (:card cell))
-              max-damage (get sword-piece-size-ranks (:size piece))]
-          (cond
-            (not (sword-targetable-coordinate? piece-coordinate
-                                               cell-coordinate
-                                               source-orientation
-                                               false))
-            (core/failure :invalid-sword-target
-                          "Sword territory targets must be the current space for upright minions or the adjacent space in the minion direction."
-                          {:target target
-                           :orientation source-orientation
-                           :source-coordinate piece-coordinate
-                           :target-coordinate cell-coordinate
-                           :expected-coordinate (sword-target-coordinate piece-coordinate
-                                                                         source-orientation)})
-
-            (seq enemy-pieces)
-            (core/failure :target-territory-occupied-by-enemy
-                          "Sword territory attacks cannot target a territory occupied by enemy pieces."
-                          {:target {:kind :territory
-                                    :board-index (:index cell)
-                                    :row (:row cell)
-                                    :col (:col cell)}
-                           :enemy-piece-ids (mapv :id enemy-pieces)})
-
-            (nil? target-pips)
-            (core/failure :invalid-target-territory
-                          "Sword territory targets must have a point value."
-                          {:target target
-                           :card-id (get-in cell [:card :id])})
-
-            :else
-            (let [damage-result (resolve-damage damage
-                                                max-damage
-                                                target-pips
-                                                {:kind :territory
-                                                 :board-index (:index cell)})]
-              (if-not (:ok? damage-result)
-                damage-result
-                {:ok? true
-                 :damage (:damage damage-result)
-                 :destroyed? (:destroyed? damage-result)
-                 :target {:kind :territory
-                          :board-index (:index cell)
-                          :row (:row cell)
-                          :col (:col cell)}
-                 :target-cell cell}))))
-        cell-result))))
+           :target-piece target-piece})))
+    :territory-success-fn
+    (fn [{:keys [source-piece target target-cell target-map target-options]}]
+      (let [target-pips (cards/card-point-value (:card target-cell))
+            max-damage (get sword-piece-size-ranks (:size source-piece))]
+        (if (nil? target-pips)
+          (core/failure :invalid-target-territory
+                        "Sword territory targets must have a point value."
+                        {:target target
+                         :card-id (get-in target-cell [:card :id])})
+          (let [damage-result (resolve-damage
+                               (:damage target-options)
+                               max-damage
+                               target-pips
+                               {:kind :territory
+                                :board-index (:index target-cell)})]
+            (if-not (:ok? damage-result)
+              damage-result
+              {:ok? true
+               :damage (:damage damage-result)
+               :destroyed? (:destroyed? damage-result)
+               :target target-map
+               :target-cell target-cell})))))}))
 
 (defn- resolve-sword-target [state player-id source-result target damage orientation]
-  (cond
-    (not (map? target))
-    (core/failure :invalid-sword-target
-                  "Sword moves require a target map."
-                  {:target target})
-
-    (= :piece (:kind target))
-    (cond
-      (nil? (:piece-id target))
-      (core/failure :invalid-sword-target
-                    "Sword piece targets require a target piece id."
-                    {:target target})
-
-      :else
-      (if-let [target-piece (core/piece-by-id state (:piece-id target))]
-        (normalize-sword-piece-target state
-                                      player-id
-                                      source-result
-                                      target-piece
-                                      damage
-                                      orientation)
-        (core/failure :invalid-target-piece
-                      "Sword piece targets must reference a piece on the board."
-                      {:target target})))
-
-    (= :territory (:kind target))
-    (normalize-sword-territory-target state
-                                      player-id
-                                      source-result
-                                      target
-                                      damage
-                                      orientation)
-
-    :else
-    (core/failure :invalid-sword-target
-                  "Sword move targets must be :piece or :territory."
-                  {:target (spatial/target-summary target)})))
+  (suit-target/resolve-target state
+                              player-id
+                              source-result
+                              target
+                              {:damage damage
+                               :orientation orientation}
+                              sword-target-config))
 
 (defn- resolve-replacement-card-options
   [source-result target destroyed? replacement-card-source replacement-card-id]

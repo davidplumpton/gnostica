@@ -267,3 +267,117 @@
            (mapv :type events)))
     (is (empty? (:discard-pile state)))
     (is (game-schema/valid-game? state))))
+
+(deftest devil-can-use_one_orientation_against_enemy_piece
+  (let [devil-minion {:id :rose-devil-minion
+                      :player-id :rose
+                      :space-index 4
+                      :size :medium
+                      :orientation :up}
+        enemy-target {:id :indigo-devil-target
+                      :player-id :indigo
+                      :space-index 4
+                      :size :small
+                      :orientation :north}
+        state (-> (:state (game-state/create-game
+                           player-specs
+                           {:deck-order (deck-starting-with ["devil"])}))
+                  (game-state/with-board-pieces [devil-minion enemy-target]))
+        cards-before (frequencies (all-card-ids state))
+        rose-hand-before (player-hand-ids state :rose)
+        {:keys [ok? state events]} (game-state/apply-devil-move
+                                    state
+                                    {:player-id :rose
+                                     :source {:kind :hand-card
+                                              :card-id "devil"
+                                              :piece-id :rose-devil-minion}
+                                     :actions [{:power :orient-target
+                                                :piece-id :rose-devil-minion
+                                                :target {:kind :piece
+                                                         :piece-id :indigo-devil-target}
+                                                :orientation :west}]})
+        target-after (piece-by-id state :indigo-devil-target)]
+    (is (some #{"devil"} rose-hand-before))
+    (is ok?)
+    (is (= 1 (count events)))
+    (is (= [:devil/piece-oriented]
+           (mapv :type events)))
+    (is (= [:indigo-devil-target]
+           (mapv #(get-in % [:target :piece-id]) events)))
+    (is (= :west (:orientation target-after)))
+    (is (= :north (get-in events [0 :from-orientation])))
+    (is (= :west (get-in events [0 :to-orientation])))
+    (is (= :indigo (get-in events [0 :target :player-id])))
+    (is (= ["devil"] (mapv :id (:discard-pile state))))
+    (is (not (some #{"devil"} (player-hand-ids state :rose))))
+    (is (= cards-before (frequencies (all-card-ids state))))
+    (is (game-schema/valid-game? state))))
+
+(deftest devil-can-use_three_orientations_after_retargeting_the_acting_minion
+  (let [devil-minion {:id :rose-devil-minion
+                      :player-id :rose
+                      :space-index 4
+                      :size :medium
+                      :orientation :up}
+        first-enemy {:id :indigo-devil-target
+                     :player-id :indigo
+                     :space-index 5
+                     :size :small
+                     :orientation :north}
+        second-enemy {:id :indigo-devil-second-target
+                      :player-id :indigo
+                      :space-index 5
+                      :size :medium
+                      :orientation :up}
+        state (-> (:state (game-state/create-game
+                           player-specs
+                           {:deck-order (deck-starting-with ["devil"])}))
+                  (game-state/with-board-pieces [devil-minion
+                                                 first-enemy
+                                                 second-enemy]))
+        cards-before (frequencies (all-card-ids state))
+        {:keys [ok? state events]} (game-state/apply-devil-move
+                                    state
+                                    {:player-id :rose
+                                     :source {:kind :hand-card
+                                              :card-id "devil"
+                                              :piece-id :rose-devil-minion}
+                                     :actions [{:power :orient-target
+                                                :piece-id :rose-devil-minion
+                                                :target {:kind :piece
+                                                         :piece-id :rose-devil-minion}
+                                                :orientation :east}
+                                               {:power :orient-target
+                                                :piece-id :rose-devil-minion
+                                                :target {:kind :piece
+                                                         :piece-id :indigo-devil-target}
+                                                :orientation :south}
+                                               {:power :orient-target
+                                                :piece-id :rose-devil-minion
+                                                :target {:kind :piece
+                                                         :piece-id :indigo-devil-second-target}
+                                                :orientation :west}]})]
+    (is ok?)
+    (is (= 3 (count events)))
+    (is (= [:devil/piece-oriented
+            :devil/piece-oriented
+            :devil/piece-oriented]
+           (mapv :type events)))
+    (is (= [:rose-devil-minion
+            :indigo-devil-target
+            :indigo-devil-second-target]
+           (mapv #(get-in % [:target :piece-id]) events)))
+    (is (= [:up :north :up]
+           (mapv :from-orientation events)))
+    (is (= [:east :south :west]
+           (mapv :to-orientation events)))
+    (is (= :east (:orientation (piece-by-id state :rose-devil-minion))))
+    (is (= :south (:orientation (piece-by-id state :indigo-devil-target))))
+    (is (= :west (:orientation (piece-by-id state
+                                            :indigo-devil-second-target))))
+    (is (= [:rose :indigo :indigo]
+           (mapv #(get-in % [:target :player-id]) events)))
+    (is (= ["devil"] (mapv :id (:discard-pile state))))
+    (is (not (some #{"devil"} (player-hand-ids state :rose))))
+    (is (= cards-before (frequencies (all-card-ids state))))
+    (is (game-schema/valid-game? state))))

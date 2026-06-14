@@ -1,9 +1,10 @@
 Feature: Draw and discard major powers
 
-  Scenario: Fool can skip revealed draw-pile cards
+  Scenario: Fool discards skipped revealed draw-pile cards
     Given a Fool hand-card reveal game
-    When Rose uses Fool to reveal 2 cards without playing them
+    When Rose uses Fool to reveal and discard 2 cards without playing them
     Then the draw-major action succeeds
+    And the Fool reveal events record skipped cards "cups2", "wands2"
     And Rose no longer has "fool" in hand
     And the discard pile contains exactly "fool", "cups2", "wands2"
     And every tarot card is accounted for exactly once

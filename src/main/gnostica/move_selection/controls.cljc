@@ -30,6 +30,8 @@
     :judgement-card-maximum
     :judgement-discard-card-options
     :judgement-move?
+    :major-action-count-option-definitions
+    :major-action-count-option-values
     :move-power-definitions
     :move-power-ids-for-card
     :move-power-order
@@ -42,6 +44,7 @@
     :selected-fool-reveal-count
     :selected-hand-trade-major-action-count
     :selected-high-priestess-redraw-count
+    :selected-major-action-count
     :selected-power
     :selected-world-copied-power
     :source-card
@@ -112,13 +115,13 @@
 
 (defn move-major-action-count-options [ctx db]
   (let [{:keys [source params]} (call ctx :move-selection db)]
-    (mapv (value ctx :hand-trade-major-action-count-definitions)
-          (call ctx :hand-trade-major-action-count-option-values db source params))))
+    (mapv (call ctx :major-action-count-option-definitions db source params)
+          (call ctx :major-action-count-option-values db source params))))
 
 (defn move-major-action-count [ctx db]
   (let [{:keys [source params]} (call ctx :move-selection db)]
-    (when (call ctx :hand-trade-major-action-count-source? db source params)
-      (call ctx :selected-hand-trade-major-action-count db source params))))
+    (when (seq (call ctx :major-action-count-option-values db source params))
+      (call ctx :selected-major-action-count db source params))))
 
 (defn move-sword-action-count-options [ctx db]
   (let [{:keys [source params]} (call ctx :move-selection db)]
@@ -252,7 +255,7 @@
         action-power (call ctx :active-composite-action-power db source-id params)]
     (vec
      (concat
-      (when (seq (call ctx :hand-trade-major-action-count-option-values db source-id params))
+      (when (seq (call ctx :major-action-count-option-values db source-id params))
         [(power-control-group power :major-action-count)])
       (case action-power
         :orient-minion [(major-action-control-group power action-power :minion-orientation)]
@@ -266,7 +269,7 @@
         action-power (call ctx :active-sword-major-action-power db source-id params)]
     (vec
      (concat
-      (when (seq (call ctx :hand-trade-major-action-count-option-values db source-id params))
+      (when (seq (call ctx :major-action-count-option-values db source-id params))
         [(power-control-group power :major-action-count)])
       (when (= :death power)
         [(power-control-group power :sword-action-count)])

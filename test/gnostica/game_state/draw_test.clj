@@ -401,7 +401,7 @@
                                     {:player-id :rose
                                      :source {:kind :hand-card
                                               :card-id "fool"}
-                                     :reveals [{:power :hangedman
+                                     :reveals [{:power :hanged-man
                                                 :piece-id :rose-rod-minion
                                                 :play-command
                                                 {:rod {:piece-id :rose-rod-minion

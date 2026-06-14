@@ -13,8 +13,9 @@ Icehouse pieces. Deal out 6 tarot cards to each player, then tile 9 cards in a 3
 These are the first 9 territories that compose the playing area. Any empty space
 right next to a territory is a "wasteland" space. During the game, pieces may be in a
 wasteland, and it is just like a territory but without any power. Any empty space not
-next to any territory is a "void" space. Pieces in the void are immediately returned
-to the player's stash. No actions may be taken upon void spaces.
+next to any territory is a "void" space. Pieces in the void, including pieces stranded
+there when a territory is destroyed or moved away, are immediately returned to the
+owning player's stash. No actions may be taken upon void spaces.
 Draw pile: Place the remaining cards face down as the draw pile. Reshuffle the
 discard pile whenever the draw pile is exhausted.
 Winning: Your score is the total value of territory occupied by only your pieces. Major arcana territories are
@@ -105,7 +106,7 @@ value up to as many pips as the minion has by discarding the territory and repla
 lesser valued card from your hand, or no card if the territory is destroyed. If the territory is not destroyed, and
 you do not have the required lower valued card in your hand, you cannot do this action. You may not replace
 the territory with one from your hand that has the same value. If you destroy a territory and it leaves any
-minions in the void, they are also destroyed.
+pieces in the void, return those pieces to their owning players' stashes immediately.
 Notes about major arcana:
 Many of the major arcana cards have two powers; the Devil has three. When the card is played from your
 hand, all of your pieces are minions, and you may split the powers between several pieces or use them all on
@@ -125,8 +126,9 @@ may use the Moon just to attack or just to move.
 In no case may you reverse the powers of a major arcana that has two different powers. For example, the Sun
 is always a cup followed by a disc. You may not play the disc first and the cup second.
 Major arcana powers:
-Fool – Turn over the next card from the draw pile and play it. Repeat once. As with all
-actions, using the powers of these cards is optional.
+Fool – Turn over the next card from the draw pile and put it in the discard pile. You may
+then use that revealed card's power. Repeat once. If you decline a revealed card's power, it
+stays in the discard pile.
 Magician – Use as a sword, rod, cup, or disc.
 High Priestess – Discard any or none of your cards and then draw your hand up to 6 or
 fewer cards, then discard and draw again.
