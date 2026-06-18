@@ -58,6 +58,27 @@
                          :sword {:target {:kind :piece
                                           :piece-id :indigo-target}
                                  :damage 1}}
+                  :justice {:player-id :rose
+                            :source (assoc hand-source :card-id "justice")
+                            :hand-trade-target {:kind :piece
+                                                :piece-id :indigo-target}}
+                  :death {:player-id :rose
+                          :source (assoc hand-source :card-id "death")
+                          :sword-actions [{:target {:kind :piece
+                                                    :piece-id :indigo-target}
+                                           :damage 1
+                                           :piece-id :rose-minion}
+                                          {:target {:kind :piece
+                                                    :piece-id :indigo-target}
+                                           :damage 1
+                                           :piece-id :rose-minion}]}
+                  :tower {:player-id :rose
+                          :source (assoc hand-source :card-id "tower")
+                          :sword-variant :sword-from-discard
+                          :minion-orientation :east
+                          :target {:kind :piece
+                                   :piece-id :indigo-target}
+                          :damage 1}
                   :empress {:player-id :rose
                             :source (assoc hand-source :card-id "empress")
                             :actions [{:power :orient-minion
@@ -93,6 +114,57 @@
         (is (= {:ok? true
                 :command command}
                (game-state/validate-command command-kind command)))))))
+
+(deftest sword-major-command-contracts-are-public
+  (let [known-command-kinds (set (game-state/known-command-kinds))
+        justice-trade-only {:player-id :rose
+                            :source (assoc hand-source :card-id "justice")
+                            :hand-trade-target-piece-id :indigo-target}
+        justice-trade-and-sword (assoc justice-trade-only
+                                       :target {:kind :piece
+                                                :piece-id :indigo-target}
+                                       :damage 1
+                                       :sword-variant :sword)
+        justice-partial-sword-action (assoc justice-trade-only
+                                            :target {:kind :piece
+                                                     :piece-id :indigo-target})
+        cases [["Justice trade only" :justice justice-trade-only]
+               ["Justice trade then Sword" :justice justice-trade-and-sword]
+               ["Death Sword actions"
+                :death
+                {:player-id :rose
+                 :source (assoc hand-source :card-id "death")
+                 :sword-actions [{:target {:kind :piece
+                                           :piece-id :indigo-target}
+                                  :damage 1
+                                  :piece-id :rose-minion}]}]
+               ["Tower orient then Sword"
+                :tower
+                {:player-id :rose
+                 :source (assoc hand-source :card-id "tower")
+                 :sword-variant :sword-from-discard
+                 :minion-orientation :east
+                 :target {:kind :piece
+                          :piece-id :indigo-target}
+                 :damage 1}]]]
+    (doseq [command-kind [:justice :death :tower :moon]]
+      (testing command-kind
+        (is (contains? known-command-kinds command-kind))
+        (is (some? (game-state/command-schema command-kind)))))
+    (doseq [[label command-kind command] cases]
+      (testing label
+        (is (game-state/valid-command? command-kind command))
+        (is (nil? (game-state/explain-command command-kind command)))
+        (is (= {:ok? true
+                :command command}
+               (game-state/validate-command command-kind command)))))
+    (testing "Justice partial Sword fields are rejected"
+      (is (false? (game-state/valid-command? :justice
+                                             justice-partial-sword-action)))
+      (is (= :invalid-command-contract
+             (get-in (game-state/validate-command :justice
+                                                  justice-partial-sword-action)
+                     [:error :code]))))))
 
 (deftest command-contract-validation-reports-structured-errors
   (let [invalid-world {:player-id :rose

@@ -130,7 +130,7 @@
 (defn- justice-command? [command]
   (and (justice-trade-target? command)
        (or (not (primitives/contains-any? command sword-action-keys))
-           (m/validate SwordAction command))))
+           (m/validate SwordAction (select-keys command sword-action-keys)))))
 
 (defn- moon-command-action? [command]
   (or (contains? command :rod)
@@ -171,8 +171,12 @@
   (concat targets/acting-source-command-entries
           [[:hand-trade-target {:optional true} targets/PieceTarget]
            [:hand-trade-target-piece-id {:optional true} primitives/PieceId]
-           [:sword-variant {:optional true} :keyword]]
-          sword-action-entries))
+           [:sword-variant {:optional true} :keyword]
+           [:target {:optional true} SwordTarget]
+           [:damage {:optional true} primitives/PositiveInt]
+           [:orientation {:optional true} primitives/Orientation]
+           [:replacement-card-source {:optional true} [:enum :hand :discard-pile]]
+           [:replacement-card-id {:optional true} primitives/CardId]]))
 
 (def JusticeSwordCommand
   [:and

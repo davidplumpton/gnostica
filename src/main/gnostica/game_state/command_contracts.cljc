@@ -97,6 +97,9 @@
    :disc DiscCommand
    :sun SunCommand
    :sword SwordCommand
+   :justice JusticeSwordCommand
+   :death DeathSwordCommand
+   :tower TowerSwordCommand
    :moon MoonCommand
    :fool FoolCommand
    :high-priestess HighPriestessCommand
