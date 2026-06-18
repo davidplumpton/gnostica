@@ -36,7 +36,7 @@
 
 [16] **Direct Move Entry** - The direct move spec is the manipulation contract; gestures stage data and preserve `:game` until confirmation [9][13].
 
-[17] **Tests and Features** - Tests live under `test/gnostica`, features under `features/`, and focused regression inventories live in `docs/architecture.md`. Smoke targets released assets by default or `SMOKE_URL` [8][10][14][15].
+[17] **Tests and Features** - Tests live under `test/gnostica`, features under `features/`, and focused regression inventories live in `docs/architecture.md`; 2026-06-18 assertion/schema audit follow-ups are tracked in br quality tickets `bd-zlun`, `bd-188f`, `bd-112n`, and `bd-3tfd`. Smoke targets released assets by default or `SMOKE_URL` [8][10][14][15].
 
 [18] **Documentation Ownership** - Docs: README quick start, AGENTS workflow, MIND_MAP navigation, architecture prose, and rules authority [6][7][10][11].
 
