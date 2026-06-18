@@ -19,6 +19,18 @@ Keep README high-level, AGENTS focused on workflow and invariants, and
 MIND_MAP compact. Do not reintroduce long duplicated power-contract prose into
 these three entry-point docs.
 
+**MANDATORY WORKFLOW:**
+
+Important: use jj for version control. Never use git commands. Always commit with an appropriate message, don't call `jj new` with a message.
+
+1. **File issues for remaining work** - Create issues for anything that needs follow-up
+2. **Run quality gates** (if code changed) - Tests, linters, builds
+3. **Update issue status** - Close finished work, update in-progress items
+4. **Run br sync --flush-only** - Export issue updates to `.beads/issues.jsonl`; `br` never runs VCS commands
+5. **Only work on one task at a time before committing to VCS**
+6. **Clean up**
+7. **Verify** - Create an appropriate jj description and then run `jj commit -m <description>`
+8. **Hand off** - Provide context for next session
 ## Mind Map Workflow
 
 Use `MIND_MAP.md` as the compact project knowledge index before substantial
