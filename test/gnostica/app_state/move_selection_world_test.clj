@@ -151,6 +151,25 @@
     (is (not (some #{"world"} (map :id (:hand zones)))))
     (is (= "death" (get-in (board-cell-by-index confirmed-db 5) [:card :id])))
     (is (game-schema/valid-game? (app-state/game confirmed-db)))))
+(deftest world-copied-power-selection-rejects_unavailable_full_card_selector
+  (let [deck-order (deck-with-cards-at {0 "world"
+                                        (board-card-position test-player-specs 3) "strength"})
+        db (app-state/initialize {:player-specs test-player-specs
+                                  :game-options {:deck-order deck-order}
+                                  :demo-board-pieces [rose-source-piece]})
+        copy-db (-> db
+                    (app-state/select-move-source :play-hand-card)
+                    (app-state/select-move-hand-card "world")
+                    (app-state/select-move-piece :rose-scout)
+                    (app-state/select-move-world-copy 3))
+        invalid-db (app-state/select-move-power copy-db :death)]
+    (is (= :disc-action-count (:stage (app-state/move-selection copy-db))))
+    (is (= [:disc]
+           (mapv :id (app-state/move-world-copied-power-options copy-db))))
+    (is (= :invalid-world-copied-power
+           (get-in invalid-db [:move-selection :error :code])))
+    (is (= (app-state/game copy-db)
+           (app-state/game invalid-db)))))
 (deftest world-territory-source-can_stage_copied_suit_power
   (let [deck-order (deck-with-cards-at {(board-card-position test-player-specs 0) "world"
                                         (board-card-position test-player-specs 3) "magician"})

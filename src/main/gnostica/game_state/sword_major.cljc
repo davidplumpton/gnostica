@@ -696,6 +696,44 @@
 (defn apply-moon-move [state command]
   (apply-moon-move-with-opts state command {}))
 
+(defn- source-opts-with-power-card [source-opts power-card]
+  (cond-> source-opts
+    power-card
+    (assoc :power-card power-card)))
+
+(defn apply-justice-move-with-opts
+  ([state command]
+   (apply-justice-move-with-opts state command {}))
+  ([state command {:keys [source-opts power-card]
+                   :or {source-opts {}}}]
+   (apply-justice-sword-move
+    state
+    command
+    (source-opts-with-power-card source-opts power-card))))
+
+(defn apply-death-move-with-opts
+  ([state command]
+   (apply-death-move-with-opts state command {}))
+  ([state command {:keys [required-card-id power-card source-opts]
+                   :or {source-opts {}}}]
+   (let [power-card (or power-card (:power-card source-opts))]
+     (apply-death-sword-move
+      state
+      command
+      {:required-card-id (or required-card-id "death")
+       :power-card power-card
+       :source-opts (source-opts-with-power-card source-opts power-card)}))))
+
+(defn apply-tower-move-with-opts
+  ([state command]
+   (apply-tower-move-with-opts state command {}))
+  ([state command {:keys [source-opts power-card]
+                   :or {source-opts {}}}]
+   (apply-tower-sword-move
+    state
+    command
+    (source-opts-with-power-card source-opts power-card))))
+
 (defn apply-sword-move-with-opts
   ([state command]
    (apply-sword-move-with-opts state command {}))
@@ -734,15 +772,15 @@
 
 (defmethod major-power/apply-card-power "justice"
   [state command _card {:keys [source-opts]}]
-  (apply-sword-move-with-opts state command {:source-opts source-opts}))
+  (apply-justice-move-with-opts state command {:source-opts source-opts}))
 
 (defmethod major-power/apply-card-power "death"
   [state command _card {:keys [source-opts]}]
-  (apply-sword-move-with-opts state command {:source-opts source-opts}))
+  (apply-death-move-with-opts state command {:source-opts source-opts}))
 
 (defmethod major-power/apply-card-power "tower"
   [state command _card {:keys [source-opts]}]
-  (apply-sword-move-with-opts state command {:source-opts source-opts}))
+  (apply-tower-move-with-opts state command {:source-opts source-opts}))
 
 (defmethod major-power/apply-card-power "moon"
   [state command _card {:keys [source-opts]}]

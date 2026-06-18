@@ -147,7 +147,8 @@
       {:ok? true
        :power requested}
 
-      (and (= 1 (count powers))
+      (and (nil? requested)
+           (= 1 (count powers))
            (contains? default-suit-copy-card-ids (:id copied-card)))
       {:ok? true
        :power (first powers)}
@@ -189,6 +190,10 @@
 (defn- delegated-source-opts [source-result]
   {:source-card (:source-card source-result)
    :source-card-already-discarded? (:source-card-already-discarded? source-result)})
+
+(defn- delegated-full-card-source-opts [source-result copied-card]
+  (assoc (delegated-source-opts source-result)
+         :power-card copied-card))
 
 (defn- paid-source-card-id [source-result]
   (get-in source-result [:source-card :id]))
@@ -251,7 +256,12 @@
 (defn- apply-copied-card-power [state command source-result copied-card]
   (let [command (clean-command command)
         source-card-id (paid-source-card-id source-result)
-        opts {:source-opts (delegated-source-opts source-result)}]
+        opts {:source-opts (delegated-source-opts source-result)}
+        full-card-opts {:required-card-id source-card-id
+                        :power-card copied-card
+                        :source-opts (delegated-full-card-source-opts
+                                      source-result
+                                      copied-card)}]
     (case (:id copied-card)
       "fool"
       (draw/apply-fool-move-with-source-card-id state command source-card-id opts)
@@ -322,13 +332,20 @@
                                                          source-card-id
                                                          opts)
 
+      "justice"
+      (sword-major/apply-justice-move-with-opts state command full-card-opts)
+
+      "death"
+      (sword-major/apply-death-move-with-opts state command full-card-opts)
+
+      "tower"
+      (sword-major/apply-tower-move-with-opts state command full-card-opts)
+
       "moon"
       (sword-major/apply-moon-move-with-opts
        state
        command
-       {:required-card-id source-card-id
-        :power-card copied-card
-        :source-opts (:source-opts opts)})
+       full-card-opts)
 
       "sun"
       (let [minion-result (validate-source-piece-minion source-result command)]

@@ -99,6 +99,44 @@
     (is (= "empress" (get-in (board-cell-by-index state 3) [:card :id])))
     (is (game-schema/valid-game? state))))
 
+(deftest world-hand-source-copies-death-full-card-through-world-source
+  (let [target-piece {:id :indigo-world-death-target
+                      :player-id :indigo
+                      :space-index 4
+                      :size :medium
+                      :orientation :north}
+        state (:state (game-state/create-game
+                       player-specs
+                       {:deck-order
+                        (deck-with-cards-at
+                         {0 "world"
+                          (board-card-position 5) "death"})}))
+        state (game-state/with-board-pieces state [rose-sword-minion
+                                                   target-piece])
+        {:keys [ok? state events]} (game-state/apply-world-move
+                                    state
+                                    {:player-id :rose
+                                     :source {:kind :hand-card
+                                              :card-id "world"}
+                                     :copied-board-index 5
+                                     :copied-power :death
+                                     :sword-actions [{:piece-id :rose-sword-minion
+                                                      :target {:kind :piece
+                                                               :piece-id :indigo-world-death-target}
+                                                      :damage 1}
+                                                     {:piece-id :rose-sword-minion
+                                                      :target {:kind :piece
+                                                               :piece-id :indigo-world-death-target}
+                                                      :damage 1}]})]
+    (is ok?)
+    (is (= [:sword/piece-destroyed] (mapv :type events)))
+    (is (= 2 (get-in events [0 :action-count])))
+    (is (true? (get-in events [0 :shortcut?])))
+    (is (nil? (piece-by-id state :indigo-world-death-target)))
+    (is (= ["world"] (mapv :id (:discard-pile state))))
+    (is (= "death" (get-in (board-cell-by-index state 5) [:card :id])))
+    (is (game-schema/valid-game? state))))
+
 (deftest world-rejects-full-card-power-selector-that-copied-card-does-not-provide
   (let [state (:state (game-state/create-game
                        player-specs
@@ -122,6 +160,60 @@
            (get-in result [:error :code])))
     (is (= [:empress :cup]
            (get-in result [:error :data :available-powers])))
+    (is (not (contains? result :state)))))
+
+(deftest world-rejects-full-card-selector-on-default-suit-copy-card
+  (let [state (:state (game-state/create-game
+                       player-specs
+                       {:deck-order
+                        (deck-with-cards-at
+                         {0 "world"
+                          (board-card-position 3) "strength"})}))
+        state (game-state/with-board-pieces state [rose-disc-minion])
+        result (game-state/apply-world-move
+                state
+                {:player-id :rose
+                 :source {:kind :hand-card
+                          :card-id "world"}
+                 :copied-board-index 3
+                 :copied-power :death
+                 :sword-actions [{:target {:kind :piece
+                                           :piece-id :indigo-target}
+                                  :damage 1
+                                  :piece-id :rose-disc-minion}]})]
+    (is (= :world-copied-power-unavailable
+           (get-in result [:error :code])))
+    (is (= [:disc]
+           (get-in result [:error :data :available-powers])))
+    (is (not (contains? result :state)))))
+
+(deftest world-explicit-full-card-copy-does-not-fall-back-to-default-suit
+  (let [target-piece {:id :indigo-world-death-target
+                      :player-id :indigo
+                      :space-index 4
+                      :size :medium
+                      :orientation :north}
+        state (:state (game-state/create-game
+                       player-specs
+                       {:deck-order
+                        (deck-with-cards-at
+                         {0 "world"
+                          (board-card-position 5) "death"})}))
+        state (game-state/with-board-pieces state [rose-sword-minion
+                                                   target-piece])
+        result (game-state/apply-world-move
+                state
+                {:player-id :rose
+                 :source {:kind :hand-card
+                          :card-id "world"
+                          :piece-id :rose-sword-minion}
+                 :copied-board-index 5
+                 :copied-power :death
+                 :target {:kind :piece
+                          :piece-id :indigo-world-death-target}
+                 :damage 1})]
+    (is (= :invalid-major-actions
+           (get-in result [:error :code])))
     (is (not (contains? result :state)))))
 (deftest world-territory-source-copies-magician-wild-suit
   (let [state (:state (game-state/create-game
