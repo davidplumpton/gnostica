@@ -18,7 +18,7 @@
 
 [7] **Rules and Authority** - Rules live in `docs/rules.txt`; command schemas, source, tests, and direct-move spec own implementation details [11][13][16][17].
 
-[8] **Gameplay State** - `gnostica.game-state` is the facade; `core` keeps compatibility aliases while foundation namespaces (`constants`, `collections`, `players`, `hands`, `sources`, `pieces`, `spatial`, `shared`, `score`, `result`, `setup`, `deck`, `board-pieces`, `turn`, `suit-target`, `command-contracts.*`) own browser-free helpers/contracts; transition work belongs in owning namespaces (`placement`, `draw`, `cup`, `rod`, `disc`, `disc-major`, `sword`, `sword-major`, `major`, `composite`, `manipulation`, `world`, `card-source`) and matching tests [11][13][14][17].
+[8] **Gameplay State** - `gnostica.game-state` is the browser-free gameplay facade; focused helper namespaces own foundational state, setup, deck, board pieces, turns, spatial math, scoring, result maps, source handling, suit targets, and command contracts. Move-family transition namespaces own placement, draw, Cup/Rod/Disc/Sword, major families, manipulation, World, and matching tests. `major` owns shared major-source charging and ordered sequencing; `major-power` owns full-card dispatch [11][13][14][17][21].
 
 [9] **App State and UI** - `gnostica.app-state` is the app-db facade for ids, subscriptions, lobby, gestures, moves, panels, card zones, and handlers [11][13].
 
@@ -43,3 +43,5 @@
 [19] **Issue Tracking** - br-only tracker: start with `br ready`/`br show`, sync with `br sync --flush-only`, and keep `.beads/embeddeddolt` regular [10][20].
 
 [20] **Jujutsu Workflow** - Prefer Jujutsu; inspect-only and tracker-only work should not create/split changes, while normal edits get a clear description before scoped work [10][19].
+
+[21] **Major Power Dispatch** - `gnostica.game-state.major-power` owns the `apply-card-power` defmulti and default unavailable-power result. Implemented full-card methods stay with their gameplay-family owners (`draw`, `composite`, `manipulation`, `disc-major`, `sword-major`, `world`), while `major` remains the shared source-charging and ordered-sequencing helper [8][11][13].

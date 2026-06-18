@@ -53,9 +53,13 @@ implementation namespaces live under `src/main/gnostica/game_state/`.
 - `placement` owns initial small-piece placement and orient-piece moves.
 - `draw` owns standalone draw/discard plus Fool, High Priestess, and Judgement.
 - `cup`, `rod`, `disc`, and `sword` own base suit validation and transitions.
-- `disc_major` owns Strength, Star, and Sun orchestration.
-- `sword_major` owns Justice, Death, Tower, and Moon orchestration.
+- `disc-major` owns Strength, Star, and Sun orchestration.
+- `sword-major` owns Justice, Death, Tower, and Moon orchestration.
 - `major` owns reusable major-source charging and ordered sequencing.
+- `major-power` owns the `apply-card-power` full-card dispatch point and
+  default unavailable-power result; implemented defmethods stay with their
+  gameplay-family owners in `draw`, `composite`, `manipulation`, `disc-major`,
+  `sword-major`, and `world`.
 - `composite` owns Empress, Emperor, Lovers, Chariot, Hanged Man, Temperance.
 - `manipulation` owns Hierophant, Hermit, and Devil.
 - `world` delegates World copies to existing implemented powers.
