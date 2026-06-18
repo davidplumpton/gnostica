@@ -11,6 +11,9 @@
 (defn- enum-schema [values]
   (into [:enum] values))
 
+(defn- closed-map-schema [entries]
+  (into [:map {:closed true}] entries))
+
 (defn- nonblank-string? [value]
   (and (string? value)
        (not (str/blank? value))))
@@ -394,10 +397,17 @@
     #(distinct-by? identity %)]])
 
 (def CardReference
-  [:map
-   [:id NonBlankString]
-   [:title NonBlankString]
-   [:image NonBlankString]])
+  (closed-map-schema
+   [[:id NonBlankString]
+    [:title NonBlankString]
+    [:image NonBlankString]
+    [:arcana {:optional true} [:enum :major :minor]]
+    [:group {:optional true} NonBlankString]
+    [:suit-key {:optional true} NonBlankString]
+    [:rank-key {:optional true} NonBlankString]
+    [:rank {:optional true} NonBlankString]
+    [:suit {:optional true} NonBlankString]
+    [:gnostica-icons {:optional true} [:vector :keyword]]]))
 
 (def BoardIndex
   NonNegativeInt)
@@ -406,13 +416,13 @@
   :int)
 
 (def BoardCell
-  [:map
-   [:index BoardIndex]
-   [:row BoardCoordinate]
-   [:col BoardCoordinate]
-   [:orientation [:enum :portrait :landscape]]
-   [:face [:enum :up :down]]
-   [:card CardReference]])
+  (closed-map-schema
+   [[:index BoardIndex]
+    [:row BoardCoordinate]
+    [:col BoardCoordinate]
+    [:orientation [:enum :portrait :landscape]]
+    [:face [:enum :up :down]]
+    [:card CardReference]]))
 
 (def Board
   [:and
@@ -430,46 +440,54 @@
   [:vector CardReference])
 
 (def Stash
-  [:map
-   [:small NonNegativeInt]
-   [:medium NonNegativeInt]
-   [:large NonNegativeInt]])
+  (closed-map-schema
+   [[:small NonNegativeInt]
+    [:medium NonNegativeInt]
+    [:large NonNegativeInt]]))
+
+(def Challenge
+  (closed-map-schema
+   [[:status [:enum :announced :won]]
+    [:target-score TargetScore]
+    [:score-at-announcement NonNegativeInt]
+    [:announced-round PositiveInt]
+    [:announced-turn-index NonNegativeInt]]))
 
 (def PlayerState
-  [:map
-   [:id PlayerId]
-   [:name NonBlankString]
-   [:color ThreeColor]
-   [:css-color CssColor]
-   [:order-index NonNegativeInt]
-   [:hand Hand]
-   [:score NonNegativeInt]
-   [:challenge [:maybe :any]]
-   [:eliminated? :boolean]
-   [:stash Stash]
-   [:bid [:maybe :any]]])
+  (closed-map-schema
+   [[:id PlayerId]
+    [:name NonBlankString]
+    [:color ThreeColor]
+    [:css-color CssColor]
+    [:order-index NonNegativeInt]
+    [:hand Hand]
+    [:score NonNegativeInt]
+    [:challenge [:maybe Challenge]]
+    [:eliminated? :boolean]
+    [:stash Stash]
+    [:bid [:maybe :any]]]))
 
 (def BoardPiece
-  [:map
-   [:id :keyword]
-   [:player-id PlayerId]
-   [:space-index BoardIndex]
-   [:size (enum-schema (keys pieces/piece-sizes))]
-   [:orientation (enum-schema pieces/legal-orientations)]])
+  (closed-map-schema
+   [[:id :keyword]
+    [:player-id PlayerId]
+    [:space-index BoardIndex]
+    [:size (enum-schema (keys pieces/piece-sizes))]
+    [:orientation (enum-schema pieces/legal-orientations)]]))
 
 (def WastelandSpace
-  [:map
-   [:kind [:enum :wasteland]]
-   [:row BoardCoordinate]
-   [:col BoardCoordinate]])
+  (closed-map-schema
+   [[:kind [:enum :wasteland]]
+    [:row BoardCoordinate]
+    [:col BoardCoordinate]]))
 
 (def WastelandPiece
-  [:map
-   [:id :keyword]
-   [:player-id PlayerId]
-   [:space WastelandSpace]
-   [:size (enum-schema (keys pieces/piece-sizes))]
-   [:orientation (enum-schema pieces/legal-orientations)]])
+  (closed-map-schema
+   [[:id :keyword]
+    [:player-id PlayerId]
+    [:space WastelandSpace]
+    [:size (enum-schema (keys pieces/piece-sizes))]
+    [:orientation (enum-schema pieces/legal-orientations)]]))
 
 (def Piece
   [:and
@@ -477,56 +495,117 @@
    [:fn {:error/message "piece must include exactly one location field"} exactly-one-piece-location?]])
 
 (def Turn
-  [:map
-   [:order [:vector {:min game-state/min-players
-                     :max game-state/max-players}
-            PlayerId]]
-   [:current-player-index NonNegativeInt]
-   [:current-player-id PlayerId]
-   [:round PositiveInt]])
+  (closed-map-schema
+   [[:order [:vector {:min game-state/min-players
+                      :max game-state/max-players}
+             PlayerId]]
+    [:current-player-index NonNegativeInt]
+    [:current-player-id PlayerId]
+    [:round PositiveInt]]))
 
 (def Pieces
-  [:map
-   [:on-board [:vector Piece]]
-   [:stashes [:map-of PlayerId Stash]]])
+  (closed-map-schema
+   [[:on-board [:vector Piece]]
+    [:stashes [:map-of PlayerId Stash]]]))
 
 (def Setup
-  [:map
-   [:bids [:map-of PlayerId :any]]
-   [:bid-history [:vector :any]]
-   [:bid-redraw-order {:optional true} [:vector PlayerId]]
-   [:bid-redraws {:optional true} [:vector :any]]
-   [:deck-card-ids {:optional true} ExpectedDeckCardIds]
-   [:starting-player-id [:maybe PlayerId]]
-   [:target-score TargetScore]])
+  (closed-map-schema
+   [[:bids [:map-of PlayerId :any]]
+    [:bid-history [:vector :any]]
+    [:bid-redraw-order {:optional true} [:vector PlayerId]]
+    [:bid-redraws {:optional true} [:vector :any]]
+    [:deck-card-ids {:optional true} ExpectedDeckCardIds]
+    [:starting-player-id [:maybe PlayerId]]
+    [:target-score TargetScore]]))
 
 (def Winner
-  [:map
-   [:player-id PlayerId]
-   [:reason [:enum :challenge :last-active-player]]
-   [:score NonNegativeInt]
-   [:target-score TargetScore]])
+  (closed-map-schema
+   [[:player-id PlayerId]
+    [:reason [:enum :challenge :last-active-player]]
+    [:score NonNegativeInt]
+    [:target-score TargetScore]]))
 
 (def HistoryEvent
-  [:map
-   [:type :keyword]])
+  (closed-map-schema
+   [[:type :keyword]
+    [:action-count {:optional true} NonNegativeInt]
+    [:bid-card-ids {:optional true} [:vector NonBlankString]]
+    [:bid-round-count {:optional true} NonNegativeInt]
+    [:board-card-count {:optional true} NonNegativeInt]
+    [:board-index {:optional true} BoardIndex]
+    [:card-count {:optional true} NonNegativeInt]
+    [:card-id {:optional true} NonBlankString]
+    [:card-ids {:optional true} [:vector NonBlankString]]
+    [:cup-target {:optional true} :map]
+    [:cup-variant {:optional true} :keyword]
+    [:damage {:optional true} NonNegativeInt]
+    [:destination {:optional true} :map]
+    [:destroyed-piece {:optional true} Piece]
+    [:destroyed-pieces {:optional true} [:vector Piece]]
+    [:destroyed-territory {:optional true} BoardCell]
+    [:direction {:optional true} :keyword]
+    [:disc-target {:optional true} :map]
+    [:disc-variant {:optional true} :keyword]
+    [:discarded-card-ids {:optional true} [:vector NonBlankString]]
+    [:distance {:optional true} NonNegativeInt]
+    [:draw-count {:optional true} NonNegativeInt]
+    [:drawn-card-ids {:optional true} [:vector NonBlankString]]
+    [:from-orientation {:optional true} (enum-schema pieces/legal-orientations)]
+    [:from-size {:optional true} (enum-schema (keys pieces/piece-sizes))]
+    [:from-value {:optional true} NonNegativeInt]
+    [:intermediate {:optional true} :map]
+    [:maximum {:optional true} NonNegativeInt]
+    [:original-card-id {:optional true} NonBlankString]
+    [:other-hand-card-ids {:optional true} [:vector NonBlankString]]
+    [:pass-index {:optional true} NonNegativeInt]
+    [:phase {:optional true} :keyword]
+    [:piece {:optional true} Piece]
+    [:piece-id {:optional true} :keyword]
+    [:played? {:optional true} :boolean]
+    [:player-hand-card-ids {:optional true} [:vector NonBlankString]]
+    [:player-id {:optional true} PlayerId]
+    [:player-ids {:optional true} [:vector PlayerId]]
+    [:reason {:optional true} [:enum :challenge :last-active-player]]
+    [:redraw-order {:optional true} [:vector PlayerId]]
+    [:removed-piece-ids {:optional true} [:vector :keyword]]
+    [:replacement-card-id {:optional true} NonBlankString]
+    [:replacement-card-source {:optional true} :keyword]
+    [:replaced-piece {:optional true} Piece]
+    [:reshuffled-discard? {:optional true} :boolean]
+    [:reveal-index {:optional true} NonNegativeInt]
+    [:rod-variant {:optional true} :keyword]
+    [:round {:optional true} PositiveInt]
+    [:score {:optional true} NonNegativeInt]
+    [:shortcut? {:optional true} :boolean]
+    [:source {:optional true} :map]
+    [:starting-hand-size {:optional true} NonNegativeInt]
+    [:sword-variant {:optional true} :keyword]
+    [:target {:optional true} :map]
+    [:target-piece {:optional true} Piece]
+    [:target-score {:optional true} TargetScore]
+    [:territory {:optional true} BoardCell]
+    [:territory-card-source {:optional true} :keyword]
+    [:to-orientation {:optional true} (enum-schema pieces/legal-orientations)]
+    [:to-size {:optional true} (enum-schema (keys pieces/piece-sizes))]
+    [:to-value {:optional true} NonNegativeInt]
+    [:with-player-id {:optional true} PlayerId]]))
 
 (def GameState
   [:and
-   [:map
-    [:phase :keyword]
-    [:players [:vector {:min game-state/min-players
-                        :max game-state/max-players}
-               PlayerState]]
-    [:players-by-id [:map-of PlayerId PlayerState]]
-    [:turn Turn]
-    [:board Board]
-    [:pieces Pieces]
-    [:draw-pile CardPile]
-    [:discard-pile CardPile]
-    [:setup Setup]
-    [:winner [:maybe Winner]]
-    [:history [:vector HistoryEvent]]]
+   (closed-map-schema
+    [[:phase :keyword]
+     [:players [:vector {:min game-state/min-players
+                         :max game-state/max-players}
+                PlayerState]]
+     [:players-by-id [:map-of PlayerId PlayerState]]
+     [:turn Turn]
+     [:board Board]
+     [:pieces Pieces]
+     [:draw-pile CardPile]
+     [:discard-pile CardPile]
+     [:setup Setup]
+     [:winner [:maybe Winner]]
+     [:history [:vector HistoryEvent]]])
    [:fn {:error/message "game state must contain two to six players"} participating-player-count?]
    [:fn {:error/message "player ids must be unique"} players-have-unique-ids?]
    [:fn {:error/message "players-by-id must match players"} players-by-id-matches?]

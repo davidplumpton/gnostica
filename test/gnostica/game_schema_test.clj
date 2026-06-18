@@ -37,6 +37,14 @@
   (some #(when (= code (:code %)) %)
         (:invariants explanation)))
 
+(defn- schema-explanation-text [state]
+  (pr-str (game-schema/explain-game state)))
+
+(defn- reports-unknown-key? [state key]
+  (boolean
+   (re-find (re-pattern (java.util.regex.Pattern/quote (str key)))
+            (schema-explanation-text state))))
+
 (defn- board-piece-counts [board-pieces]
   (reduce (fn [counts {:keys [player-id size]}]
             (if (and player-id size)
@@ -73,6 +81,87 @@
     (is (game-schema/valid-game? state))
     (is (= state (game-schema/assert-valid-game state)))
     (is (nil? (game-schema/explain-game state)))))
+
+(deftest rejects-mirrored-player-typo-fields
+  (let [state (game-for 2)
+        player-id (first-player-id state)
+        invalid-state (-> state
+                          (assoc-in [:players 0 :socre] 99)
+                          (assoc-in [:players-by-id player-id :socre] 99))]
+    (is (false? (game-schema/valid-game? invalid-state)))
+    (is (reports-unknown-key? invalid-state :socre))))
+
+(deftest rejects-unknown-keys-in-fixed-game-state-schema-maps
+  (let [state (game-for 2)
+        player-id (first-player-id state)
+        board-piece {:id :rose-schema-piece
+                     :player-id player-id
+                     :space-index 0
+                     :size :small
+                     :orientation :north}
+        wasteland {:kind :wasteland
+                   :row -1
+                   :col 0}
+        wasteland-piece {:id :rose-schema-wasteland-piece
+                         :player-id player-id
+                         :space wasteland
+                         :size :small
+                         :orientation :north}
+        challenge {:status :announced
+                   :target-score (get-in state [:setup :target-score])
+                   :score-at-announcement 0
+                   :announced-round 1
+                   :announced-turn-index 0}
+        winner {:player-id player-id
+                :reason :challenge
+                :score (get-in state [:setup :target-score])
+                :target-score (get-in state [:setup :target-score])}
+        cases [{:key :unexpected-game-field
+                :state (assoc state :unexpected-game-field true)}
+               {:key :unexpected-board-field
+                :state (assoc-in state [:board 0 :unexpected-board-field] true)}
+               {:key :unexpected-card-field
+                :state (assoc-in state [:board 0 :card :unexpected-card-field] true)}
+               {:key :unexpected-turn-field
+                :state (assoc-in state [:turn :unexpected-turn-field] true)}
+               {:key :unexpected-pieces-field
+                :state (assoc-in state [:pieces :unexpected-pieces-field] true)}
+               {:key :unexpected-setup-field
+                :state (assoc-in state [:setup :unexpected-setup-field] true)}
+               {:key :unexpected-winner-field
+                :state (assoc state
+                              :phase game-state/finished-phase
+                              :winner (assoc winner :unexpected-winner-field true))}
+               {:key :unexpected-history-field
+                :state (update state :history conj
+                               {:type :schema/audit
+                                :unexpected-history-field true})}
+               {:key :unexpected-challenge-field
+                :state (replace-player
+                        state
+                        player-id
+                        #(assoc % :challenge
+                                (assoc challenge
+                                       :unexpected-challenge-field true)))}
+               {:key :unexpected-stash-field
+                :state (-> state
+                           (replace-player
+                            player-id
+                            #(assoc-in % [:stash :unexpected-stash-field] 0))
+                           (assoc-in [:pieces :stashes player-id :unexpected-stash-field] 0))}
+               {:key :unexpected-piece-field
+                :state (state-with-unchecked-board-pieces
+                        state
+                        [(assoc board-piece :unexpected-piece-field true)])}
+               {:key :unexpected-wasteland-field
+                :state (state-with-unchecked-board-pieces
+                        state
+                        [(assoc-in wasteland-piece
+                                   [:space :unexpected-wasteland-field]
+                                   true)])}]]
+    (doseq [{:keys [key state]} cases]
+      (is (false? (game-schema/valid-game? state)) (str key))
+      (is (reports-unknown-key? state key) (str key)))))
 
 (deftest rejects-too-few-and-too-many-players
   (let [base-state (game-for 2)
