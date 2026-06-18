@@ -212,6 +212,10 @@
     (contains? reveal :command) (conj (:command reveal))
     (contains? reveal :play-command) (conj (:play-command reveal))))
 
+(defn- single-fool-play-command-alias? [reveal]
+  (not (and (contains? reveal :command)
+            (contains? reveal :play-command))))
+
 (defn- fool-play-power [reveal command]
   (or (:power reveal)
       (:power command)))
@@ -253,5 +257,6 @@
            (valid-fool-delegated-play-command? reveal command)))))
 
 (defn- valid-fool-reveal? [reveal]
-  (every? #(valid-fool-play-command? reveal %)
-          (fool-play-command-shapes reveal)))
+  (and (single-fool-play-command-alias? reveal)
+       (every? #(valid-fool-play-command? reveal %)
+               (fool-play-command-shapes reveal))))

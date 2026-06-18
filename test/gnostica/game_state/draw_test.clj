@@ -351,6 +351,38 @@
     (is (= (count cards/deck) (count (all-card-ids state))))
     (is (= (count cards/deck) (count (set (all-card-ids state)))))
     (is (game-schema/valid-game? state))))
+
+(deftest fool-reveals-reject-ambiguous-play-command-aliases
+  (let [initial-state (-> (:state (game-state/create-game
+                                   player-specs
+                                   {:deck-order
+                                    (deck-with-cards-at
+                                     {0 "fool"
+                                      (+ (hand-card-count (count player-specs))
+                                         board/board-card-count)
+                                      "cups2"})}))
+                          (game-state/with-board-pieces [rose-cup-minion]))
+        result (game-state/apply-fool-move
+                initial-state
+                {:player-id :rose
+                 :source {:kind :hand-card
+                          :card-id "fool"}
+                 :reveals [{:power :cup
+                            :piece-id :rose-cup-minion
+                            :play-command {:target {:kind :territory
+                                                    :board-index 4}
+                                           :orientation :east}
+                            :command {:target {:kind :territory
+                                               :board-index 5}
+                                      :orientation :north}}]
+                 :shuffle-fn identity})]
+    (is (= :ambiguous-fool-play-command
+           (get-in result [:error :code])))
+    (is (= 1 (get-in result [:error :data :reveal-index])))
+    (is (false? (:ok? result)))
+    (is (not (contains? result :state)))
+    (is (game-schema/valid-game? initial-state))))
+
 (deftest fool-reveals-reject-invalid-discard-reshuffle-results
   (let [initial-state (-> (:state (game-state/create-game
                                    player-specs

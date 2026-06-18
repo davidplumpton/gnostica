@@ -234,6 +234,11 @@
                              :play-command {:target {:kind :territory
                                                      :board-index 4}
                                             :orientation :south}}]}
+        ambiguous-fool-play-command (assoc-in
+                                     fool-cup
+                                     [:reveals 0 :command]
+                                     (get-in fool-cup
+                                             [:reveals 0 :play-command]))
         invalid-fool-target (assoc-in fool-cup
                                       [:reveals 0 :play-command :target]
                                       {:kind :nonsense})
@@ -255,6 +260,8 @@
     (is (false? (game-state/valid-command? :world
                                            (assoc world-empress :power :death))))
     (is (game-state/valid-command? :fool fool-cup))
+    (is (false? (game-state/valid-command? :fool
+                                           ambiguous-fool-play-command)))
     (is (false? (game-state/valid-command? :fool invalid-fool-target)))
     (is (false? (game-state/valid-command? :fool invalid-fool-missing-minion)))))
 

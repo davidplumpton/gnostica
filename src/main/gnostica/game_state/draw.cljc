@@ -457,6 +457,10 @@
            :player-id player-id
            :source source)))
 
+(defn- ambiguous-fool-play-command? [action]
+  (and (contains? action :command)
+       (contains? action :play-command)))
+
 (defn- apply-fool-suit-play [state power command source-opts]
   (case power
     :cup
@@ -522,6 +526,12 @@
     (not (map? action))
     (core/failure :invalid-fool-reveal
                   "Fool reveal actions require command maps."
+                  {:reveal-index reveal-index
+                   :action action})
+
+    (ambiguous-fool-play-command? action)
+    (core/failure :ambiguous-fool-play-command
+                  "Fool reveals must provide at most one of :command or :play-command."
                   {:reveal-index reveal-index
                    :action action})
 
