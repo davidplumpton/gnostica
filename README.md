@@ -140,5 +140,5 @@ jj commit -m "Commit message"
 jj new
 ```
 
-Prefer Jujutsu for local history. Use git-only commands only when a tool needs
-them or a user explicitly asks for them.
+Use Jujutsu only for version control in this repository. Do not run git
+commands here; local workflow and tracker handoff assume `jj`-managed history.

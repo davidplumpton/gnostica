@@ -42,7 +42,7 @@
 
 [19] **Issue Tracking** - br-only tracker: start with `br ready`/`br show`, sync with `br sync --flush-only`, and keep `.beads/embeddeddolt` regular [10][20].
 
-[20] **Jujutsu Workflow** - Prefer Jujutsu; inspect-only and tracker-only work should not create/split changes, while normal edits get a clear description before scoped work [10][19].
+[20] **Jujutsu Workflow** - Use Jujutsu only; do not run git commands. Inspect-only and tracker-only work should not create/split changes, while normal edits get a clear description before scoped work [10][19].
 
 [21] **Major Power Dispatch** - `major-power` owns `apply-card-power`; implemented methods stay with gameplay-family owners. `major` owns shared source charging and ordered sequencing [8][11][13][22].
 
