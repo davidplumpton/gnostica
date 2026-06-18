@@ -173,6 +173,12 @@ Feature scenarios live under `features/`; step definitions and shared worlds
 live under `test/gnostica/feature_steps.clj` and
 `test/gnostica/feature_world.clj`.
 
+Focused regression anchors include starting-bid ranking, ties, rebids, and
+redraw order; generalized `:major-action-count` staging for paired majors;
+Devil orientation counts; Moon sword-only staging; Magician wildcard routing;
+Fool skipped reveals; Wheel draw-pile Cup territory creation; and void cleanup
+after Sword territory destruction or Hermit relocation.
+
 For 3D board, CDN, extern, release, or browser-smoke behavior, run
 `clojure -M:release` before `clojure -M:smoke`. The smoke runner covers the
 Three.js path, CSS fallback paths, card zones, icon modes, move controls,

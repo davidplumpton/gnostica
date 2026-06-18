@@ -18,7 +18,7 @@
 
 [7] **Rules and Authority** - Rules live in `docs/rules.txt`; command schemas, source, tests, and direct-move spec own implementation details [11][13][16][17].
 
-[8] **Gameplay State** - `gnostica.game-state` is the browser-free gameplay facade; focused helper namespaces own foundational state, setup, deck, board pieces, turns, spatial math, scoring, result maps, source handling, suit targets, and command contracts. Move-family transition namespaces own placement, draw, Cup/Rod/Disc/Sword, major families, manipulation, World, and matching tests. `major` owns shared major-source charging and ordered sequencing; `major-power` owns full-card dispatch [11][13][14][17][21].
+[8] **Gameplay State** - `gnostica.game-state` is the browser-free gameplay facade and pure transition boundary. Route namespace ownership through [22], setup and turns through [14], command dispatch through [21], and coverage through [17].
 
 [9] **App State and UI** - `gnostica.app-state` is the app-db facade for ids, subscriptions, lobby, gestures, moves, move-facade export tables/macros, panels, card zones, and handlers [11][13].
 
@@ -28,15 +28,15 @@
 
 [12] **Board and Rendering** - `board`, `board-layout`, `pieces`, `ui.board`, and `three-board` share stable board indexes and renderer data [9][11][15].
 
-[13] **Move Selection and Commands** - `move-selection`, state selectors, active power context, source availability, prompts, target options, targeting, selection updates, High Priestess redraw staging, registry metadata, flow requirements/stages/advancement, legal targets, builders, schemas, `power-taxonomy`, focused `ui.move-panel.controls.*` renderers, and `ui.move-panel.renderer-registry` keep staged moves and move-panel renderers aligned with game facades; optional paired majors use generalized `:major-action-count`, Devil tests cover one/two/three orientation counts, and Moon target validation must allow sword-only commands without a prior Rod action [8][9][11][17].
+[13] **Move Selection and Commands** - `gnostica.move-selection` stages browser-free move choices and command payloads. Use [23] for UI routing, [16] for gesture contracts, [21] for full-card dispatch, and [17] for regression anchors.
 
-[14] **Setup, Scores, and Turns** - `setup/create-game` orchestrates `setup.creation`, optional `setup.starting-bid`, and bid-card `setup.redraw`; `deck` preserves card accounting, `players`/`hands`/`pieces` own state mirrors, `score` derives control points, and `turn` keeps challenge/endgame flow pure [7][8].
+[14] **Setup, Scores, and Turns** - `setup/create-game` composes creation, optional starting bids, and bid-card redraws. Deck, player, hand, piece, score, challenge, and endgame rules stay pure [7][8][22].
 
 [15] **Fixtures and Smoke Modes** - `gnostica.fixtures` owns lobby/demo defaults, smoke data, query-param init; keep fixtures out of pure setup [9].
 
 [16] **Direct Move Entry** - The direct move spec is the manipulation contract; gestures stage data and preserve `:game` until confirmation [9][13].
 
-[17] **Tests and Features** - Tests live under `test/gnostica`, features under `features/`; starting-bid coverage locks major ordering, the full minor ladder, same-rank ties, set-aside rebids, and redraw order; Magician wildcard regressions cover hand-source Cup/Rod/Disc/Sword plus territory activation with source accounting; Fool skipped reveal coverage locks skipped draw-pile cards to discard; Wheel draw-pile Cup Cucumber coverage includes a major territory result; void cleanup coverage locks stash return for non-minion pieces stranded by Sword territory destruction and Hermit relocation; smoke starts Ring over existing released assets by default, or targets `SMOKE_URL`, and never rebuilds JS [8][10][14][15].
+[17] **Tests and Features** - Tests live under `test/gnostica`, features under `features/`, and focused regression inventories live in `docs/architecture.md`. Smoke targets released assets by default or `SMOKE_URL` [8][10][14][15].
 
 [18] **Documentation Ownership** - Docs: README quick start, AGENTS workflow, MIND_MAP navigation, architecture prose, and rules authority [6][7][10][11].
 
@@ -44,4 +44,8 @@
 
 [20] **Jujutsu Workflow** - Prefer Jujutsu; inspect-only and tracker-only work should not create/split changes, while normal edits get a clear description before scoped work [10][19].
 
-[21] **Major Power Dispatch** - `gnostica.game-state.major-power` owns the `apply-card-power` defmulti and default unavailable-power result. Implemented full-card methods stay with their gameplay-family owners (`draw`, `composite`, `manipulation`, `disc-major`, `sword-major`, `world`), while `major` remains the shared source-charging and ordered-sequencing helper [8][11][13].
+[21] **Major Power Dispatch** - `major-power` owns `apply-card-power`; implemented methods stay with gameplay-family owners. `major` owns shared source charging and ordered sequencing [8][11][13][22].
+
+[22] **Gameplay Namespace Map** - Architecture maps core helpers, setup/deck/turn/score, spatial math, command contracts, suit moves, full-card families, World, and matching tests [8][11][14][21].
+
+[23] **Move UI Routing** - Move selection owns prompts, legal targets, staging, registry metadata, builders, confirmation, previews, and action ribbons. App state, events, controls, and renderers consume those facades [9][13][16].
