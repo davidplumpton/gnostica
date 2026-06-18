@@ -101,6 +101,11 @@ implementation lives under `src/main/gnostica/app_state/`.
 - `lobby_view_models` and `view_models` compose UI-facing derivations.
 - `gestures` bridges gesture and keyboard placement state into app-db.
 - `moves` wires move-selection confirmation and end-turn app-db handling.
+- `facade-exports` owns the public move-facade export tables shared by
+  `app-state.moves` and `app_state.cljc`; keep changes covered by
+  `facade_exports_test`.
+- `facade-macros` owns `def-facade-aliases`, which expands those export tables
+  into facade vars for CLJ and CLJS callers.
 
 Top-level UI state includes `:lobby`, `:move-selection`, `:gesture-intent`,
 `:keyboard-placement-targeting`, `:direct-manipulation`, `:turn-action`,

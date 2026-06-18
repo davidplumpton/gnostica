@@ -20,7 +20,7 @@
 
 [8] **Gameplay State** - `gnostica.game-state` is the browser-free gameplay facade; focused helper namespaces own foundational state, setup, deck, board pieces, turns, spatial math, scoring, result maps, source handling, suit targets, and command contracts. Move-family transition namespaces own placement, draw, Cup/Rod/Disc/Sword, major families, manipulation, World, and matching tests. `major` owns shared major-source charging and ordered sequencing; `major-power` owns full-card dispatch [11][13][14][17][21].
 
-[9] **App State and UI** - `gnostica.app-state` is the app-db facade for ids, subscriptions, lobby, gestures, moves, panels, card zones, and handlers [11][13].
+[9] **App State and UI** - `gnostica.app-state` is the app-db facade for ids, subscriptions, lobby, gestures, moves, move-facade export tables/macros, panels, card zones, and handlers [11][13].
 
 [10] **Verification and Workflow** - Use `clojure -M:lint`, `-M:test`, and for browser work `-M:release` plus `-M:smoke`; use br and Jujutsu [17][19][20].
 
